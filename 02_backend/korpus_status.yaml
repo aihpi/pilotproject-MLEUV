@@ -1,0 +1,30 @@
+# Gültigkeit der Korpus-Dokumente.
+#
+# Ohne diese Angabe liegen mehrere Fassungen derselben Vorschrift gleichrangig im Index,
+# und das Retrieval kann aus veraltetem Recht zitieren — das größte Rechtsrisiko laut
+# 04_planung_pilotprojekt/datengrundlage.md.
+#
+# Nur eintragen, was fachlich geklärt ist. Alles, was hier nicht steht, gilt als "aktuell".
+# ingest.py schreibt den Status in die Payload jedes Chunks, retrieval.py filtert darauf.
+#
+# Bei einer Gesetzesänderung: hier den abgelösten Stand ergänzen, dann Status neu setzen
+# (Reindex nicht nötig, siehe README).
+
+veraltet:
+  - datei: gak-rahmenplan-2025-2028.pdf
+    ersetzt_durch: gak-rahmenplan-2026-2029.pdf
+    grund: >-
+      Nachfolgeplan liegt vor. Beide Fassungen enthalten über weite Strecken identischen
+      Wortlaut (z. B. Förderausschluss Unternehmen in Schwierigkeiten auf S. 20, Zuwendungs-
+      empfänger auf S. 28), sind also ohne Statusangabe nicht unterscheidbar.
+    geprueft_am: 2026-08-11
+    geprueft_durch: unbestaetigt   # fachliche Bestätigung durch MLEUV steht aus
+
+# Kandidaten, die fachlich zu klären sind, bevor sie als veraltet gelten:
+#   Beratungsdienstleistungsrichtlinie-2023.pdf  ->  Beratungsrichtlinie-2025.pdf ?
+#     Unklar, ob Ablösung oder unterschiedlicher Regelungsgegenstand.
+#   Nichtamtliche Lesefassung zur 1. Änderung der Richtlinie zu.pdf
+#     Änderungsfassung — verhält sie sich zur Grundrichtlinie ergänzend oder ersetzend?
+zu_klaeren:
+  - Beratungsdienstleistungsrichtlinie-2023.pdf
+  - Nichtamtliche Lesefassung zur 1. Änderung der Richtlinie zu.pdf

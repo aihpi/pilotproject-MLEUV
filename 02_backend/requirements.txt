@@ -1,0 +1,4 @@
+litellm>=1.50
+qdrant-client>=1.12
+docling>=2.0
+python-dotenv>=1.0

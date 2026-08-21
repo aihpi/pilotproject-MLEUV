@@ -1,0 +1,4 @@
+# Vertrauliche MLEUV-Rohdaten – NIEMALS ins Repo committen.
+# Ignoriert den gesamten Inhalt dieses Ordners außer dieser Regel selbst.
+*
+!.gitignore
