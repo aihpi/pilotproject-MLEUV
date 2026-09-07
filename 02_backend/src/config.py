@@ -41,6 +41,20 @@ CORPUS_DIR = _corpus if os.path.isabs(_corpus) else os.path.join(BASE, _corpus)
 MAX_DOCS = int(os.getenv("MAX_DOCS", "5"))
 TOP_K = int(os.getenv("TOP_K", "5"))
 
+# Mehrheitsentscheid über die Kandidatenauswahl (Spark, modul-suche-und-zuordnung Stufe 1:
+# CONSENSUS_RUNS 3, CONSENSUS_THRESHOLD 2, CONSENSUS_TEMPERATURE 0.3 — hier gleich gesetzt).
+# Temperatur bewusst > 0: bei 0 liefern die Läufe dieselbe Antwort und es gibt nichts zu zählen.
+KONSENS_LAEUFE = int(os.getenv("KONSENS_LAEUFE", "3"))
+KONSENS_SCHWELLE = int(os.getenv("KONSENS_SCHWELLE", "2"))
+KONSENS_TEMPERATUR = float(os.getenv("KONSENS_TEMPERATUR", "0.3"))
+
+# Satzfilter: aus jedem Kontextblock nur die tragenden Sätze. Abweichend von Spark (dort 0.7)
+# mit Temperatur 0 — die Eval soll wiederholbar bleiben, und Auswahl ist keine Schreibaufgabe.
+SATZFILTER = os.getenv("SATZFILTER", "true").lower() == "true"
+SATZFILTER_TEMPERATUR = float(os.getenv("SATZFILTER_TEMPERATUR", "0"))
+SATZFILTER_MAX_ZEICHEN = int(os.getenv("SATZFILTER_MAX_ZEICHEN", "20000"))  # je Stapel
+SATZFILTER_MAX_BLOECKE = int(os.getenv("SATZFILTER_MAX_BLOECKE", "5"))      # je Stapel
+
 # Gültigkeit: kuratierte Liste abgelöster Dokumente (siehe korpus_status.yaml).
 # NUR_AKTUELL=false schaltet den Filter ab — für den Vergleich in der Eval.
 STATUS_FILE = os.path.join(BASE, "korpus_status.yaml")

@@ -1,0 +1,550 @@
+# Dokumentregister — Baustein (a) der Adressierung.
+#
+# Wozu: Im Text steht "ANBest-P", im Index steht
+# "ANBest-P_Anlage 15 zu VV Nr. 5.1 zu § 44 LHO.242860.pdf". Ohne diese Brücke findet
+# kein Verweis sein Ziel. Das Register ist zugleich die Liste zulässiger Abkürzungen,
+# die `norm_extraction.yaml` aus norm-matching als `lawbooks` erwartet.
+#
+# Felder je Eintrag:
+#   datei       Dateiname wie im Qdrant-Payload unter `quelle`
+#   kurzname    Name, unter dem das Dokument im Fließtext zitiert wird
+#   aliase      weitere Schreibweisen, unter denen es zitiert wird (für die Verweisauflösung)
+#   art         gesetz | verordnung_eu | verwaltungsvorschrift | nebenbestimmungen |
+#               richtlinie | rahmenplan | leitlinie | muster | merkblatt
+#   zitierweise nummer (Gliederungsnummern) | artikel (EU-Verordnungen)
+#   pruefen     true = vom MLEUV zu bestätigen; Kurzname geraten oder Zitierweise unklar
+#
+# ?? = Zweifelsfall, bitte gegenlesen. Bei den Landesrichtlinien gibt es meist keine
+# eingeführte Kurzform; dort ist der Kurzname eine Setzung, damit Verweise überhaupt
+# eine Zieladresse haben.
+
+dokumente:
+
+  # --- Landesrecht: Verwaltungsvorschriften und Nebenbestimmungen ------------------
+  # Die am häufigsten zitierten Dokumente des Korpus. Kurznamen sind hier eingeführt
+  # und stehen im Dokumenttitel selbst.
+
+  - datei: "VV zu § 44 LHO Brandenburg.pdf"
+    kurzname: "VV zu § 44 LHO"
+    aliase: ["VV zu § 44 LHO", "VVG zu § 44 LHO", "VV Nr. … zu § 44 LHO", "Verwaltungsvorschriften zu § 44 LHO"]
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+
+  - datei: "ANBest-P_Anlage 15 zu VV Nr. 5.1 zu § 44 LHO.242860.pdf"
+    kurzname: "ANBest-P"
+    aliase: ["Allgemeine Nebenbestimmungen für Zuwendungen zur Projektförderung"]
+    art: nebenbestimmungen
+    zitierweise: nummer
+
+  - datei: "ANBest-EU_Anlage 16 zu VV Nr. 5.1 zu § 44 LHO.pdf"
+    kurzname: "ANBest-EU"
+    aliase: ["Allgemeine Nebenbestimmungen für Zuwendungen aus EU-Mitteln"]
+    art: nebenbestimmungen
+    zitierweise: nummer
+
+  - datei: "ANBestEU21_Anlage 16a zu VV Nr. 5.1 zu § 44 LHO.242920.pdf"
+    kurzname: "ANBest-EU 21"
+    aliase: ["ANBest-EU21", "ANBest-EU 2021"]
+    art: nebenbestimmungen
+    zitierweise: nummer
+    # ?? Verhältnis zu ANBest-EU klären: eigenständig oder Fassung 2021 desselben Textes?
+    pruefen: true
+
+  - datei: "ANBest-G_Anlage 21 zu VVG Nr. 5.1 zu § 44 LHO.pdf"
+    kurzname: "ANBest-G"
+    aliase: ["Allgemeine Nebenbestimmungen für Zuwendungen an Gebietskörperschaften"]
+    art: nebenbestimmungen
+    zitierweise: nummer
+
+  - datei: "Grundsätze für Förderrichtlinien_Anlage 19 zu VV Nr. 14.2.1.pdf"
+    kurzname: "Grundsätze für Förderrichtlinien"
+    aliase: ["Anlage 19 zu VV Nr. 14.2.1", "Grundsätze"]
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+
+  - datei: "Grundmuster 1 zu VVG Nr. 3.1 (Antrag) zu § 44 LHO.pdf"
+    kurzname: "Grundmuster 1"
+    aliase: ["Grundmuster 1 zu VVG Nr. 3.1"]
+    art: muster
+    zitierweise: nummer
+
+  # --- Bundesrecht: GAK ------------------------------------------------------------
+
+  - datei: "gak-rahmenplan-2026-2029.pdf"
+    kurzname: "GAK-Rahmenplan 2026"
+    aliase: ["GAK-Rahmenplan", "Rahmenplan"]
+    art: rahmenplan
+    zitierweise: nummer
+    # Hierarchie wird zusätzlich von gak_hierarchie.py abgeleitet (Förderbereich/Maßnahme)
+
+  - datei: "gak-rahmenplan-2025-2028.pdf"
+    kurzname: "GAK-Rahmenplan 2025"
+    aliase: []
+    art: rahmenplan
+    zitierweise: nummer
+    # ?? als abgelöst führen? siehe korpus_status.yaml
+    pruefen: true
+
+  - datei: "Foerderbereich-1-26. ILE.pdf"
+    kurzname: "GAK FB 1"
+    aliase: ["Förderbereich 1", "Integrierte ländliche Entwicklung"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-2-26.lw Unternehmen.pdf"
+    kurzname: "GAK FB 2"
+    aliase: ["Förderbereich 2"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-3-26.verarbeitung und Vermarktung.pdf"
+    kurzname: "GAK FB 3"
+    aliase: ["Förderbereich 3"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-4-26.pdf"
+    kurzname: "GAK FB 4"
+    aliase: ["Förderbereich 4"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-5-26.pdf"
+    kurzname: "GAK FB 5"
+    aliase: ["Förderbereich 5"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-6-26.pdf"
+    kurzname: "GAK FB 6"
+    aliase: ["Förderbereich 6"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-7-26.pdf"
+    kurzname: "GAK FB 7"
+    aliase: ["Förderbereich 7"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-8-26.pdf"
+    kurzname: "GAK FB 8"
+    aliase: ["Förderbereich 8"]
+    art: rahmenplan
+    zitierweise: nummer
+  - datei: "Foerderbereich-9-26.pdf"
+    kurzname: "GAK FB 9"
+    aliase: ["Förderbereich 9"]
+    art: rahmenplan
+    zitierweise: nummer
+
+  - datei: "GAK FlurRL 2021.pdf"
+    kurzname: "GAK-FlurRL"
+    aliase: ["Flurbereinigungsrichtlinie"]
+    art: richtlinie
+    zitierweise: nummer
+
+  # --- EU-Beihilfenrecht -----------------------------------------------------------
+  # zitierweise: artikel. Achtung: bei diesen Dokumenten fehlt die Artikelstruktur in
+  # der Extraktion (Überschriften nur "▼ B"/"▼ M6"). Baustein (b) greift hier erst
+  # nach einer besseren Extraktion oder Beschaffung — siehe naechste_schritte.md.
+
+  - datei: "Allgemeine Gruppenfreistellungsverordnung -AGVO - VERORDNUN.pdf"
+    kurzname: "AGVO"
+    aliase: ["Allgemeine Gruppenfreistellungsverordnung", "Verordnung (EU) Nr. 651/2014", "VO (EU) 651/2014"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+
+  - datei: "Verordnung (EU) 2022_2472_kons. 23.pdf"
+    kurzname: "AgrarGVO"
+    aliase: ["Verordnung (EU) 2022/2472", "VO (EU) 2022/2472", "Agrarfreistellungsverordnung"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+
+  - datei: "Fischereifreistellungsverordnung - FischGVO (EU) 2022_2473 .pdf"
+    kurzname: "FischGVO"
+    aliase: ["Verordnung (EU) 2022/2473", "VO (EU) 2022/2473"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+
+  - datei: "VO EU 2023_2831.pdf"
+    kurzname: "De-minimis-VO"
+    aliase: ["Verordnung (EU) 2023/2831", "VO (EU) 2023/2831"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+
+  - datei: "Agrar-De-minimis VO (EU) Nr. 1408_2013 vom 10.pdf"
+    kurzname: "Agrar-De-minimis-VO"
+    aliase: ["Verordnung (EU) Nr. 1408/2013", "VO (EU) 1408/2013"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+
+  - datei: "CELEX_02014R0717-20231025_DE_TXT.pdf"
+    kurzname: "FischDeMinimisVO"
+    aliase: ["Verordnung (EU) Nr. 717/2014", "VO (EU) 717/2014"]
+    art: verordnung_eu
+    zitierweise: artikel
+    struktur_fehlt: true
+    # ?? Kurzname geraten — im Korpus wird das Dokument nicht abgekürzt zitiert
+    pruefen: true
+
+  - datei: "Rahmenregelung für staatliche Beihilfen im Agrar- und Forst.pdf"
+    kurzname: "Agrarrahmenregelung"
+    aliase: ["Rahmenregelung der Union für staatliche Beihilfen im Agrar- und Forstsektor"]
+    art: leitlinie
+    zitierweise: nummer
+
+  - datei: "Leitlinien für staatliche Beihilfen im Fischerei- und Aquak.pdf"
+    kurzname: "Fischerei-Leitlinien"
+    aliase: []
+    art: leitlinie
+    zitierweise: nummer
+
+  - datei: "Bekanntmachung der Kommission zum Begriff der staatlichen B.pdf"
+    kurzname: "Beihilfebegriff-Bekanntmachung"
+    aliase: ["Bekanntmachung zum Begriff der staatlichen Beihilfe"]
+    art: leitlinie
+    zitierweise: nummer
+
+  - datei: "Dokument 1 Merkblatt Agrar- De-minimis 14082013 Stand 24.pdf"
+    kurzname: "Merkblatt Agrar-De-minimis"
+    aliase: []
+    art: merkblatt
+    zitierweise: nummer
+  - datei: "Dokument 2 Agrar-De-minimis Erklärung VO (EU) 14082013 Stan.docx"
+    kurzname: "Muster Agrar-De-minimis-Erklärung"
+    aliase: []
+    art: muster
+    zitierweise: nummer
+  - datei: "Dokument 3 Agrar-De-minimis Bescheinigung VO (EU) 14082013 .docx"
+    kurzname: "Muster Agrar-De-minimis-Bescheinigung"
+    aliase: []
+    art: muster
+    zitierweise: nummer
+  - datei: "Dokument 5 De-minimis Erklärung VO (EU) 20232831 Stand 12.docx"
+    kurzname: "Muster De-minimis-Erklärung"
+    aliase: []
+    art: muster
+    zitierweise: nummer
+  - datei: "Dokument 6 De-minimis Bescheinigung VO (EU) 20232831 Stand .docx"
+    kurzname: "Muster De-minimis-Bescheinigung"
+    aliase: []
+    art: muster
+    zitierweise: nummer
+
+  # --- Verwaltungsvorschriften des Landes zu einzelnen Programmen -------------------
+
+  - datei: "ELER-VV gez.pdf"
+    kurzname: "ELER-VV"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+  - datei: "ELER-VV-HWS-2025_gez.pdf"
+    kurzname: "ELER-VV HWS"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+  - datei: "VV Natürliches Erbe vom 27.pdf"
+    kurzname: "VV Natürliches Erbe"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+  - datei: "VV WM 01.pdf"
+    kurzname: "VV WM"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+    # ?? wofür steht WM?
+    pruefen: true
+  - datei: "Verwaltungsvorschrift GewSan vom 15.pdf"
+    kurzname: "VV GewSan"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+  - datei: "VV-Vertragsnaturschutz Wald_29.pdf"
+    kurzname: "VV Vertragsnaturschutz Wald"
+    aliase: []
+    art: verwaltungsvorschrift
+    zitierweise: nummer
+
+  # --- Förderrichtlinien -----------------------------------------------------------
+  # Für diese gibt es keine eingeführten Kurzformen. Die Kurznamen sind gesetzt, damit
+  # Verweise eine Zieladresse haben; sie tauchen so nicht zwingend im Text auf.
+  # Alle mit pruefen: true — bitte gegenlesen, insbesondere die amtlichen Titel.
+
+  - datei: "Agroforst-RL_04.05.2026.pdf"
+    kurzname: "RL Agroforst"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Beratungsdienstleistungsrichtlinie-2023.pdf"
+    kurzname: "RL Beratungsdienstleistungen 2023"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Beratungsrichtlinie-2025.pdf"
+    kurzname: "RL Beratung 2025"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "EBI-RL 25.02.2025t.pdf"
+    kurzname: "EBI-RL"
+    aliase: ["Einzelbetriebliche Investitionsförderung"]
+    art: richtlinie
+    zitierweise: nummer
+  - datei: "Förderung der Sommerweidehaltung von Rindern_01.pdf"
+    kurzname: "RL Sommerweidehaltung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Förderung forstwirtschaftlicher Zusammenschlüsse (MLUL-Fors.pdf"
+    kurzname: "RL Forstwirtschaftliche Zusammenschlüsse"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Nichtamtliche Lesefassung zur 1. Änderung der Richtlinie zu.pdf"
+    kurzname: "Lesefassung 1. Änderung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? Änderung welcher Richtlinie? Titel ist im Dateinamen abgeschnitten
+    pruefen: true
+  - datei: "RL Junglandwirte 22.pdf"
+    kurzname: "RL Junglandwirte"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Natürliches Erbe 07.368591.pdf"
+    kurzname: "RL Natürliches Erbe"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Prävention Wolf_16.525109.pdf"
+    kurzname: "RL Prävention Wolf"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL-Netzwerke-Kooperationen-regionale-WSK.pdf"
+    kurzname: "RL Netzwerke und Kooperationen"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL-Strukturelemente-im-Ackerbau 01.pdf"
+    kurzname: "RL Strukturelemente Ackerbau"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RiLi GewEntw_ELER_vom 23.pdf"
+    kurzname: "RL Gewässerentwicklung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RiLi LWH_ELER_vom 23.pdf"
+    kurzname: "RL Landwirtschaftlicher Wegebau"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? steht LWH für Ländlichen Wegebau? Abkürzung nicht aufgelöst im Dateinamen
+    pruefen: true
+  - datei: "RiLi-Schweinehaltung-auf-Stroh.pdf"
+    kurzname: "RL Schweinehaltung auf Stroh"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Richtlinie LEADER_Lesefassung_23.pdf"
+    kurzname: "RL LEADER"
+    aliase: ["LEADER-Richtlinie"]
+    art: richtlinie
+    zitierweise: nummer
+  - datei: "Richtlinie MSV_09.pdf"
+    kurzname: "RL MSV"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? wofür steht MSV?
+    pruefen: true
+  - datei: "Rili AUKM Biodiversität, Ökolandbau und Bodenschutz m SZ.pdf"
+    kurzname: "RL AUKM Biodiversität"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Rili AUKM Förderung kooperativer Maßnahmen.pdf"
+    kurzname: "RL AUKM kooperative Maßnahmen"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Rili AUKM Klimaschutz und Wasserqualität m SZ Min'in.pdf"
+    kurzname: "RL AUKM Klimaschutz"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Rili AUKM- Biodiv. _ Boden m SZ Min.pdf"
+    kurzname: "RL AUKM Biodiversität und Boden"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? Verhältnis zu "RL AUKM Biodiversität" — zwei Fassungen desselben Textes?
+    pruefen: true
+  - datei: "Rili Ländliche Berufsbildung vom 25.pdf"
+    kurzname: "RL Ländliche Berufsbildung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Rili m Sz Min.566698.pdf"
+    kurzname: "RL (Titel unbekannt)"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? Dateiname trägt keinen Titel — welche Richtlinie ist das?
+    pruefen: true
+  - datei: "Vermarktung landestouristischer Angebote vom 10.pdf"
+    kurzname: "RL Landestourismus"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Änderungsrichtlinie GewEnt_LWH vom 23.pdf"
+    kurzname: "ÄndRL Gewässerentwicklung/LWH"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+
+  # --- Ordner 09: Landesrichtlinien, nachträglich eingelesen ------------------------
+  # Diese 18 waren über `CORPUS_PREFIXES` aus dem Index ausgeschlossen. Sie sind die
+  # Vorschlagsquelle der Sorte B in rag_abfragen.md — das Prozessmodell nennt die
+  # Tierheimförderung ausdrücklich als Muster für eine neue Richtlinie. Alle mit
+  # pruefen: true, weil ich die amtlichen Titel nicht kenne.
+
+  - datei: "ASP Förderrichtlinie vom 18.pdf"
+    kurzname: "RL ASP"
+    aliase: ["Afrikanische Schweinepest"]
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL ASP Notifizierung mit Zeichnung Minister_02.05.2023 .pdf"
+    kurzname: "RL ASP Notifizierung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? Verhältnis zu „RL ASP" — Notifizierungsfassung oder eigenständige Richtlinie?
+    pruefen: true
+  - datei: "Ausgleich von Schäden in Teichwirtschaften vom 08.pdf"
+    kurzname: "RL Teichwirtschaften"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "BIZ RL_14.pdf"
+    kurzname: "BIZ-RL"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? wofür steht BIZ?
+    pruefen: true
+  - datei: "Förderung Naturschutz- und Umweltverbände zum Erhalt und We.pdf"
+    kurzname: "RL Naturschutz- und Umweltverbände"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Förderung von Maßnahmen von Verbänden und Organisationen im.pdf"
+    kurzname: "RL Verbände und Organisationen"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    # ?? Titel im Dateinamen abgeschnitten — in welchem Bereich?
+    pruefen: true
+  - datei: "MLUK-RL Jagdabgabe 01.pdf"
+    kurzname: "RL Jagdabgabe"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Biberprävention_26.pdf"
+    kurzname: "RL Biberprävention"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Fischsterben Oder_27.pdf"
+    kurzname: "RL Fischsterben Oder"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Frostschutzhilfen Gartenbau_16.pdf"
+    kurzname: "RL Frostschutzhilfen Gartenbau"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Katzenkastration_23.pdf"
+    kurzname: "RL Katzenkastration"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Qualitätsprogramme_26.pdf"
+    kurzname: "RL Qualitätsprogramme"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL Tierheimförderung_16.pdf"
+    kurzname: "RL Tierheimförderung"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "RL-Kleingartenwesen_12.pdf"
+    kurzname: "RL Kleingartenwesen"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Richtlinie Absatzfoerderung Messe_16.pdf"
+    kurzname: "RL Absatzförderung Messe"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Richtlinie Abwasser_WRRL_06.pdf"
+    kurzname: "RL Abwasser WRRL"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Richtlinie Neuimker vom 26.pdf"
+    kurzname: "RL Neuimker"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+  - datei: "Zuwendungen Fischereiabgabe 15052023.pdf"
+    kurzname: "RL Fischereiabgabe"
+    aliase: []
+    art: richtlinie
+    zitierweise: nummer
+    pruefen: true
+
+  # --- Musterrichtlinie -------------------------------------------------------------
+  # Die Vorlage, an der die achtteilige Gliederung hängt. Keine Rechtsgrundlage, sondern
+  # das Muster, gegen das auf Vollständigkeit geprüft wird.
+  #
+  # Der Eintrag steht in korpus_register_lokal.yaml und nicht hier: der Dateiname nennt
+  # ein Dokument aus einem vertraulichen Ordner. Diese Datei wird von git ignoriert.
