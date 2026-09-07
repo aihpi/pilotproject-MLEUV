@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+coverage/
+.env
+apps/api/data/*.json
+!apps/api/data/.gitkeep
+*.log
+.DS_Store

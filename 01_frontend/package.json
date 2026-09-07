@@ -1,0 +1,17 @@
+{
+  "name": "richtlinien-generator",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "predev": "npm run build -w @richtlinie/shared",
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @richtlinie/api\" \"npm run dev -w @richtlinie/web\"",
+    "build": "npm run build -w @richtlinie/shared && npm run build -w @richtlinie/api && npm run build -w @richtlinie/web",
+    "build:offline": "npm run build -w @richtlinie/shared && node scripts/build-static.mjs",
+    "build:dataset-editor": "npm run build -w @richtlinie/shared && node scripts/build-generic-dataset-editor.mjs",
+    "pretest": "npm run build -w @richtlinie/shared",
+    "test": "npm run test -w @richtlinie/shared && npm run test -w @richtlinie/web",
+    "typecheck": "npm run typecheck -w @richtlinie/shared && npm run typecheck -w @richtlinie/api && npm run typecheck -w @richtlinie/web"
+  },
+  "devDependencies": {"concurrently": "^9.1.2", "typescript": "^5.7.3"}
+}
