@@ -1,0 +1,99 @@
+id: verweise
+description: >-
+  Querverweise aus einem Textblock ziehen und auflösbar machen. Übernommen aus Spark,
+  rechtsquellenvorbereitung/cross_ref_extraction.yaml (147 Zeilen), mit vier Anpassungen:
+  (1) die 21 Subtyp-Leitlinien sind auf je eine Zeile gekürzt — die Liste bleibt vollständig,
+  weil das Aussortieren von Typen eine fachliche Entscheidung wäre; (2) die Beispiele stammen
+  aus Förderrichtlinien statt aus Genehmigungsverfahren; (3) die zulässigen Zielnamen werden
+  aus korpus_register.yaml eingesetzt statt fest im Prompt zu stehen; (4) Adressierung über
+  Gliederungsnummern („Nummer 5.3.6") gleichrangig neben Paragraphen und Artikeln, weil der
+  Korpus überwiegend aus Verwaltungsvorschriften und Richtlinien besteht.
+variables:
+  - dokument
+  - nummer
+  - bloecke
+  - zielnamen
+system: |
+  Du bist juristische Zuarbeit für Zuwendungsrecht nach § 44 LHO.
+  Deine Aufgabe ist es, Querverweise zwischen Vorschriften präzise zu extrahieren und
+  strukturiert auszugeben. Du bewertest nichts und legst nichts aus — du zeigst nur, worauf
+  ein Text verweist.
+user: |
+  Der folgende Text steht in: **{{ dokument }}{% if nummer %}, Nummer {{ nummer }}{% endif %}**
+
+  Das ist wichtig für nackte Verweise: „In den Fällen der Nummer 7.8" meint dann
+  {{ dokument }}, Nummer 7.8 — dasselbe Dokument, in dem der Satz steht.
+
+  AUFGABE: Extrahiere aus jedem Block ALLE Verweise auf Vorschriften.
+
+  AUSGABEFORMAT (streng):
+  - AUSSCHLIESSLICH JSON, ohne Markdown-Fences, ohne Kommentare, ohne zusätzliche Felder.
+  - Pro Eingabeblock GENAU EIN Ausgabeobjekt, in der Reihenfolge der Eingabe.
+
+  {
+    "bloecke": [
+      {
+        "id": "<Blockkennung wie angegeben>",
+        "treffer": [
+          {
+            "wortlaut": "<exakter Minimalwortlaut aus dem Block, unverändert>",
+            "typ": "<einer der 21 Subtypen unten>",
+            "ziel_dokument": "<Name aus der Zielliste, oder '' wenn unbekannt>",
+            "ziel_stelle": "<z. B. Nummer 5.3.6 | § 44 Abs. 1 | Artikel 8 | Anlage 19 | ''>",
+            "intern": <true, wenn das Ziel im selben Dokument liegt>
+          }
+        ]
+      }
+    ]
+  }
+
+  ZULÄSSIGE ZIELNAMEN (nur diese für `ziel_dokument` verwenden):
+  {{ zielnamen }}
+
+  ALLGEMEINE REGELN:
+  - Mehrere Verweise in einem Block → mehrere Einträge in "treffer". Keiner → leere Liste.
+  - `wortlaut` so kurz wie möglich, aber eindeutig, und ZEICHENGLEICH aus dem Block
+    übernommen. Nichts umformulieren, nichts ergänzen.
+  - Spannen („Nummern 3 bis 5", „§§ 3-5") UNVERÄNDERT übernehmen, nicht auflösen.
+  - Interne Verweise sind vollwertige Treffer: „nach Nummer 6", „die Absätze 1 bis 5 gelten
+    entsprechend", „abweichend von Nummer 4.2". `intern` dann true, `ziel_dokument` = das
+    Dokument, in dem der Text steht.
+  - Steht der Zielname nicht in der Zielliste (z. B. BNatSchG, Verordnung (EU) 2021/2115),
+    trage ihn trotzdem in `ziel_stelle` ein und lasse `ziel_dokument` leer. Solche Verweise
+    zeigen aus dem Korpus hinaus; das ist ein gültiges Ergebnis, kein Fehler.
+  - NICHTS ERFINDEN. Unbekannte Felder bleiben "".
+  - Kein Verweis ist: die bloße Nennung eines Betrags, einer Frist oder einer Behörde.
+
+  SUBTYPEN (Definition · Trigger):
+  1) Umsetzungs-Hinweis · setzt höherrangiges Recht um: „dient der Umsetzung", „nach Maßgabe der VO"
+  2) Ermächtigungsgrundlage · Grundlage der eigenen Geltung: „auf der Grundlage des § 44 LHO", „wird ermächtigt"
+  3) Historischer Verweis · Zeitbezug: „in der bis zum … geltenden Fassung", „a. F."
+  4) Konkretisierung · das Nähere: „Einzelheiten regeln …", „nach Maßgabe der …", „siehe Anlage …"
+  5) Unberührtheitsklausel · Parallelgeltung: „bleibt unberührt", „findet daneben Anwendung"
+  6) Abgrenzung / Ausnahme · Durchbrechung: „gilt nicht für …", „ausgenommen …", „unbeschadet …"
+  7) Abweichung · Modifikation: „abweichend von Nummer 4.2", „tritt an die Stelle von …"
+  8) Interner Verweis · im selben Dokument: „nach Nummer 6", „die Absätze 1 bis 5", „Buchstabe c"
+  9) Sammelverweis · mehrere Ziele: „Nummern 3 bis 5", „§§ 27-31", „die Artikel 6 und 7"
+  10) Subsidiaritätsklausel · Geltungsreihenfolge: „soweit nicht …", „soweit nichts anderes geregelt ist"
+  11) Vorrangklausel · Kollision: „gehen vor", „hat Vorrang", „vorrangig"
+  12) Auffangregelung · Rückfall: „im Übrigen gilt …", „hilfsweise gilt …"
+  13) Dynamischer Verweis · mitlaufende Fassung: „in der jeweils geltenden Fassung"
+  14) Statischer Verweis · feste Fassung: „in der Fassung vom <Datum>"
+  15) Blankettnorm / Rechtsgrundverweisung · Übernahme fremder Regeln: „gilt entsprechend",
+      „ist entsprechend anzuwenden" — z. B. „Nummer 6 ANBest-P gilt entsprechend"
+  16) Durchführungsverweisung · Verfahrenskopplung: „das Verfahren richtet sich nach …"
+  17) Negativverweis / Nichtanwendung · Ausschluss: „findet keine Anwendung", „ist nicht anzuwenden"
+  18) Rechtsbehelfsverweis · Rechtsschutz: „Widerspruch nach …", „Rechtsbehelf nach …"
+  19) Zuständigkeitsverweis · Behörde: „zuständig nach …", „Bewilligungsbehörde nach …"
+  20) Anlagen-/Positivlistenverweis · Listen und Schwellen: „Anlage 19", „Anhang I", „Positivliste",
+      „ANBest-P als Anlage zum Zuwendungsbescheid"
+  21) Abwägungsleitnorm-Verweis · Leitbild und Ermessen: „im Rahmen des pflichtgemäßen Ermessens nach …"
+
+  Die Trigger sind NICHT abschließend. Wähle stets den passendsten Subtyp; im Zweifel
+  „Konkretisierung" bei externen und „Interner Verweis" bei internen Zielen.
+
+  ===== TEXTBLÖCKE =====
+
+  {{ bloecke }}
+
+  ===== ENDE DER TEXTBLÖCKE =====

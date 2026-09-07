@@ -16,9 +16,19 @@ from config import (LITELLM_BASE_URL, LITELLM_API_KEY, LLM_MODEL, EMBEDDING_MODE
 _gemeldet = set()  # jede Ausweichmeldung nur einmal, sonst flutet sie die Ausgabe
 
 
-def chat(messages, model=LLM_MODEL, temperature=None, fallbacks=None, mit_modell=False):
+def chat(messages, model=LLM_MODEL, temperature=None, fallbacks=None, mit_modell=False,
+         ohne_cache=False):
+    """ohne_cache: Antwort-Cache umgehen. Nötig, wo mehrere Läufe derselben Anfrage
+    unterschiedlich ausfallen SOLLEN — beim Mehrheitsentscheid in retrieval.py würde eine
+    gecachte Antwort dreimal dasselbe liefern und die Abstimmung wertlos machen.
+    Spark setzt an derselben Stelle `no_cache=True` (llm_invoke in Stufe 1)."""
     kette = [model] + [m for m in (LLM_FALLBACKS if fallbacks is None else fallbacks) if m != model]
     kwargs = {} if temperature is None else {"temperature": temperature}
+    if ohne_cache:
+        # zweigleisig: `caching` steuert den Cache in LiteLLM selbst, `extra_body` den
+        # des Proxy. Versteht der Endpunkt das Feld nicht, ignoriert er es.
+        kwargs["caching"] = False
+        kwargs["extra_body"] = {"cache": {"no-cache": True}}
     letzter = None
     for kandidat in kette:
         try:

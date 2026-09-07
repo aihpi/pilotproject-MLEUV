@@ -43,6 +43,12 @@ def rechtsebene(path):
 
 
 def find_docs(root, limit):
+    # Einzeldatei: nachgerüstet für Dokumente, die nicht in einem der numerierten Ordner
+    # liegen (die Musterrichtlinie liegt unmittelbar im Datenordner). Ohne das müsste man
+    # CORPUS_DIR auf den ganzen Datenordner richten und würde die vertraulichen Ordner
+    # mitziehen — genau das soll nicht passieren.
+    if os.path.isfile(root):
+        return [root]
     out = []
     for pat in DOC_GLOBS:
         out += glob.glob(os.path.join(root, "**", pat), recursive=True)

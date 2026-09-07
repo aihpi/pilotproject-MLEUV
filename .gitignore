@@ -197,3 +197,6 @@ cython_debug/
 
 # macOS
 .DS_Store
+
+# Lokales Overlay zum Dokumentregister – nennt Titel vertraulicher Dokumente.
+02_backend/korpus_register_lokal.yaml
