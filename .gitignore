@@ -200,3 +200,6 @@ cython_debug/
 
 # Lokales Overlay zum Dokumentregister – nennt Titel vertraulicher Dokumente.
 02_backend/korpus_register_lokal.yaml
+
+# Erzeugte Musterbausteine – Wortlaut aus einem Dokument der vertraulichen Ordner.
+02_backend/musterbausteine_lokal.yaml

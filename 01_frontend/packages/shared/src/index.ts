@@ -15,10 +15,19 @@ export const sectionIds = [
 ] as const;
 export type SectionId = (typeof sectionIds)[number];
 export type DraftStatus = "draft" | "review" | "complete";
+/** "unklar": geprüft, aber aus den Angaben nicht bestimmbar — nicht dasselbe wie "empty". */
 export type FieldStatus =
-  "empty" | "suggested" | "confirmed" | "warning" | "invalid";
+  "empty" | "suggested" | "confirmed" | "warning" | "invalid" | "unklar";
+/** "musterbaustein": Wert stammt aus einem Textbaustein der Musterrichtlinie. */
 export type ValueSource =
-  "user-form" | "user-chat" | "ai-extracted" | "rule" | "import";
+  "user-form" | "user-chat" | "ai-extracted" | "rule" | "import" | "musterbaustein";
+
+export const fieldStatuses = [
+  "empty", "suggested", "confirmed", "warning", "invalid", "unklar",
+] as const;
+export const valueSources = [
+  "user-form", "user-chat", "ai-extracted", "rule", "import", "musterbaustein",
+] as const;
 
 export const fundingProfileSchema = z.object({
   jurisdiction: z.enum(["bund", "land", "mixed"]),
@@ -32,28 +41,97 @@ export const fieldValueSchema = z.object({
   value: z
     .union([z.string(), z.number(), z.boolean(), z.array(z.string())])
     .nullable(),
-  status: z.enum(["empty", "suggested", "confirmed", "warning", "invalid"]),
-  source: z.enum(["user-form", "user-chat", "ai-extracted", "rule", "import"]),
+  status: z.enum(fieldStatuses),
+  source: z.enum(valueSources),
   confidence: z.number().min(0).max(1).optional(),
   evidence: z.string().optional(),
   confirmedByUser: z.boolean(),
+  /**
+   * Nummer des Textbausteins der Musterrichtlinie, der den Satzrahmen geliefert hat
+   * ("1.1", "5.4.n"). Der Regelfall ist gemischt: Rahmen aus dem Musterbaustein,
+   * Inhalt aus der Angabe des Fachreferats — dann steht hier die Nummer und in
+   * `source` die inhaltliche Herkunft.
+   */
+  musterbaustein: z.string().optional(),
+  /** Fundstelle in Zitierform, z.B. "VV zu § 44 LHO, Nummer 1.5 (S. 2)". */
+  fundstelle: z.string().optional(),
+  /** Wortlaut aus der Quelle, gegen sie geprüft. Getrennt von `fundstelle`. */
+  belegzitat: z.string().optional(),
+  /** Begründung der Formulierung — Doc 12 verlangt sie je Entscheidung. */
+  rationale: z.string().optional(),
 });
 export type FieldValue = z.infer<typeof fieldValueSchema>;
 
+/**
+ * Überarbeitungsanforderung an einen Baustein.
+ *
+ * Die BPMN nennt das "Auswirkungen auf spätere Verfahren": die Wahl fester Beträge in
+ * Baustein 5 erzeugt Pflichten in Baustein 7. Eine menschliche Bestätigung wird dabei
+ * NICHT zurückgenommen — `confirmedByUser` bleibt stehen. Stattdessen tritt diese
+ * Anforderung daneben. Der Unterschied zwischen "du hast nicht entschieden" und "die
+ * Umstände haben sich geändert" muss im Verwaltungshandeln sichtbar bleiben.
+ */
+export const revisionSchema = z.object({
+  regel: z.string(),
+  rechtsstelle: z.string().optional(),
+  grund: z.string(),
+  ausgeloestVon: z.enum(sectionIds),
+  betroffeneFelder: z.array(z.string()),
+  erledigt: z.boolean(),
+});
+export type Revision = z.infer<typeof revisionSchema>;
+
 export const sectionDataSchema = z.object({
   fields: z.record(fieldValueSchema),
+  revisionen: z.array(revisionSchema).optional(),
 });
 export type SectionData = z.infer<typeof sectionDataSchema>;
-export interface ValidationIssue {
-  sectionId: SectionId;
-  fieldId: string;
-  severity: "error" | "warning";
-  message: string;
-}
-export interface ValidationResult {
-  valid: boolean;
-  issues: ValidationIssue[];
-}
+
+export const validationIssueSchema = z.object({
+  sectionId: z.enum(sectionIds),
+  fieldId: z.string(),
+  severity: z.enum(["error", "warning"]),
+  message: z.string(),
+  /** Kennung der Regel, verweist in die Regeltabelle — z.B. "bagatellgrenze". */
+  regel: z.string().optional(),
+  /** z.B. "Ziff. 1.5 VV zu § 44 LHO". */
+  rechtsstelle: z.string().optional(),
+  fundstelle: z.string().optional(),
+  belegzitat: z.string().optional(),
+  /** Fehlt bei deterministischen Regeln: eine Zahlenprüfung hat keine Unsicherheit. */
+  konfidenz: z.number().min(0).max(1).optional(),
+});
+export type ValidationIssue = z.infer<typeof validationIssueSchema>;
+
+export const validationResultSchema = z.object({
+  valid: z.boolean(),
+  issues: z.array(validationIssueSchema),
+});
+export type ValidationResult = z.infer<typeof validationResultSchema>;
+
+/**
+ * Eintrag im Prüfvermerk — das zweite Arbeitsergebnis neben der Richtlinie.
+ *
+ * Doc 12 verlangt je Baustein einen Formulierungsvorschlag UND einen separaten, über die
+ * Bausteine mitwachsenden Vermerk. Im Landesrecht ist dessen Adressat das MdFE: sowohl die
+ * Abweichung von der Bagatellgrenze (Ziff. 1.5) als auch die Vollfinanzierung (Ziff. 2.4)
+ * verlangen eine fachliche Begründung im MdFE-Anschreiben. Die Vorlagen dafür existieren
+ * als Anlagen 06 und 08 des RL-Erlasses.
+ */
+export const vermerkEintragSchema = z.object({
+  id: z.string(),
+  adressat: z.enum(["pruefvermerk", "mdfe"]),
+  sectionId: z.enum(sectionIds),
+  regel: z.string(),
+  rechtsstelle: z.string().optional(),
+  beurteilung: z.string(),
+  fundstelle: z.string().optional(),
+  belegzitat: z.string().optional(),
+  /** Vom Fachreferat eingeholte Begründung — BPMN: "Fachliche Begründung beim Nutzer einholen". */
+  begruendung: z.string().optional(),
+  status: z.enum(["offen", "beantwortet", "bestaetigt"]),
+});
+export type VermerkEintrag = z.infer<typeof vermerkEintragSchema>;
 
 export const draftSchema = z.object({
   id: z.string(),
@@ -61,17 +139,9 @@ export const draftSchema = z.object({
   title: z.string(),
   profile: fundingProfileSchema,
   sections: z.record(sectionDataSchema),
-  validation: z.object({
-    valid: z.boolean(),
-    issues: z.array(
-      z.object({
-        sectionId: z.enum(sectionIds),
-        fieldId: z.string(),
-        severity: z.enum(["error", "warning"]),
-        message: z.string(),
-      }),
-    ),
-  }),
+  validation: validationResultSchema,
+  /** Wächst über die Bausteine; leer, solange keine Prüfung etwas festgestellt hat. */
+  vermerk: z.array(vermerkEintragSchema).optional(),
   status: z.enum(["draft", "review", "complete"]),
   version: z.number().int(),
   createdAt: z.string(),
@@ -551,6 +621,51 @@ export function fieldVisible(
 ) {
   return field.visible ? field.visible(profile, values) : true;
 }
+/**
+ * Kyrillische und griechische Zwillinge lateinischer Buchstaben.
+ *
+ * Ein Probelauf gegen das LLM lieferte für `legalBasis` den Wert "lhо44" mit kyrillischem
+ * о (U+043E). Optisch nicht von "lho44" zu unterscheiden, gegen die Optionsliste geprüft
+ * aber ungültig — und NFKC normalisiert das nicht weg, weil beide Zeichen kanonisch
+ * verschieden sind. Auswahlwerte aus KI-Vorschlägen müssen daher hier durchlaufen.
+ */
+const HOMOGLYPHEN: Record<string, string> = {
+  а: "a", е: "e", о: "o", с: "c", р: "p", х: "x", у: "y", і: "i",
+  ѕ: "s", ԁ: "d", һ: "h", ν: "v", ο: "o", α: "a", ε: "e", ι: "i",
+};
+
+/** Auswahlwert vergleichbar machen: NFKC, Homoglyphen ersetzen, trimmen. */
+export function normalisiereAuswahl(wert: unknown): string {
+  return String(wert ?? "")
+    .normalize("NFKC")
+    .replace(/./gu, (z) => HOMOGLYPHEN[z] ?? z)
+    .trim();
+}
+
+/**
+ * Auswahlwert gegen die Optionsliste prüfen. Gibt den kanonischen Wert zurück oder null.
+ * Mehrfachauswahl (checkbox) wird elementweise geprüft.
+ */
+export function pruefeAuswahl(
+  field: FieldDefinition,
+  wert: unknown,
+): { gueltig: boolean; kanonisch: string | string[] | null } {
+  if (!field.options?.length) return { gueltig: true, kanonisch: null };
+  const erlaubt = new Map(
+    field.options.map((o) => [normalisiereAuswahl(o.value), o.value]),
+  );
+  if (Array.isArray(wert)) {
+    const treffer = wert.map((w) => erlaubt.get(normalisiereAuswahl(w)));
+    return treffer.every((t) => t !== undefined)
+      ? { gueltig: true, kanonisch: treffer as string[] }
+      : { gueltig: false, kanonisch: null };
+  }
+  const treffer = erlaubt.get(normalisiereAuswahl(wert));
+  return treffer !== undefined
+    ? { gueltig: true, kanonisch: treffer }
+    : { gueltig: false, kanonisch: null };
+}
+
 export function validateDraft(draft: RichtlinieDraft): ValidationResult {
   const issues: ValidationIssue[] = [];
   for (const section of sections)
@@ -562,17 +677,27 @@ export function validateDraft(draft: RichtlinieDraft): ValidationResult {
       );
       if (!fieldVisible(field, draft.profile, values)) continue;
       const value = draft.sections[section.id]?.fields[field.id]?.value;
-      if (
-        field.required &&
-        (value == null ||
-          value === "" ||
-          (Array.isArray(value) && !value.length))
-      )
+      const leer =
+        value == null || value === "" || (Array.isArray(value) && !value.length);
+      if (field.required && leer)
         issues.push({
           sectionId: section.id,
           fieldId: field.id,
           severity: "error",
           message: `„${field.label}“ muss ausgefüllt werden.`,
+        });
+      // Auswahlfelder gegen ihre Optionsliste prüfen. Betrifft vor allem KI-Vorschläge:
+      // ein Mensch klickt eine Option an, ein Modell schreibt sie hin — und kann sich
+      // dabei unsichtbar vertippen.
+      if (!leer && !pruefeAuswahl(field, value).gueltig)
+        issues.push({
+          sectionId: section.id,
+          fieldId: field.id,
+          severity: "error",
+          regel: "auswahlwert",
+          message:
+            `„${field.label}“ enthält einen Wert, der nicht zur Auswahl gehört. ` +
+            `Zulässig: ${field.options?.map((o) => o.value).join(", ")}.`,
         });
     }
   if (draft.profile.gak && draft.profile.jurisdiction === "bund")
