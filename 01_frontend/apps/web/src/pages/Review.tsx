@@ -63,7 +63,23 @@ export function ReviewPage() {
         <Alert kind="warning" title="Fachliche Prüfhinweise">
           <ul>
             {warnings.map((issue, index) => (
-              <li key={index}>{issue.message}</li>
+              <li key={index}>
+                {issue.message}
+                {/* Ein Prüfhinweis ohne Rechtsstelle ist eine Meinung. Mit ihr ist er
+                    nachprüfbar — und genau das erwartet eine Verwaltung. */}
+                {(issue.rechtsstelle || issue.fundstelle) && (
+                  <span className="befund__stelle">
+                    {issue.rechtsstelle}
+                    {issue.rechtsstelle && issue.fundstelle ? " · " : ""}
+                    {issue.fundstelle}
+                  </span>
+                )}
+                {issue.belegzitat && (
+                  <span className="befund__stelle">
+                    <q>{issue.belegzitat}</q>
+                  </span>
+                )}
+              </li>
             ))}
           </ul>
         </Alert>

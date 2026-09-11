@@ -209,7 +209,7 @@ const VORSCHLAG_URL = process.env.VORSCHLAG_URL ?? "http://127.0.0.1:8000";
 type DienstVorschlag = {
   feld: string; label: string; wert: string | null; status: string | null;
   fundstelle: string | null; belegzitat: string | null; deckung: string | null;
-  begruendung: string | null; konfidenz: number | null;
+  musterbaustein: string | null; begruendung: string | null; konfidenz: number | null;
 };
 
 async function holeVorschlaege(
@@ -265,7 +265,14 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
         label: v.label,
         value: String(v.wert),
         confidence: v.konfidenz ?? 0,
-        evidence: v.belegzitat ?? v.deckung ?? v.begruendung ?? "",
+        evidence: v.begruendung ?? "",
+        // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
+        // Oberfläche muss Deckung (aus der Eingabe) und Beleg (aus dem Regelwerk)
+        // auseinanderhalten können, sonst sieht beides gleich aus.
+        ...(v.deckung ? { deckung: v.deckung } : {}),
+        ...(v.belegzitat ? { belegzitat: v.belegzitat } : {}),
+        ...(v.fundstelle ? { fundstelle: v.fundstelle } : {}),
+        ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
       }));
     const offen = geliefert.filter((v) => v.status === "unklar").map((v) => v.label);
     if (offen.length)

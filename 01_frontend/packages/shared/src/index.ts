@@ -162,6 +162,18 @@ export interface FieldProposal {
   value: string;
   confidence: number;
   evidence: string;
+  /**
+   * Herkunft des Vorschlags, getrennt nach Rolle — ohne diese Angaben ist ein Vorschlag
+   * nicht nachvollziehbar, und Nachvollziehbarkeit ist der Zweck des Werkzeugs.
+   *
+   * `deckung` ist die Stelle der Nutzereingabe, die den Wert trägt; sie wird zeichengenau
+   * gegengeprüft. `belegzitat` mit `fundstelle` weist die Regel nach, nach der formuliert
+   * wurde. `musterbaustein` nennt den Satzrahmen aus der Musterrichtlinie.
+   */
+  deckung?: string;
+  belegzitat?: string;
+  fundstelle?: string;
+  musterbaustein?: string;
 }
 export interface ChatExtraction {
   id: string;

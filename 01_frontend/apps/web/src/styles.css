@@ -12,3 +12,17 @@
 .evidence-panel{position:sticky;top:1rem;max-height:78vh;overflow:auto;padding:1rem;border-top:5px solid var(--evidence-rag);background:var(--surface)}.evidence-panel h3{font-size:1.3rem;margin:.2rem 0}.evidence-panel h4{font-size:1rem;margin:1.35rem 0 .35rem}.evidence-label{font-weight:700}.source-list{list-style:none;padding:0;margin:0}.source-list li{padding:.8rem 0;border-top:1px solid #cbd2d5}.source-list__meta{display:flex;justify-content:space-between;gap:.5rem}.source-list__meta span{white-space:nowrap;font-size:.78rem;color:var(--success);font-weight:700}.source-locator{margin:.25rem 0;font-size:.88rem;color:var(--color-text-muted)}.source-list blockquote{margin:.55rem 0;padding-left:.75rem;border-left:3px solid var(--evidence-rag);font-size:.9rem}.demo-source{font-size:.75rem;font-weight:700;color:var(--warning)}.empty-evidence{padding:.75rem;background:#fff;border:1px solid var(--color-border)}
 @media(max-width:1050px){.paragraph-workspace{grid-template-columns:1fr}.evidence-panel{position:static;max-height:none}}@media(max-width:700px){.suggestion-jump{align-items:flex-start;flex-direction:column}.ai-review>header,.ai-suggestion__heading,.source-list__meta{flex-direction:column}.suggestion-actions .button{width:100%}.rl-paragraph>header{align-items:flex-start;flex-direction:column}}
 @media(max-width:900px){.editor-layout--evidence{grid-template-columns:minmax(0,1fr)}}
+
+/* Herkunft eines Vorschlags: Deckung aus der eigenen Angabe, Beleg aus dem Regelwerk. */
+.herkunft{margin-top:.6rem;padding:.7rem .85rem;border-left:4px solid var(--evidence-rag);background:var(--surface);font-size:.9rem}
+.herkunft p{margin:.25rem 0}
+.herkunft__grad strong{color:var(--color-text)}
+.herkunft__zahl{color:var(--color-text-muted)}
+.herkunft__marke{display:inline-block;min-width:9.5rem;font-weight:700;color:var(--color-text-muted)}
+.herkunft__quelle{color:var(--color-text-muted)}
+.herkunft q{font-style:italic}
+.herkunft__leer{color:var(--warning);font-weight:700}
+@media(max-width:700px){.herkunft__marke{display:block;min-width:0}}
+
+/* Rechtsstelle und Fundstelle an einem Prüfhinweis. */
+.befund__stelle{display:block;color:var(--color-text-muted);font-size:.88rem}

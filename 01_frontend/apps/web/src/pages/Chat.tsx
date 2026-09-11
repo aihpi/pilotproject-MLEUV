@@ -1,10 +1,69 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { nextChatStage, type ChatExtraction } from "@richtlinie/shared";
+import {
+  nextChatStage,
+  type ChatExtraction,
+  type FieldProposal,
+} from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, PageHeader, Progress } from "../components";
 type Msg = { role: "assistant" | "user"; text: string };
+
+/**
+ * Woher ein Vorschlag kommt — der eigentliche Unterschied zu einem beliebigen Textgenerator.
+ *
+ * Getrennt dargestellt, weil es zwei verschiedene Dinge sind: die DECKUNG ist die Stelle der
+ * eigenen Angabe, die den Wert trägt, der BELEG die Regel, nach der formuliert wurde. Ein
+ * Vorschlag ohne Deckung ist aus dem Regelfall abgeleitet, und das soll man sehen können.
+ *
+ * Der Grad wird aus den vorliegenden Angaben benannt, nicht aus der Zahl abgelesen: „durch
+ * Ihre Angabe gedeckt" sagt mehr als „95 Prozent".
+ */
+function Herkunft({ p }: { p: FieldProposal }) {
+  const nichts = !p.deckung && !p.belegzitat && !p.musterbaustein;
+  if (nichts && p.confidence == null) return null;
+  const grad = p.deckung
+    ? "durch Ihre Angabe gedeckt"
+    : "aus dem Regelfall abgeleitet — bitte besonders prüfen";
+  return (
+    <div className="herkunft">
+      <p className="herkunft__grad">
+        <strong>{grad}</strong>
+        {p.confidence != null && (
+          <span className="herkunft__zahl">
+            {" "}
+            (Konfidenz {Math.round(p.confidence * 100)} %)
+          </span>
+        )}
+      </p>
+      {p.deckung && (
+        <p>
+          <span className="herkunft__marke">Ihre Angabe</span>
+          <q>{p.deckung}</q>
+        </p>
+      )}
+      {p.musterbaustein && (
+        <p>
+          <span className="herkunft__marke">Musterbaustein</span>
+          {p.musterbaustein}
+        </p>
+      )}
+      {p.belegzitat && (
+        <p>
+          <span className="herkunft__marke">Beleg</span>
+          <q>{p.belegzitat}</q>
+          {p.fundstelle && <span className="herkunft__quelle"> — {p.fundstelle}</span>}
+        </p>
+      )}
+      {nichts && (
+        <p className="herkunft__leer">
+          Für diesen Wert liegt kein Beleg vor. Prüfen Sie ihn selbst.
+        </p>
+      )}
+    </div>
+  );
+}
 export function ChatPage() {
   const { id = "" } = useParams();
   const qc = useQueryClient();
@@ -94,7 +153,10 @@ export function ChatPage() {
             {extraction.proposals.map((p) => (
               <div key={p.fieldId}>
                 <dt>{p.label}</dt>
-                <dd>{p.value}</dd>
+                <dd>
+                  {p.value}
+                  <Herkunft p={p} />
+                </dd>
               </div>
             ))}
           </dl>
