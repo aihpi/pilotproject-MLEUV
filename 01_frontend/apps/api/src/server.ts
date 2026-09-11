@@ -9,6 +9,7 @@ import {
   emptySections,
   chatStages,
   nextChatStage,
+  pruefungenAnwenden,
   sections,
   validateDraft,
   type ChatReply,
@@ -48,6 +49,12 @@ function touch(d: RichtlinieDraft) {
   d.updatedAt = new Date().toISOString();
   d.version++;
   d.validation = validateDraft(d);
+  // Die fachlichen Prüfungen schreiben mit: Einträge fürs MdFE-Anschreiben und
+  // Überarbeitungsanforderungen an andere Bausteine. Mehrfach anwendbar — ein Lauf bei
+  // unverändertem Entwurf fügt nichts hinzu und verliert nichts.
+  const gepruft = pruefungenAnwenden(d);
+  d.sections = gepruft.sections;
+  d.vermerk = gepruft.vermerk;
   void persist();
 }
 

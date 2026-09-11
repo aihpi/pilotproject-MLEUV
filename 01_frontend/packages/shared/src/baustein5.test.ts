@@ -3,6 +3,7 @@ import {
   BAGATELLGRENZE_EUR,
   emptySections,
   pruefeBaustein5,
+  pruefungenAnwenden,
   validateDraft,
   type FieldValue,
   type RichtlinieDraft,
@@ -134,5 +135,73 @@ describe("Einbindung in validateDraft", () => {
 
     const fehler = validateDraft(entwurf({ eligibleBasis: "fixed-rest" }));
     expect(fehler.valid).toBe(false);
+  });
+});
+
+describe("Prüfungen in den Entwurf schreiben", () => {
+  it("legt Vermerkseinträge an", () => {
+    const d = pruefungenAnwenden(entwurf({ minimum: 500, financingType: "full" }));
+    expect(d.vermerk?.map((v) => v.regel).sort()).toEqual([
+      "bagatellgrenze",
+      "vollfinanzierung",
+    ]);
+    expect(d.vermerk?.every((v) => v.adressat === "mdfe" && v.status === "offen")).toBe(true);
+  });
+
+  it("ein zweiter Lauf ändert nichts", () => {
+    const einmal = pruefungenAnwenden(entwurf({ minimum: 500 }));
+    const zweimal = pruefungenAnwenden(einmal);
+    expect(zweimal.vermerk).toEqual(einmal.vermerk);
+  });
+
+  it("eine eingeholte Begründung überlebt die Neubewertung", () => {
+    const erst = pruefungenAnwenden(entwurf({ minimum: 500 }));
+    const beantwortet = {
+      ...erst,
+      vermerk: erst.vermerk!.map((v) => ({
+        ...v, begruendung: "Kleinstförderung im Tierschutz.", status: "beantwortet" as const,
+      })),
+    };
+    const nochmal = pruefungenAnwenden(beantwortet);
+    expect(nochmal.vermerk![0]!.begruendung).toBe("Kleinstförderung im Tierschutz.");
+    expect(nochmal.vermerk![0]!.status).toBe("beantwortet");
+  });
+
+  it("entfällt die Regel, wird der Eintrag gegenstandslos statt gelöscht", () => {
+    // Ein Prüfvermerk ist ein Nachweis. Was einmal festgestellt wurde, verschwindet nicht.
+    const mit = pruefungenAnwenden(entwurf({ minimum: 500 }));
+    const ohne = pruefungenAnwenden({ ...mit, sections: entwurf({ minimum: 25000 }).sections });
+    expect(ohne.vermerk).toHaveLength(1);
+    expect(ohne.vermerk![0]!.status).toBe("gegenstandslos");
+  });
+
+  it("feste Beträge tragen eine Überarbeitung in Baustein 7 ein", () => {
+    const d = pruefungenAnwenden(entwurf({ eligibleBasis: "fixed" }));
+    const rev = d.sections["7"]?.revisionen ?? [];
+    expect(rev).toHaveLength(1);
+    expect(rev[0]!.ausgeloestVon).toBe("5");
+    expect(rev[0]!.erledigt).toBe(false);
+  });
+
+  it("entfällt die Regel, verschwindet die offene Überarbeitung", () => {
+    // Anders als der Vermerk: eine Arbeitsanweisung ohne Gegenstand ist nur Rauschen.
+    const mit = pruefungenAnwenden(entwurf({ eligibleBasis: "fixed" }));
+    const ohne = pruefungenAnwenden({ ...mit, sections: {
+      ...mit.sections, "5": entwurf({ eligibleBasis: "actual" }).sections["5"]!,
+    } });
+    expect(ohne.sections["7"]?.revisionen ?? []).toHaveLength(0);
+  });
+
+  it("eine erledigte Überarbeitung bleibt", () => {
+    const mit = pruefungenAnwenden(entwurf({ eligibleBasis: "fixed" }));
+    const abgehakt = { ...mit, sections: { ...mit.sections, "7": {
+      ...mit.sections["7"]!,
+      revisionen: mit.sections["7"]!.revisionen!.map((r) => ({ ...r, erledigt: true })),
+    } } };
+    const ohne = pruefungenAnwenden({ ...abgehakt, sections: {
+      ...abgehakt.sections, "5": entwurf({ eligibleBasis: "actual" }).sections["5"]!,
+    } });
+    expect(ohne.sections["7"]!.revisionen).toHaveLength(1);
+    expect(ohne.sections["7"]!.revisionen![0]!.erledigt).toBe(true);
   });
 });

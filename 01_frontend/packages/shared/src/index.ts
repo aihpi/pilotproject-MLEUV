@@ -129,7 +129,13 @@ export const vermerkEintragSchema = z.object({
   belegzitat: z.string().optional(),
   /** Vom Fachreferat eingeholte Begründung — BPMN: "Fachliche Begründung beim Nutzer einholen". */
   begruendung: z.string().optional(),
-  status: z.enum(["offen", "beantwortet", "bestaetigt"]),
+  /**
+   * "gegenstandslos": die Regel greift nicht mehr, weil der auslösende Wert geändert wurde.
+   * Solche Einträge werden NICHT gelöscht. Ein Prüfvermerk ist ein Nachweis darüber, was
+   * geprüft wurde — auch eine Feststellung, die sich später erledigt hat, gehört dazu, und
+   * eine bereits eingeholte Begründung darf nicht stillschweigend verschwinden.
+   */
+  status: z.enum(["offen", "beantwortet", "bestaetigt", "gegenstandslos"]),
 });
 export type VermerkEintrag = z.infer<typeof vermerkEintragSchema>;
 
@@ -855,4 +861,83 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
     });
 
   return raus;
+}
+
+/** Alle fachlichen Prüfungen. Wächst, wenn weitere Bausteine dazukommen. */
+export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
+  return pruefeBaustein5(draft);
+}
+
+/** Kennung eines Vermerkseintrags. Ein Baustein kann jede Regel nur einmal auslösen. */
+const vermerkSchluessel = (sectionId: string, regel: string) => `${sectionId}:${regel}`;
+
+/**
+ * Prüfergebnisse in den Entwurf schreiben: Vermerkseinträge und Überarbeitungsanforderungen.
+ *
+ * Läuft bei jeder Änderung und muss deshalb mehrfach anwendbar sein — ein zweiter Lauf bei
+ * unverändertem Entwurf darf nichts hinzufügen und nichts verlieren.
+ *
+ * Die beiden Sorten werden absichtlich verschieden behandelt, wenn eine Regel nicht mehr
+ * greift:
+ * - VERMERKSEINTRÄGE bleiben und werden auf "gegenstandslos" gesetzt. Der Vermerk ist ein
+ *   Nachweis; was einmal festgestellt wurde, verschwindet nicht, und eine schon eingeholte
+ *   Begründung schon gar nicht.
+ * - ÜBERARBEITUNGSANFORDERUNGEN, die niemand angefasst hat, fallen weg. Sie sind eine
+ *   Arbeitsanweisung, kein Nachweis — eine gegenstandslose Aufgabe stehenzulassen erzeugt
+ *   nur Rauschen. Erledigte bleiben, weil die Arbeit stattgefunden hat.
+ */
+export function pruefungenAnwenden(draft: RichtlinieDraft): RichtlinieDraft {
+  const ergebnisse = pruefeFachlich(draft);
+  const aktiv = new Set(
+    ergebnisse
+      .filter((e) => e.vermerk)
+      .map((e) => vermerkSchluessel(e.vermerk!.sectionId, e.vermerk!.regel)),
+  );
+
+  const vorhanden = new Map(
+    (draft.vermerk ?? []).map((v) => [vermerkSchluessel(v.sectionId, v.regel), v]),
+  );
+
+  for (const e of ergebnisse) {
+    if (!e.vermerk) continue;
+    const schluessel = vermerkSchluessel(e.vermerk.sectionId, e.vermerk.regel);
+    const alt = vorhanden.get(schluessel);
+    vorhanden.set(schluessel, {
+      ...e.vermerk,
+      id: alt?.id ?? schluessel,
+      // Menschliche Eingaben überleben die Neubewertung: Begründung und Status bleiben,
+      // nur die maschinelle Beurteilung wird aufgefrischt.
+      begruendung: alt?.begruendung,
+      status: alt && alt.status !== "gegenstandslos" ? alt.status : "offen",
+    });
+  }
+  for (const [schluessel, v] of vorhanden)
+    if (!aktiv.has(schluessel) && v.status !== "gegenstandslos")
+      vorhanden.set(schluessel, { ...v, status: "gegenstandslos" });
+
+  const sections: Record<string, SectionData> = { ...draft.sections };
+  const gewuenscht = new Map<string, Revision[]>();
+  for (const e of ergebnisse) {
+    if (!e.revision) continue;
+    const liste = gewuenscht.get(e.revision.sectionId) ?? [];
+    liste.push(e.revision.eintrag);
+    gewuenscht.set(e.revision.sectionId, liste);
+  }
+  const betroffen = new Set([
+    ...gewuenscht.keys(),
+    ...Object.entries(sections)
+      .filter(([, s]) => (s.revisionen ?? []).length)
+      .map(([id]) => id),
+  ]);
+  for (const id of betroffen) {
+    const soll = gewuenscht.get(id) ?? [];
+    const alt = sections[id]?.revisionen ?? [];
+    const erledigt = alt.filter((r) => r.erledigt);
+    const offen = soll
+      .filter((r) => !erledigt.some((e) => e.regel === r.regel))
+      .map((r) => alt.find((a) => a.regel === r.regel && !a.erledigt) ?? r);
+    sections[id] = { ...(sections[id] ?? { fields: {} }), revisionen: [...erledigt, ...offen] };
+  }
+
+  return { ...draft, sections, vermerk: [...vorhanden.values()] };
 }
