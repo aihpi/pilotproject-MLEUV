@@ -1,0 +1,117 @@
+# Feld-Eval: landet der richtige Wert im richtigen Feld?
+#
+# Der Fragenkatalog in validation.jsonl misst das Retrieval — findet die Suche die richtige
+# Stelle im Korpus. Diese Sammlung misst die Schicht darüber, und die kann falsch sein,
+# während das Retrieval tadellos arbeitet: beim ersten Probelauf stand im Zuwendungszweck
+# eine Maßnahmenliste aus einer FREMDEN Richtlinie, sauber belegt, mit Konfidenz 0,99.
+#
+# Prüfbare Eigenschaften je Feld (alle optional, alle kombinierbar):
+#   wert           exakter Wert nach Normalisierung — für Auswahlfelder
+#   unklar         true: es MUSS [Unklar] herauskommen
+#   enthaelt       Liste: alle Zeichenfolgen müssen vorkommen (Groß-/Kleinschreibung egal)
+#   nicht          Liste: keine davon darf vorkommen
+#   eigenstaendig  true: der Wert darf NICHT wörtlich aus einer Fundstelle stammen
+#   min_konfidenz  untere Schranke
+#   max_konfidenz  obere Schranke
+#   gedeckt        true: die Deckung in der Eingabe muss nachgewiesen sein
+#
+# Freitext wird bewusst über Eigenschaften geprüft, nicht über den Wortlaut: „Verbesserung
+# des Tierschutzes" und „Tierschutz verbessern" sind beide richtig. Wer den Wortlaut
+# festschreibt, misst das Modell und nicht die Sache.
+
+felder:
+  goal:
+    id: goal
+    label: Förderziel
+    kind: textarea
+  purpose:
+    id: purpose
+    label: Zuwendungszweck
+    kind: textarea
+  legalBasis:
+    id: legalBasis
+    label: Rechtsgrundlage
+    kind: radio
+    options:
+      - {value: lho44, label: Zuwendung nach § 44 LHO}
+      - {value: lho53, label: Billigkeitsleistung nach § 53 LHO}
+      - {value: administrative, label: Verwaltungsvorschriften}
+
+faelle:
+
+  - id: F-01-vollstaendig
+    notiz: >-
+      Der Regelfall: die Angabe nennt Ziel, Gegenstand und Finanzierungsquelle.
+      Alle drei Felder müssen gefüllt werden, nichts darf [Unklar] sein.
+    abschnitt_nr: 1
+    eingabe: >-
+      Wir wollen Tierheime im Land Brandenburg fördern, damit der Tierschutz verbessert
+      wird. Reine Landesmittel, Zuwendung als Zuschuss.
+    felder: [goal, purpose, legalBasis]
+    erwartet:
+      goal: {enthaelt: [tierschutz], gedeckt: true}
+      purpose: {enthaelt: [tierheim], eigenstaendig: true}
+      legalBasis: {wert: lho44}
+
+  - id: F-02-abschreibfalle
+    notiz: >-
+      Dieselbe Sache, aber mit Begriffen, die stark auf die vorhandene
+      Tierheimförderungs-Richtlinie zeigen. Genau hier hat das Modell zweimal aus der
+      fremden Richtlinie abgeschrieben. Der Wert muss eigenständig formuliert sein.
+    abschnitt_nr: 1
+    eingabe: >-
+      Zuwendungszweck: Unterbringung und Pflege von Fundtieren in gemeinnützigen
+      Tierheimen. Landesmittel.
+    felder: [purpose, legalBasis]
+    erwartet:
+      purpose: {eigenstaendig: true, nicht: ["zielt darauf ab"]}
+      legalBasis: {wert: lho44}
+
+  - id: F-03-duenn
+    notiz: >-
+      Nichts Verwertbares. Es MUSS [Unklar] kommen statt einer Erfindung — die Regel
+      „keine Negativaussage ohne geschlossene Bezugsgröße" gilt auch hier.
+    abschnitt_nr: 1
+    eingabe: Wir hätten gern eine Richtlinie für Tierheime.
+    felder: [goal, purpose, legalBasis]
+    erwartet:
+      goal: {unklar: true}
+      purpose: {unklar: true}
+      legalBasis: {unklar: true, max_konfidenz: 0.5}
+
+  - id: F-04-billigkeit
+    notiz: >-
+      Nicht der Regelfall: § 53 LHO statt § 44. Prüft, ob die Auswahl der Angabe folgt
+      und nicht dem Muster.
+    abschnitt_nr: 1
+    eingabe: >-
+      Es geht um eine Billigkeitsleistung nach § 53 LHO für Betriebe, die von der
+      Dürre betroffen sind. Landesmittel.
+    felder: [legalBasis]
+    erwartet:
+      legalBasis: {wert: lho53, min_konfidenz: 0.6, gedeckt: true}
+
+  - id: F-05-verwaltungsvorschrift
+    notiz: >-
+      Förderung nachgeordneter Behörden läuft über eine Verwaltungsvorschrift, nicht über
+      § 44 LHO. Der Musterbaustein 1.1 weist ausdrücklich darauf hin.
+    abschnitt_nr: 1
+    eingabe: >-
+      Wir wollen eine Verwaltungsvorschrift für die Förderung einer nachgeordneten
+      Landesbehörde erlassen. Es handelt sich nicht um Zuwendungen.
+    felder: [legalBasis]
+    erwartet:
+      legalBasis: {wert: administrative, gedeckt: true}
+
+  - id: F-06-kein-ziel-genannt
+    notiz: >-
+      Der Gegenstand steht da, das Förderziel nicht. Teilweise Deckung: purpose muss
+      kommen, goal darf nicht erfunden werden.
+    abschnitt_nr: 1
+    eingabe: >-
+      Gefördert werden sollen Investitionen in Bewässerungstechnik im Obstbau.
+      Finanzierung aus Landesmitteln.
+    felder: [goal, purpose, legalBasis]
+    erwartet:
+      purpose: {enthaelt: [bewässerung], eigenstaendig: true}
+      legalBasis: {wert: lho44}

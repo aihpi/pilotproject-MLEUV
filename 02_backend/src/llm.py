@@ -5,13 +5,17 @@ Ein Lauf über den Eval-Katalog dauert Minuten — ohne Fallback bricht er mitte
 und die Teilergebnisse sind wertlos. Welches Modell tatsächlich geantwortet hat, gibt
 `chat` auf Wunsch zurück; für Messungen gehört das ins Protokoll, weil ein Modellwechsel
 die Zahlen verschiebt.
+
+Das Zeitlimit ist Teil derselben Sache: die Kette fängt AUSNAHMEN ab, und eine
+stehengebliebene Verbindung wirft keine. Ohne Limit wartet sie endlos, statt auf das
+nächste Modell zu wechseln — am 2026-09-10 blieb ein Eval-Lauf so 14 Stunden stehen.
 """
 import sys
 
 import litellm
 
 from config import (LITELLM_BASE_URL, LITELLM_API_KEY, LLM_MODEL, EMBEDDING_MODEL,
-                    LLM_FALLBACKS)
+                    LLM_FALLBACKS, LLM_TIMEOUT)
 
 _gemeldet = set()  # jede Ausweichmeldung nur einmal, sonst flutet sie die Ausgabe
 
@@ -37,6 +41,7 @@ def chat(messages, model=LLM_MODEL, temperature=None, fallbacks=None, mit_modell
                 messages=messages,
                 api_base=LITELLM_BASE_URL,
                 api_key=LITELLM_API_KEY,
+                timeout=LLM_TIMEOUT,
                 **kwargs,
             )
             if kandidat != model and kandidat not in _gemeldet:
@@ -58,5 +63,6 @@ def embed(texts, model=EMBEDDING_MODEL):
         input=texts,
         api_base=LITELLM_BASE_URL,
         api_key=LITELLM_API_KEY,
+        timeout=LLM_TIMEOUT,
     )
     return [item["embedding"] for item in resp.data]

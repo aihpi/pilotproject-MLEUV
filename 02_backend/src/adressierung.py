@@ -44,11 +44,15 @@ _NUMMER_UEBERSCHRIFT = re.compile(r"^\s*(?:Nr\.\s*)?(\d+(?:\.\d+)*)\.?(?:\s|$)")
 
 
 def register(pfad=REGISTER):
-    """Register laden: {Dateiname: Eintrag}. Leer, wenn die Datei fehlt.
+    """Register laden: {Dateiname: Eintrag}.
 
     korpus_register_lokal.yaml wird dazugemischt, falls vorhanden: dort stehen die Einträge,
     deren Dateiname ein Dokument aus einem vertraulichen Ordner benennt und darum nicht ins
     Repo gehört. Fehlt das Overlay, fehlen nur diese Einträge — kein Fehler.
+
+    Jede der beiden Dateien darf fehlen, auch beide; dann ist das Ergebnis entsprechend
+    kleiner oder leer. Die Einträge des Overlays stehen also auch dann bereit, wenn `pfad`
+    ins Leere zeigt — was ein Test aufgedeckt hat, der das Gegenteil annahm.
     """
     reg = {}
     for p in (pfad, REGISTER_LOKAL):

@@ -18,6 +18,7 @@ Gliederung der Grundsätze für Förderrichtlinien, nicht aus den Gold-Fundstell
 Validierungsfragen. Sonst würde die Suche auf den Messfall hin gebaut.
 """
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from retrieval import hybrid_search
 from config import TOP_K
@@ -107,8 +108,17 @@ def suche(text, abschnitt_nr=None, top_k=TOP_K, je_anfrage=None, **such_args):
 
     je_anfrage: wie viele Treffer je Teilanfrage geholt werden. Vorgabe top_k, damit auch ein
     Treffer, der nur bei einer Teilanfrage oben steht, in die Zusammenführung kommt.
+
+    Die Teilanfragen laufen nebenläufig. Sie sind voneinander unabhängig, aber jede enthält
+    per Vorgabe ein Reranking — also einen Modellaufruf von rund zehn Sekunden. Seriell
+    brauchten drei Teilanfragen 29 Sekunden und machten damit die Hälfte der Antwortzeit der
+    Naht aus. An der Zusammenführung ändert sich nichts: RRF hängt nicht von der Reihenfolge
+    ab, in der die Listen eintreffen.
     """
     teile = anfragen(text, abschnitt_nr)
     je = je_anfrage or top_k
-    listen = [hybrid_search(a, top_k=je, **such_args) for a in teile]
+    if len(teile) == 1:
+        return _rrf([hybrid_search(teile[0], top_k=je, **such_args)])[:top_k]
+    with ThreadPoolExecutor(max_workers=min(len(teile), 6)) as pool:
+        listen = list(pool.map(lambda a: hybrid_search(a, top_k=je, **such_args), teile))
     return _rrf(listen)[:top_k]

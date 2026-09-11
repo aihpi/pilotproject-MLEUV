@@ -32,6 +32,12 @@ LLM_FALLBACKS = _liste("LLM_FALLBACKS", "gemma-4-31b,llama-3-3-70b,ministral-3-1
 JUDGE_FALLBACKS = _liste("JUDGE_FALLBACKS", "gemma-4-31b,ministral-3-14b,gpt-oss-120b")
 EMBEDDING_MODEL = _model(os.getenv("EMBEDDING_MODEL") or os.getenv("OPENAI_EMBEDDING_MODEL", "octen-embedding-8b"))
 
+# Zeitlimit je Modellaufruf. Ohne eines hängt eine stehengebliebene Verbindung endlos —
+# am 2026-09-10 blieb ein Eval-Lauf so 14 Stunden stehen. Entscheidend ist nicht die
+# Wartezeit, sondern dass die Ausweichkette in llm.py nur AUSNAHMEN abfängt: ein Hänger ist
+# keine, also greift sie ohne Limit gar nicht.
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120"))
+
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION = os.getenv("COLLECTION", "mleuv_durchstich")
 
@@ -47,6 +53,14 @@ TOP_K = int(os.getenv("TOP_K", "5"))
 KONSENS_LAEUFE = int(os.getenv("KONSENS_LAEUFE", "3"))
 KONSENS_SCHWELLE = int(os.getenv("KONSENS_SCHWELLE", "2"))
 KONSENS_TEMPERATUR = float(os.getenv("KONSENS_TEMPERATUR", "0.3"))
+
+# Eigene Temperatur für den Mehrheitsentscheid über FELDVORSCHLÄGE: dort 0, nicht 0.3.
+# Die Begründung oben — bei 0 liefern die Läufe dieselbe Antwort — gilt für die
+# Kandidatenauswahl, nicht hier: gpt-oss-120b streut bei Feldvorschlägen auch bei 0 von
+# selbst (am 2026-09-11 dreimal derselbe Fall, dreimal ein anderes Ergebnis, durchgehend
+# dasselbe Modell). Mit 0.3 fiel der Prüffall F-05 von 2/3 auf 1/3 — die Temperatur kaufte
+# nur Rauschen.
+KONSENS_TEMPERATUR_FELD = float(os.getenv("KONSENS_TEMPERATUR_FELD", "0"))
 
 # Satzfilter: aus jedem Kontextblock nur die tragenden Sätze. Abweichend von Spark (dort 0.7)
 # mit Temperatur 0 — die Eval soll wiederholbar bleiben, und Auswahl ist keine Schreibaufgabe.
