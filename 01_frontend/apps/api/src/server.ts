@@ -124,6 +124,76 @@ app.post("/api/drafts/:id/validate", async (req) => {
 });
 
 /**
+ * Prüfvermerk: Begründung einholen und bestätigen.
+ *
+ * Die BPMN kennt dafür die Aufgabe „Fachliche Begründung beim Nutzer einholen". Zwei
+ * Schritte, bewusst getrennt: das Fachreferat begründet, jemand anderes bestätigt. In einem
+ * Anschreiben ans MdFE steht am Ende die Unterschrift einer Person, nicht die einer
+ * Maschine — ein Vermerk, den niemand gegengelesen hat, ist keine Freigabe.
+ */
+function vermerkEintrag(d: RichtlinieDraft, eintragId: string) {
+  const eintrag = (d.vermerk ?? []).find((v) => v.id === eintragId);
+  if (!eintrag)
+    throw Object.assign(new Error("Vermerkseintrag nicht gefunden"), { statusCode: 404 });
+  if (eintrag.status === "gegenstandslos")
+    throw Object.assign(
+      new Error(
+        "Dieser Eintrag ist gegenstandslos: die Regel greift nicht mehr, weil der " +
+        "auslösende Wert geändert wurde. Eine Begründung wird nicht mehr gebraucht.",
+      ),
+      { statusCode: 409 },
+    );
+  return eintrag;
+}
+
+app.post("/api/drafts/:id/vermerk/:eintragId/begruendung", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const eintrag = vermerkEintrag(d, (req.params as { eintragId: string }).eintragId);
+  const { begruendung } = req.body as { begruendung?: string };
+  if (!begruendung?.trim())
+    throw Object.assign(new Error("Bitte geben Sie eine Begründung ein."), {
+      statusCode: 400,
+    });
+  eintrag.begruendung = begruendung.trim();
+  eintrag.status = "beantwortet";
+  touch(d);
+  return eintrag;
+});
+
+app.post("/api/drafts/:id/vermerk/:eintragId/bestaetigen", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const eintrag = vermerkEintrag(d, (req.params as { eintragId: string }).eintragId);
+  if (!eintrag.begruendung?.trim())
+    throw Object.assign(
+      new Error("Ohne Begründung gibt es nichts zu bestätigen."),
+      { statusCode: 409 },
+    );
+  eintrag.status = "bestaetigt";
+  touch(d);
+  return eintrag;
+});
+
+/**
+ * Die offenen Punkte des Anschreibens ans MdFE.
+ *
+ * Solange hier etwas offen oder unbestätigt ist, fehlt dem Anschreiben eine Begründung —
+ * und ohne die ist die Richtlinie nicht einreichungsreif. Deshalb eine eigene Sicht darauf
+ * und nicht nur ein Feld im Entwurf.
+ */
+app.get("/api/drafts/:id/vermerk", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const alle = d.vermerk ?? [];
+  const offen = alle.filter((v) => v.status === "offen");
+  const unbestaetigt = alle.filter((v) => v.status === "beantwortet");
+  return {
+    eintraege: alle,
+    offen: offen.length,
+    unbestaetigt: unbestaetigt.length,
+    vollstaendig: offen.length === 0 && unbestaetigt.length === 0,
+  };
+});
+
+/**
  * Feldvorschläge vom Python-Dienst holen.
  *
  * Arbeitsteilung: diese Seite kennt Entwurf, Chat-Stufe und Felddefinitionen und schickt sie
