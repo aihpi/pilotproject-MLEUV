@@ -116,6 +116,44 @@ app.post("/api/drafts/:id/validate", async (req) => {
   return d.validation;
 });
 
+/**
+ * Feldvorschläge vom Python-Dienst holen.
+ *
+ * Arbeitsteilung: diese Seite kennt Entwurf, Chat-Stufe und Felddefinitionen und schickt sie
+ * mit; der Dienst kennt Korpus, Musterbausteine und Modell. Die Felddefinitionen werden
+ * bewusst mitgeschickt statt dort nachgebaut — sonst gäbe es zwei Quellen, die auseinander
+ * driften können, ohne dass es auffällt.
+ *
+ * Fällt der Dienst aus, gibt es KEINEN Ersatzvorschlag: lieber keine Zuarbeit als eine
+ * erfundene. Die Nachricht sagt das der Nutzerin.
+ */
+const VORSCHLAG_URL = process.env.VORSCHLAG_URL ?? "http://127.0.0.1:8000";
+
+type DienstVorschlag = {
+  feld: string; label: string; wert: string | null; status: string | null;
+  fundstelle: string | null; belegzitat: string | null; deckung: string | null;
+  begruendung: string | null; konfidenz: number | null;
+};
+
+async function holeVorschlaege(
+  sectionId: string,
+  eingabe: string,
+  felder: { id: string; label: string; kind: string; options?: { value: string; label: string }[] }[],
+): Promise<DienstVorschlag[]> {
+  // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
+  // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
+  const abbruch = AbortSignal.timeout(180_000);
+  const res = await fetch(`${VORSCHLAG_URL}/vorschlag`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ abschnitt_nr: Number(sectionId), eingabe, felder }),
+    signal: abbruch,
+  });
+  if (!res.ok) throw new Error(`Vorschlagsdienst: HTTP ${res.status}`);
+  const daten = (await res.json()) as { vorschlaege: DienstVorschlag[] };
+  return daten.vorschlaege ?? [];
+}
+
 app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const d = get((req.params as { id: string }).id);
   const { message } = req.body as { message: string };
@@ -128,21 +166,60 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const targets = stage.fieldIds
     .map((id) => def.fields.find((f) => f.id === id)!)
     .filter(Boolean);
-  const proposals: FieldProposal[] = targets.map((f, index) => ({
-    sectionId: stage.sectionId,
-    fieldId: f.id,
-    label: f.label,
-    value: index === 0 ? message.trim() : message.trim(),
-    confidence: 0.82,
-    evidence: message.trim(),
-  }));
+
+  let proposals: FieldProposal[] = [];
+  let hinweis = "";
+  try {
+    const geliefert = await holeVorschlaege(
+      stage.sectionId,
+      message.trim(),
+      targets.map((f) => ({
+        id: f.id, label: f.label, kind: f.kind,
+        options: f.options?.map((o) => ({ value: o.value, label: o.label })),
+      })),
+    );
+    // „[Unklar]" ist eine Auskunft, kein Vorschlag: der Dienst sagt damit, dass die Angabe
+    // das Feld nicht deckt. Ein solcher Wert gehört nicht in den Bestätigen-Dialog.
+    proposals = geliefert
+      .filter((v) => v.wert && v.status !== "unklar" && v.status !== "invalid")
+      .map((v) => ({
+        sectionId: stage.sectionId,
+        fieldId: v.feld,
+        label: v.label,
+        value: String(v.wert),
+        confidence: v.konfidenz ?? 0,
+        evidence: v.belegzitat ?? v.deckung ?? v.begruendung ?? "",
+      }));
+    const offen = geliefert.filter((v) => v.status === "unklar").map((v) => v.label);
+    if (offen.length)
+      hinweis = ` Zu ${offen.join(" und ")} konnte aus Ihrer Angabe nichts abgeleitet werden.`;
+  } catch (e) {
+    const grund = e instanceof Error ? e.message : String(e);
+    return {
+      message:
+        "Die fachliche Zuarbeit ist derzeit nicht erreichbar, deshalb gibt es keinen " +
+        `Vorschlag. Sie können die Angaben im Formular selbst eintragen. (${grund})`,
+      extraction: {
+        id: randomUUID(), messageId: randomUUID(),
+        proposals: [], followUpQuestions: [], conflicts: [],
+      },
+      progress: Math.round(
+        ((chatStages.indexOf(stage) + 1) / chatStages.length) * 100,
+      ),
+    };
+  }
+
   const nextIndex = Math.min(
     chatStages.indexOf(stage) + 1,
     chatStages.length - 1,
   );
   const next = chatStages[nextIndex];
   return {
-    message: `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`,
+    message:
+      (proposals.length
+        ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+        : `Aus Ihrer Angabe lässt sich für „${def.title}“ noch kein Vorschlag ableiten.`) +
+      hinweis,
     extraction: {
       id: randomUUID(),
       messageId: randomUUID(),

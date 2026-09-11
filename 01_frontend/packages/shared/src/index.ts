@@ -707,5 +707,152 @@ export function validateDraft(draft: RichtlinieDraft): ValidationResult {
       severity: "warning",
       message: "Prüfen Sie den einschlägigen GAK-Rahmenplanbereich.",
     });
+  issues.push(...pruefeBaustein5(draft).map((b) => b.befund));
   return { valid: !issues.some((i) => i.severity === "error"), issues };
+}
+
+// ---------------------------------------------------------------------------------------
+// Fachliche Prüflogik, Baustein 5 (Art, Umfang und Höhe)
+// ---------------------------------------------------------------------------------------
+
+/** Ein Prüfergebnis: der Befund fürs Formular, dazu was er auslöst. */
+export interface Pruefergebnis {
+  befund: ValidationIssue;
+  /** Eintrag für Prüfvermerk oder MdFE-Anschreiben, falls die Regel einen verlangt. */
+  vermerk?: Omit<VermerkEintrag, "id">;
+  /** Überarbeitung eines ANDEREN Bausteins, falls die Entscheidung dorthin ausstrahlt. */
+  revision?: { sectionId: SectionId; eintrag: Revision };
+}
+
+/** Bagatellgrenze nach Ziff. 1.5 VV zu § 44 LHO, außergemeindlicher Bereich. */
+export const BAGATELLGRENZE_EUR = 2500;
+/** Ab diesem Fördersatz brauchen Kommunen die Zustimmung des MdFE. */
+export const KOMMUNAL_HOECHSTSATZ_PROZENT = 80;
+/** Vereinfachte Kostenoptionen nach Art. 83 GAP-SP-VO — nur für ELER, nicht im Landesbereich. */
+export const VKO_BEMESSUNGEN = ["fixed-rest", "fixed-overhead"];
+
+/**
+ * Prüfungen zu Baustein 5, reines Landesrecht.
+ *
+ * Deterministisch und ohne Modell: jede Regel hat einen festen Schwellenwert und eine
+ * Rechtsstelle. Deshalb steht sie hier und nicht hinter der KI-Naht — was man ausrechnen
+ * kann, soll man nicht schätzen lassen.
+ *
+ * Zwei Regeln erzeugen mehr als einen Hinweis: sie verlangen eine Begründung fürs
+ * MdFE-Anschreiben (Prüfvermerk) oder machen einen anderen Baustein wieder auf (Revision).
+ * Das ist die Rückkopplung, die das Prozessmodell „Auswirkungen auf spätere Verfahren" nennt.
+ */
+export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
+  const raus: Pruefergebnis[] = [];
+  const feld = (id: string) => draft.sections["5"]?.fields[id]?.value;
+  const zahl = (id: string) => {
+    const v = feld(id);
+    return typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : null;
+  };
+
+  // 1 — Bagatellgrenze. Eine Unterschreitung ist zulässig, aber begründungspflichtig.
+  const bagatelle = zahl("minimum");
+  if (bagatelle !== null && !Number.isNaN(bagatelle) && bagatelle < BAGATELLGRENZE_EUR)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "minimum", severity: "warning",
+        regel: "bagatellgrenze", rechtsstelle: "Ziff. 1.5 VV zu § 44 LHO",
+        message:
+          `Die Bagatellgrenze liegt mit ${bagatelle} Euro unter ${BAGATELLGRENZE_EUR} Euro. ` +
+          `Das ist zulässig, die Abweichung ist aber im MdFE-Anschreiben zu begründen.`,
+      },
+      vermerk: {
+        adressat: "mdfe", sectionId: "5", regel: "bagatellgrenze",
+        rechtsstelle: "Ziff. 1.5 VV zu § 44 LHO",
+        beurteilung:
+          `Bagatellgrenze ${bagatelle} Euro, abweichend von ${BAGATELLGRENZE_EUR} Euro.`,
+        status: "offen",
+      },
+    });
+
+  // 2 — Vollfinanzierung. Nur zulässig, wenn der Zweck anders nicht erreichbar ist, und
+  //     ausgeschlossen bei wirtschaftlichem Interesse der Zuwendungsempfangenden.
+  if (feld("financingType") === "full")
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "financingType", severity: "warning",
+        regel: "vollfinanzierung", rechtsstelle: "Ziff. 2.4 und 2.5 VV zu § 44 LHO",
+        message:
+          "Vollfinanzierung kommt nur in Betracht, wenn der Zweck nur bei Übernahme " +
+          "sämtlicher zuwendungsfähiger Ausgaben erreichbar ist. Sie ist ausgeschlossen, " +
+          "wenn die Zuwendungsempfangenden ein wirtschaftliches Interesse haben. Die " +
+          "fachliche Begründung ist im MdFE-Anschreiben aufzunehmen.",
+      },
+      vermerk: {
+        adressat: "mdfe", sectionId: "5", regel: "vollfinanzierung",
+        rechtsstelle: "Ziff. 2.4 VV zu § 44 LHO",
+        beurteilung: "Vollfinanzierung gewählt; Begründung gegenüber dem MdFE erforderlich.",
+        status: "offen",
+      },
+    });
+
+  // 3 — Erhöhter Fördersatz für Kommunen. Aus der Erläuterung der VB ELER zur
+  //     Musterrichtlinie: über 80 Prozent ist die Zustimmung des MdFE nötig.
+  const satz = zahl("fundingRate");
+  const empfaenger = draft.sections["3"]?.fields["recipients"]?.value;
+  const kommunal = Array.isArray(empfaenger) && empfaenger.includes("municipal");
+  if (satz !== null && !Number.isNaN(satz) && satz > KOMMUNAL_HOECHSTSATZ_PROZENT && kommunal)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "fundingRate", severity: "warning",
+        regel: "kommunaler_hoechstsatz",
+        message:
+          `Fördersatz ${satz} Prozent bei kommunalen Zuwendungsempfangenden. Über ` +
+          `${KOMMUNAL_HOECHSTSATZ_PROZENT} Prozent ist die Zustimmung des MdFE erforderlich.`,
+      },
+      vermerk: {
+        adressat: "mdfe", sectionId: "5", regel: "kommunaler_hoechstsatz",
+        beurteilung: `Fördersatz ${satz} Prozent für Kommunen.`,
+        status: "offen",
+      },
+    });
+
+  // 4 — Vereinfachte Kostenoptionen. Im Landesbereich gibt es sie nicht; sie gehören zu
+  //     ELER-Vorhaben. Ein harter Fehler, keine Warnung.
+  const bemessung = feld("eligibleBasis");
+  if (typeof bemessung === "string" && VKO_BEMESSUNGEN.includes(bemessung) && !draft.profile.gak)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "eligibleBasis", severity: "error",
+        regel: "vko_nicht_im_land", rechtsstelle: "Art. 83 Abs. 1 GAP-SP-VO",
+        message:
+          "Vereinfachte Kostenoptionen sind im Landesbereich nicht möglich. Wählen Sie " +
+          "Spitzabrechnung oder feste Beträge.",
+      },
+    });
+
+  // 5 — Feste Beträge strahlen auf Baustein 7 aus. Das Prozessmodell nennt es
+  //     „Auswirkungen auf spätere Verfahren": mit der Wahl sollen Erleichterungen bei
+  //     Antrag, Prüfung und Verwendungsnachweis festgelegt werden.
+  if (typeof bemessung === "string" && bemessung.startsWith("fixed"))
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "eligibleBasis", severity: "warning",
+        regel: "feste_betraege_folgen", rechtsstelle: "Ziff. 2.3 und 2.3.1 VV zu § 44 LHO",
+        message:
+          "Feste Beträge gewählt: Die Herleitung der Kalkulation muss nachvollziehbar sein, " +
+          "und im Verfahren sind Erleichterungen bei Antragstellung, Prüfung und " +
+          "Verwendungsnachweis festzulegen.",
+      },
+      revision: {
+        sectionId: "7",
+        eintrag: {
+          regel: "feste_betraege_folgen",
+          rechtsstelle: "Ziff. 2.3 VV zu § 44 LHO",
+          grund:
+            "In Baustein 5 wurden feste Beträge gewählt. Antrags-, Prüf- und " +
+            "Verwendungsnachweisverfahren sind auf Erleichterungen hin anzupassen.",
+          ausgeloestVon: "5",
+          betroffeneFelder: ["applicationType", "payment"],
+          erledigt: false,
+        },
+      },
+    });
+
+  return raus;
 }
