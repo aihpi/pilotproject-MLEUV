@@ -3,6 +3,7 @@ import {
   fieldVisible,
   sections,
   BAGATELLGRENZE_EUR,
+  BAGATELLGRENZE_GEMEINDLICH_EUR,
   emptySections,
   GELTUNGSDAUER_JAHRE,
   pruefeBaustein5,
@@ -544,5 +545,46 @@ describe("Baustein 6, Prüfberechtigte", () => {
 
   it("noch nichts ausgewählt: kein Befund, das meldet die Feldprüfung", () => {
     expect(pruefeBaustein6(mitStellen([]))).toHaveLength(0);
+  });
+});
+
+// Außergemeindlich gilt die VV mit 2.500 Euro, gemeindlich die VVG mit 5.000.
+describe("Bagatellgrenze nach Empfängerkreis", () => {
+  const mitEmpf = (minimum: number, empf: string[]) =>
+    entwurf({ minimum }, { recipients: empf });
+
+  it("ohne Kommunen gilt die Grenze von 2.500 Euro", () => {
+    expect(regeln(mitEmpf(3000, ["private"]))).not.toContain("bagatellgrenze");
+    expect(regeln(mitEmpf(2000, ["private"]))).toContain("bagatellgrenze");
+  });
+
+  it("mit Kommunen gilt die Grenze von 5.000 Euro", () => {
+    // Der Fall, der vorher still durchging: 3.000 liegt über 2.500, aber unter 5.000.
+    const [e] = pruefeBaustein5(mitEmpf(3000, ["municipal"]))
+      .filter((r) => r.befund.regel === "bagatellgrenze");
+    expect(e).toBeDefined();
+    expect(e!.befund.message).toContain("5000");
+    expect(e!.befund.message).toContain("gemeindlichen");
+    expect(e!.befund.rechtsstelle).toContain("VVG");
+  });
+
+  it("über 5.000 Euro auch bei Kommunen kein Befund", () => {
+    expect(regeln(mitEmpf(6000, ["municipal"]))).not.toContain("bagatellgrenze");
+  });
+
+  it("gemischter Empfängerkreis: die höhere Grenze gilt", () => {
+    // Für den kommunalen Teil ist sie einschlägig; im Zweifel warnen statt schweigen.
+    expect(regeln(mitEmpf(3000, ["municipal", "private"]))).toContain("bagatellgrenze");
+  });
+
+  it("die Grenzen stehen als Konstanten bereit", () => {
+    expect(BAGATELLGRENZE_EUR).toBe(2500);
+    expect(BAGATELLGRENZE_GEMEINDLICH_EUR).toBe(5000);
+  });
+
+  it("der Vermerk nennt den maßgeblichen Bereich", () => {
+    const [e] = pruefeBaustein5(mitEmpf(3000, ["municipal"]))
+      .filter((r) => r.befund.regel === "bagatellgrenze");
+    expect(e!.vermerk?.beurteilung).toContain("gemeindlichen");
   });
 });

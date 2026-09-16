@@ -862,6 +862,18 @@ export interface Pruefergebnis {
 
 /** Bagatellgrenze nach Ziff. 1.5 VV zu § 44 LHO, außergemeindlicher Bereich. */
 export const BAGATELLGRENZE_EUR = 2500;
+/**
+ * Bagatellgrenze im gemeindlichen Bereich.
+ *
+ * Im gemeindlichen Bereich gilt nicht die VV, sondern die VVG, und dort liegt die Grenze
+ * bei 5.000 Euro statt bei 2.500 (VVG Nr. 1.1 zu § 44 LHO).
+ *
+ * Kein Widerspruch zum Prozessmodell: die 2.500 stehen in der VV, die 5.000 dort, wo die
+ * VVG greift — bei kommunalen Zuwendungsempfangenden. Ohne diese Unterscheidung gibt es
+ * einen falschen Freispruch: 3.000 Euro bei kommunalen Empfangenden blieben unbeanstandet,
+ * obwohl die einschlägige Grenze unterschritten ist.
+ */
+export const BAGATELLGRENZE_GEMEINDLICH_EUR = 5000;
 /** Ab diesem Fördersatz brauchen Kommunen die Zustimmung des MdFE. */
 export const KOMMUNAL_HOECHSTSATZ_PROZENT = 80;
 /** Vereinfachte Kostenoptionen nach Art. 83 GAP-SP-VO — nur für ELER, nicht im Landesbereich. */
@@ -889,21 +901,36 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
   const hat = (v: number | null) => v !== null && !Number.isNaN(v) && v > 0;
 
   // 1 — Bagatellgrenze. Eine Unterschreitung ist zulässig, aber begründungspflichtig.
+  //
+  //     Welche Grenze gilt, hängt am Empfängerkreis in Baustein 3. Sind Kommunen dabei,
+  //     gilt die höhere — auch im gemischten Fall, denn dann ist sie für einen Teil der
+  //     Empfangenden einschlägig. Die strengere Grenze zu nehmen erzeugt im Zweifel eine
+  //     Warnung statt Schweigen, und das ist hier die richtige Richtung.
+  const empfaengerliste = draft.sections["3"]?.fields["recipients"]?.value;
+  const kommunal = Array.isArray(empfaengerliste) && empfaengerliste.includes("municipal");
+  const grenze = kommunal ? BAGATELLGRENZE_GEMEINDLICH_EUR : BAGATELLGRENZE_EUR;
+  const grenzstelle = kommunal
+    ? "VVG Nr. 1.1 zu § 44 LHO"
+    : "Ziff. 1.5 VV zu § 44 LHO";
+  const bereich = kommunal ? "gemeindlichen" : "außergemeindlichen";
+
   const bagatelle = zahl("minimum");
-  if (bagatelle !== null && !Number.isNaN(bagatelle) && bagatelle < BAGATELLGRENZE_EUR)
+  if (bagatelle !== null && !Number.isNaN(bagatelle) && bagatelle < grenze)
     raus.push({
       befund: {
         sectionId: "5", fieldId: "minimum", severity: "warning",
-        regel: "bagatellgrenze", rechtsstelle: "Ziff. 1.5 VV zu § 44 LHO",
+        regel: "bagatellgrenze", rechtsstelle: grenzstelle,
         message:
-          `Die Bagatellgrenze liegt mit ${bagatelle} Euro unter ${BAGATELLGRENZE_EUR} Euro. ` +
-          `Das ist zulässig, die Abweichung ist aber im MdFE-Anschreiben zu begründen.`,
+          `Die Bagatellgrenze liegt mit ${bagatelle} Euro unter ${grenze} Euro — der Grenze ` +
+          `für den ${bereich} Bereich. Das ist zulässig, die Abweichung ist aber im ` +
+          `MdFE-Anschreiben zu begründen.`,
       },
       vermerk: {
         adressat: "mdfe", sectionId: "5", regel: "bagatellgrenze",
-        rechtsstelle: "Ziff. 1.5 VV zu § 44 LHO",
+        rechtsstelle: grenzstelle,
         beurteilung:
-          `Bagatellgrenze ${bagatelle} Euro, abweichend von ${BAGATELLGRENZE_EUR} Euro.`,
+          `Bagatellgrenze ${bagatelle} Euro, abweichend von ${grenze} Euro ` +
+          `(${bereich} Bereich).`,
         status: "offen",
       },
     });
@@ -1017,8 +1044,6 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
   // 3 — Erhöhter Fördersatz für Kommunen. Aus der Erläuterung der VB ELER zur
   //     Musterrichtlinie: über 80 Prozent ist die Zustimmung des MdFE nötig.
   const satz = zahl("fundingRate");
-  const empfaenger = draft.sections["3"]?.fields["recipients"]?.value;
-  const kommunal = Array.isArray(empfaenger) && empfaenger.includes("municipal");
   if (satz !== null && !Number.isNaN(satz) && satz > KOMMUNAL_HOECHSTSATZ_PROZENT && kommunal)
     raus.push({
       befund: {
