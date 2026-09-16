@@ -29,9 +29,31 @@ python src/ingest.py                   # Schritt 4: wenige PDFs -> Qdrant
 python src/rag_query.py "Welche Angaben gehören in den Zuwendungszweck?"   # Schritt 5
 ```
 
+## Nachbehandlung der Treffer
+
+Zwei Teile aus `modul-suche-und-zuordnung` (Spark), beide abschaltbar, damit frühere Messungen
+vergleichbar bleiben:
+
+```bash
+python src/eval.py --rerank rang        # ein Lauf, Modell ordnet die Kandidaten (Vorgabe)
+python src/eval.py --rerank konsens     # drei Läufe, Mehrheitsentscheid über die AUSWAHL
+python src/eval.py --rerank aus         # ohne Modell, deterministisch
+
+SATZFILTER=false python src/rag_query.py "…"   # Satzfilter aus
+```
+
+- **Mehrheitsentscheid** ([retrieval.py](src/retrieval.py)): behält, was mindestens zwei von drei
+  Läufen wählen. Das Ergebnis kann kleiner als `TOP_K` sein — das ist beabsichtigt, der Entscheid
+  soll verwerfen dürfen. Wählt kein Lauf etwas, fällt er auf die Hybrid-Reihenfolge zurück.
+- **Satzfilter** ([satzfilter.py](src/satzfilter.py)): kürzt jeden Kontextblock auf die tragenden
+  Sätze und liefert deren Wortlaut mit Satznummer. Anders als Spark bleiben die Satz-Indizes
+  erhalten; `beleg_pruefen` hält den Beleg per Zeichenvergleich gegen die Quelle, ohne
+  Modellaufruf. Ein Block ohne gewählten Satz fliegt aus Kontext und Nachweis, die Zahl der
+  verworfenen Passagen wird gemeldet.
+
 ## Wichtig
 
 - **Datenschutz:** Bis der Cluster-Endpoint im Datenschutz-Rahmen bestätigt ist, nur nicht-vertrauliche Dokumente indexieren. `CORPUS_DIR` zeigt per Default auf die Beispiel-Richtlinien, nicht auf die Ordner 05, 06, 07.
 - **docling** lädt beim ersten Lauf Modelle herunter, das kann einen Moment dauern.
 - **docling-serve** läuft im Compose bereits mit, wird aber vom Durchstich noch nicht genutzt. Die Umstellung auf docling-serve kommt mit dem herausgelösten Spark-Code.
-- Details zur Architektur: `../04_planung_pilotprojekt/architektur.md`, zum Herauslösen: `../04_planung_pilotprojekt/spark.md`.
+- Details zu den Spark-Teilen und ihrem Einbau: `../04_planung_pilotprojekt/spark_code_befund.md`; Arbeitsliste: `../04_planung_pilotprojekt/naechste_schritte.md`.
