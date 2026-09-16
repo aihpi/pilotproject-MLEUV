@@ -6,6 +6,7 @@ import {
   emptySections,
   nextChatStage,
   sections,
+  stufeGilt,
   validateDraft,
   type RichtlinieDraft,
 } from "./index";
@@ -100,6 +101,21 @@ describe("Abfragesorte nach Zielfeld", () => {
   });
 });
 
+describe("Bemessungsgrundlage kommt aus früheren Verfahren", () => {
+  it("Bemessungsgrundlage und förderfähige Kosten sind Vorschlagsfelder", () => {
+    expect(abfrageartFuer(["eligibleBasis"])).toBe("vorschlagen");
+    expect(abfrageartFuer(["eligibleCosts"])).toBe("vorschlagen");
+  });
+
+  it("die letzte Chat-Stufe fragt sie ab", () => {
+    // Das Prozessmodell verlangt für die Bemessungsgrundlage ausdrücklich den Chat und
+    // nicht das Formular — sie sei „sehr individuell".
+    const stufe = chatStages.find((s) => s.sectionId === "5");
+    expect(stufe).toBeDefined();
+    expect(stufe!.fieldIds).toContain("eligibleCosts");
+    expect(stufe!.fieldIds).toContain("eligibleBasis");
+  });
+});
 
 describe("Fundstelle als Verweis", () => {
   const p = (extra: Record<string, unknown>) => ({
@@ -128,5 +144,58 @@ describe("Fundstelle als Verweis", () => {
   it("ohne Datei kein Verweis", () => {
     expect(dokumentLink(p({ belegseite: 3 }))).toBeNull();
     expect(dokumentLink(p({}))).toBeNull();
+  });
+});
+
+// Das Prozessmodell verzweigt; das Gespräch tat es bisher nicht.
+describe("Chat-Stufen im Pfad", () => {
+  const entwurf = (felder: Record<string, Record<string, unknown>>,
+                   bestaetigt = true): RichtlinieDraft => {
+    const alle = emptySections();
+    for (const [abschnitt, werte] of Object.entries(felder))
+      alle[abschnitt] = {
+        fields: Object.fromEntries(Object.entries(werte).map(([k, v]) => [k, {
+          value: v as never, status: "confirmed" as const,
+          source: "user-form" as const, confirmedByUser: bestaetigt,
+        }])),
+      };
+    return {
+      id: "1", ownerId: "u", title: "T",
+      profile: { jurisdiction: "land", gak: false, stateAid: false, fundingType: "project" },
+      sections: alle, validation: { valid: false, issues: [] },
+      status: "draft", version: 1, createdAt: "", updatedAt: "",
+    };
+  };
+  const stufe5 = chatStages.find((s) => s.sectionId === "5")!;
+
+  it("eine Stufe gilt, solange eines ihrer Felder sichtbar ist", () => {
+    expect(stufeGilt(stufe5, entwurf({}))).toBe(true);
+  });
+
+  it("eine ausdrückliche Bedingung kann sie abschalten", () => {
+    const aus = { ...stufe5, gilt: () => false };
+    expect(stufeGilt(aus, entwurf({}))).toBe(false);
+    expect(nextChatStage(entwurf({}))).not.toBeNull();
+  });
+
+  it("unbestätigte Werte steuern den Pfad NICHT", () => {
+    // Der gefährlichste Fall: eine Vermutung des Modells überspringt still eine Frage.
+    const nurVermutet = entwurf({ "5": { financingType: "full" } }, false);
+    const werte = Object.values(nurVermutet.sections).flatMap((s) =>
+      Object.entries(s.fields).filter(([, f]) => f.confirmedByUser));
+    expect(werte).toHaveLength(0);
+    expect(stufeGilt(stufe5, nurVermutet)).toBe(true);
+  });
+
+  it("nextChatStage überspringt eine nicht geltende Stufe", () => {
+    // Stufe 0 ist bestätigt, also wäre Stufe 1 dran — sie gilt und kommt.
+    const d = entwurf({ "0": { title: "Test" } });
+    expect(nextChatStage(d)?.sectionId).toBe("1");
+  });
+
+  it("alles bestätigt: keine Stufe mehr offen", () => {
+    const d = entwurf(Object.fromEntries(chatStages.map((s) =>
+      [s.sectionId, Object.fromEntries(s.fieldIds.map((f) => [f, "x"]))])));
+    expect(nextChatStage(d)).toBeNull();
   });
 });

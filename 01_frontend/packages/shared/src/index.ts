@@ -701,6 +701,14 @@ export const sections: SectionDefinition[] = [
 ];
 
 export interface ChatStage {
+  /**
+   * Bedingung für die Übersprünge, die das Prozessmodell ausdrücklich benennt — etwa
+   * „Wenn RGL Landesrecht, dann gehe direkt weiter".
+   *
+   * Muss deterministisch sein und nur bestätigte Werte lesen; siehe `stufeGilt`. Ohne
+   * Angabe gilt die Stufe immer, soweit eines ihrer Felder sichtbar ist.
+   */
+  gilt?: (draft: RichtlinieDraft) => boolean;
   sectionId: SectionId;
   fieldIds: string[];
   question: string;
@@ -737,19 +745,65 @@ export const chatStages: ChatStage[] = [
   },
   {
     sectionId: "5",
-    fieldIds: ["eligibleCosts"],
+    // Die Bemessungsgrundlage gehört in den Chat und nicht ins Formular: das Prozessmodell
+    // führt dafür eine eigene Aufgabe „Eingabe über Chat-Interface", weil die Entscheidung
+    // „sehr individuell ist und von verschiedenen Faktoren abhängt". Die Frage nannte sie
+    // schon, erhoben wurde sie bisher nur per Klick.
+    fieldIds: ["eligibleCosts", "eligibleBasis"],
     question:
-      "Welche Ausgaben oder Kosten sollen förderfähig sein? Die Bemessung erfolgt entweder als Spitzabrechnung oder über feste Beträge.",
+      "Welche Ausgaben oder Kosten sollen förderfähig sein, und wie sollen sie bemessen werden — als Spitzabrechnung der tatsächlichen Kosten oder über feste Beträge?",
   },
 ];
 
+/**
+ * Die bestätigten Feldwerte des Entwurfs, über alle Bausteine hinweg.
+ *
+ * Nur bestätigte: an diesen Werten hängen die Verzweigungen, und eine unbestätigte
+ * Vermutung des Modells darf keinen Pfad festlegen. Der Unterschied ist wichtiger, als er
+ * aussieht — ein still übersprungener Schritt ist ein Fehler, den niemand sieht.
+ */
+function bestaetigteWerte(draft: RichtlinieDraft): Record<string, unknown> {
+  const werte: Record<string, unknown> = {};
+  for (const abschnitt of Object.values(draft.sections))
+    for (const [id, feld] of Object.entries(abschnitt.fields))
+      if (feld.confirmedByUser) werte[id] = feld.value;
+  return werte;
+}
+
+/**
+ * Gilt diese Chat-Stufe im gegenwärtigen Pfad?
+ *
+ * Zwei Gründe, sie zu überspringen:
+ *
+ * 1. Eine ausdrückliche Bedingung an der Stufe (`gilt`) — für die Übersprünge, die das
+ *    Prozessmodell benennt und die sich nicht aus der Sichtbarkeit eines Feldes ergeben.
+ * 2. Keines ihrer Zielfelder ist im gegenwärtigen Pfad sichtbar. Das braucht keine zweite
+ *    Pflege: die `visible`-Bedingungen der Felder tragen die Verzweigungen des Modells
+ *    bereits, und das Gespräch soll nichts erfragen, was das Formular ausblendet.
+ *
+ * Deterministisch, ohne Modellaufruf. Was das Modell beigesteuert hat, ist der Feldwert —
+ * und der ist an dieser Stelle bereits von einem Menschen bestätigt.
+ */
+export function stufeGilt(stage: ChatStage, draft: RichtlinieDraft): boolean {
+  if (stage.gilt && !stage.gilt(draft)) return false;
+  const werte = bestaetigteWerte(draft);
+  const felder = (sections.find((s) => s.id === stage.sectionId)?.fields ?? [])
+    .filter((f) => stage.fieldIds.includes(f.id));
+  // Kennt die Stufe ein Feld, das es in der Abschnittsdefinition nicht gibt, wird nicht
+  // übersprungen — lieber einmal zu viel fragen als eine Angabe verlieren.
+  if (felder.length !== stage.fieldIds.length) return true;
+  return felder.some((f) => fieldVisible(f, draft.profile, werte));
+}
+
 export function nextChatStage(draft: RichtlinieDraft): ChatStage | null {
   return (
-    chatStages.find((stage) =>
-      stage.fieldIds.some(
-        (fieldId) =>
-          !draft.sections[stage.sectionId]?.fields[fieldId]?.confirmedByUser,
-      ),
+    chatStages.find(
+      (stage) =>
+        stufeGilt(stage, draft) &&
+        stage.fieldIds.some(
+          (fieldId) =>
+            !draft.sections[stage.sectionId]?.fields[fieldId]?.confirmedByUser,
+        ),
     ) ?? null
   );
 }
@@ -770,7 +824,18 @@ export function emptySections(): Record<string, SectionData> {
  * übernommen, sondern nach dem Vorbild eines früheren Verfahrens entworfen — und was dabei
  * herauskommt, ist ein Entwurf zur Bestätigung und keine Rechtsgrundlage.
  */
-export const VORSCHLAGSFELDER = ["requirements", "exclusions", "otherConditions"];
+export const VORSCHLAGSFELDER = [
+  "requirements", "exclusions", "otherConditions",
+  // Bemessungsgrundlage und förderfähige Kosten. Das Modell führt dafür eine eigene
+  // Aufgabe „Eingabe über Chat-Interface" mit der Begründung, die Bemessungsgrundlage sei
+  // „sehr individuell" und brauche „Vorschläge aus alten Förderverfahren".
+  //
+  // Warum das hier und nicht irgendwo stehen muss: die VV zu § 44 LHO sagt, was zulässig
+  // ist — Spitzabrechnung ODER feste Beträge, beides. Die Frage der Bearbeiterin ist aber,
+  // was sie nehmen soll, und die beantwortet die Norm nicht. Kommt sie trotzdem als Beleg
+  // zurück, sieht eine freie Auswahlentscheidung aus wie eine gebundene.
+  "eligibleBasis", "eligibleCosts",
+];
 
 /** Die Abfragesorte für eine Menge von Zielfeldern, oder keine. */
 export function abfrageartFuer(fieldIds: string[]): "vorschlagen" | undefined {
