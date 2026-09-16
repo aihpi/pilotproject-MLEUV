@@ -84,10 +84,11 @@ def pruefe_feld(erwartung, v, bloecke_text):
     return ergebnisse
 
 
-def lauf(fall, felder_def, ausfuehrlich=False, konsens=False):
+def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
     felder = [felder_def[i] for i in fall["felder"]]
     vorschlaege, nachweis = vorschlag.vorschlagen(
-        fall["abschnitt_nr"], fall["eingabe"].strip(), felder, konsens=konsens)
+        fall["abschnitt_nr"], fall["eingabe"].strip(), felder, konsens=konsens,
+        mit_belegen=mit_belegen)
     nach_feld = {v["feld"]: v for v in vorschlaege}
     # Derselbe Belegtext, den das Modell gesehen hat — aus dem Nachweis, nicht neu geholt.
     bloecke_text = nachweis.get("belegtext", "")
@@ -115,6 +116,9 @@ def main():
                         "Modell keine Aussage — derselbe Fall lieferte dreimal Verschiedenes")
     p.add_argument("--konsens", action="store_true",
                    help="Vorschlag je Lauf per Mehrheitsentscheid holen (dreifache Kosten)")
+    p.add_argument("--ohne-belege", action="store_true",
+                   help="ohne Fundstellen im Prompt — misst, ob die Suche beim Formulieren "
+                        "etwas beiträgt (sie kostet die halbe Antwortzeit)")
     p.add_argument("--ausfuehrlich", action="store_true", help="Vorschläge und Befunde zeigen")
     args = p.parse_args()
 
@@ -135,7 +139,8 @@ def main():
         quoten, fehlgeschlagen, gesehene_modelle = {}, 0, []
         for n in range(args.laeufe):
             try:
-                b, g, zeilen, modelle = lauf(fall, felder_def, args.ausfuehrlich, args.konsens)
+                b, g, zeilen, modelle = lauf(fall, felder_def, args.ausfuehrlich, args.konsens,
+                                             mit_belegen=not args.ohne_belege)
             except Exception as e:                      # Endpunkt weg, Zeitlimit, JSON kaputt
                 print(f"  Lauf {n + 1}: FEHLER {type(e).__name__}: {str(e)[:80]}")
                 fehlgeschlagen += 1

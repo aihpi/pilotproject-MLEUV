@@ -317,12 +317,20 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe=""):
 
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
-                konsens=False):
+                konsens=False, mit_belegen=True):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
     konsens: den Vorschlag mehrfach holen und abstimmen, siehe `_abstimmen`. Dreifache
         Kosten, dafür eine gemessene Konfidenz statt der Selbstauskunft des Modells.
+    mit_belegen: Fundstellen aus dem Korpus holen und in den Prompt geben.
+
+    Zu `mit_belegen`: die Suche kostet rund die Hälfte der Antwortzeit, und ob sie beim
+    FORMULIEREN etwas beiträgt, ist offen. Der Wert entsteht aus Musterbaustein und
+    Nutzereingabe — beide liegen ohne Suche vor. Die Belege liefern nur den Nachweis, und
+    zweimal war ausgerechnet dieser Nachweis das Problem: das Modell übernahm Wortlaut aus
+    einer fremden Richtlinie. Der Musterbaustein ist als Beleg oft der genauere, weil nach
+    ihm formuliert wurde. Der Schalter ist da, um das zu messen statt zu glauben.
 
     Ergibt (vorschlaege, nachweis). `nachweis` trägt Fundstellen, Prompt-Kennungen und die
     Befunde der Nachprüfung — das, was der Prüfvermerk und die Fehlersuche brauchen.
@@ -335,12 +343,20 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
     rahmen_txt = _rahmen_text(bausteine)
     uhr["musterbausteine"] = round(time.monotonic() - t0, 1)
 
-    bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr)
+    if mit_belegen:
+        bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr)
+    else:
+        bloecke, metas = [], []
     belege = "\n\n".join(
         f"[{b['fundstelle']}]\n{b.get('kurz') or b['roh']}" for b in bloecke)
 
     # Die Belegstellen sind Fremdtext im Prompt — dieselbe Absicherung wie in rag_query.
-    sicher = sanitize_and_wrap(belege or "(keine Fundstellen)",
+    # Ohne Belege steht dort nicht „keine Fundstellen" (das liest sich wie ein Fehlschlag der
+    # Suche), sondern die Ansage, dass der Musterbaustein die Quelle ist. Sonst meldet das
+    # Modell für jedes Feld eine fehlende Grundlage.
+    leer_text = ("Für diesen Schritt werden keine Fundstellen herangezogen. Belege dich "
+                 "ausschließlich auf die Musterbausteine.")
+    sicher = sanitize_and_wrap(belege or leer_text,
                                tag_name="belege", max_length=50000).wrapped_content
 
     prompt = loader.load(
