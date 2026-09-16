@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   BAGATELLGRENZE_EUR,
   emptySections,
+  GELTUNGSDAUER_JAHRE,
   pruefeBaustein5,
+  pruefeBaustein8,
   pruefungenAnwenden,
   validateDraft,
   type FieldValue,
@@ -57,7 +59,9 @@ describe("Baustein 5, Bagatellgrenze", () => {
   });
 
   it("leeres Feld löst nichts aus", () => {
-    expect(regeln(entwurf({}))).toHaveLength(0);
+    // Nicht „gar keine Regel": ein Entwurf ohne jede Angabe zur Höhe löst zu Recht
+    // `hoehe_unbestimmt` aus. Geprüft wird hier nur die Bagatellgrenze.
+    expect(regeln(entwurf({}))).not.toContain("bagatellgrenze");
   });
 });
 
@@ -70,7 +74,7 @@ describe("Baustein 5, Finanzierung", () => {
   });
 
   it("Anteilfinanzierung nicht", () => {
-    expect(regeln(entwurf({ financingType: "share" }))).toHaveLength(0);
+    expect(regeln(entwurf({ financingType: "share" }))).not.toContain("vollfinanzierung");
   });
 
   it("über 80 Prozent an Kommunen braucht die Zustimmung des MdFE", () => {
@@ -107,7 +111,9 @@ describe("Baustein 5, Bemessungsgrundlage", () => {
   });
 
   it("Spitzabrechnung löst nichts aus", () => {
-    expect(regeln(entwurf({ eligibleBasis: "actual" }))).toHaveLength(0);
+    const r = regeln(entwurf({ eligibleBasis: "actual" }));
+    expect(r).not.toContain("vko_nicht_im_land");
+    expect(r).not.toContain("feste_betraege_folgen");
   });
 
   it("feste Beträge machen Baustein 7 wieder auf", () => {
@@ -203,5 +209,107 @@ describe("Prüfungen in den Entwurf schreiben", () => {
     } });
     expect(ohne.sections["7"]!.revisionen).toHaveLength(1);
     expect(ohne.sections["7"]!.revisionen![0]!.erledigt).toBe(true);
+  });
+});
+
+describe("Baustein 5, Angaben zur Höhe", () => {
+  it("fehlen Fördersatz UND Höchstbetrag, kommt ein Hinweis", () => {
+    // Beide sind wählbar, keiner ist Pflicht — aber gar keine Angabe zur Höhe lässt
+    // Antragstellende wie Bewilligungsbehörde im Unklaren.
+    expect(regeln(entwurf({ financingType: "share" }))).toContain("hoehe_unbestimmt");
+  });
+
+  it("ein Fördersatz allein genügt", () => {
+    expect(regeln(entwurf({ fundingRate: 60 }))).not.toContain("hoehe_unbestimmt");
+  });
+
+  it("ein Höchstbetrag allein genügt", () => {
+    expect(regeln(entwurf({ maximum: 100000 }))).not.toContain("hoehe_unbestimmt");
+  });
+
+  it("eine Null zählt nicht als Angabe", () => {
+    expect(regeln(entwurf({ fundingRate: 0, maximum: 0 }))).toContain("hoehe_unbestimmt");
+  });
+});
+
+describe("Baustein 5, Widersprüche", () => {
+  it("Bagatellgrenze über dem Höchstbetrag ist ein Fehler", () => {
+    // 25.000 Untergrenze, 10.000 Obergrenze: dazwischen bleibt nichts, kein Vorhaben
+    // wäre je förderfähig.
+    const treffer = pruefeBaustein5(entwurf({ minimum: 25000, maximum: 10000 }))
+      .find((e) => e.befund.regel === "grenzen_widerspruch");
+    expect(treffer).toBeDefined();
+    expect(treffer!.befund.severity).toBe("error");
+    expect(treffer!.befund.message).toContain("25000");
+  });
+
+  it("Bagatellgrenze unter dem Höchstbetrag ist in Ordnung", () => {
+    const d = entwurf({ minimum: 5000, maximum: 100000 });
+    expect(regeln(d)).not.toContain("grenzen_widerspruch");
+  });
+
+  it("ohne Höchstbetrag gibt es keinen Widerspruch zu prüfen", () => {
+    expect(regeln(entwurf({ minimum: 25000 }))).not.toContain("grenzen_widerspruch");
+  });
+
+  it("ein Fördersatz über 100 Prozent ist ein Fehler", () => {
+    const treffer = pruefeBaustein5(entwurf({ fundingRate: 120 }))
+      .find((e) => e.befund.regel === "foerdersatz_ueber_hundert");
+    expect(treffer!.befund.severity).toBe("error");
+  });
+
+  it("genau 100 Prozent nicht — das ist Vollfinanzierung, nicht unmöglich", () => {
+    expect(regeln(entwurf({ fundingRate: 100 }))).not.toContain("foerdersatz_ueber_hundert");
+  });
+});
+
+function mitDauer(von: string, bis: string): RichtlinieDraft {
+  const d = entwurf({ fundingRate: 60 });
+  d.sections["8"] = {
+    fields: {
+      validFrom: { value: von, status: "confirmed", source: "user-form", confirmedByUser: true },
+      validUntil: { value: bis, status: "confirmed", source: "user-form", confirmedByUser: true },
+    },
+  };
+  return d;
+}
+
+describe("Baustein 8, Geltungsdauer", () => {
+  it("drei Jahre sind in Ordnung", () => {
+    expect(pruefeBaustein8(mitDauer("2026-01-01", "2029-01-01"))).toHaveLength(0);
+  });
+
+  it("darüber kommt eine Warnung mit Rechtsstelle", () => {
+    const [e] = pruefeBaustein8(mitDauer("2026-01-01", "2031-01-01"));
+    expect(e!.befund.regel).toBe("geltungsdauer");
+    expect(e!.befund.severity).toBe("warning"); // „soll" — zulässig mit Begründung
+    expect(e!.befund.rechtsstelle).toContain("Anlage 19");
+    expect(e!.vermerk?.adressat).toBe("pruefvermerk");
+  });
+
+  it("ein Schaltjahr kippt die Grenze nicht", () => {
+    // Über Kalenderjahre gerechnet, nicht über 1095 Tage: sonst wäre eine Laufzeit über
+    // den 29. Februar hinweg fälschlich zu lang.
+    expect(pruefeBaustein8(mitDauer("2027-03-01", "2030-03-01"))).toHaveLength(0);
+  });
+
+  it("Außerkrafttreten vor Inkrafttreten ist ein Fehler", () => {
+    const [e] = pruefeBaustein8(mitDauer("2029-01-01", "2026-01-01"));
+    expect(e!.befund.severity).toBe("error");
+    expect(e!.befund.regel).toBe("geltungsdauer_reihenfolge");
+  });
+
+  it("unvollständige Daten lösen nichts aus", () => {
+    expect(pruefeBaustein8(entwurf({}))).toHaveLength(0);
+  });
+
+  it("die Grenze steht als Konstante bereit", () => {
+    expect(GELTUNGSDAUER_JAHRE).toBe(3);
+  });
+
+  it("die Warnung erreicht Validierung und Prüfvermerk", () => {
+    const d = pruefungenAnwenden(mitDauer("2026-01-01", "2031-01-01"));
+    expect(d.vermerk?.map((v) => v.regel)).toContain("geltungsdauer");
+    expect(validateDraft(d).issues.some((i) => i.regel === "geltungsdauer")).toBe(true);
   });
 });

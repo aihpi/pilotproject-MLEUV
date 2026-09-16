@@ -203,3 +203,6 @@ cython_debug/
 
 # Erzeugte Musterbausteine – Wortlaut aus einem Dokument der vertraulichen Ordner.
 02_backend/musterbausteine_lokal.yaml
+
+# Erzeugte Regeldokumentationen – Wortlaut aus dem vertraulichen Prozessmodell.
+02_backend/regeln_roh_lokal.yaml

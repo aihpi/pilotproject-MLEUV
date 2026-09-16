@@ -725,7 +725,9 @@ export function validateDraft(draft: RichtlinieDraft): ValidationResult {
       severity: "warning",
       message: "Prüfen Sie den einschlägigen GAK-Rahmenplanbereich.",
     });
-  issues.push(...pruefeBaustein5(draft).map((b) => b.befund));
+  // Über pruefeFachlich, nicht über die einzelne Baustein-Funktion: sonst hängt jeder neue
+  // Baustein nur dann in der Validierung, wenn man daran denkt, ihn hier nachzutragen.
+  issues.push(...pruefeFachlich(draft).map((b) => b.befund));
   return { valid: !issues.some((i) => i.severity === "error"), issues };
 }
 
@@ -809,6 +811,53 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
       },
     });
 
+  // 2b — Angaben zur Höhe. Die Musterrichtlinie sieht zwei Größen vor, beide wählbar: eine
+  //      Quote („bis zu XX % der zuwendungsfähigen Kosten") und einen Deckel („höchstens xxx
+  //      Euro"). Pflicht ist im Landesrecht keine von beiden — wo Höchstbeträge zwingend
+  //      sind, kommt das aus dem EU-Beihilferecht und liegt außerhalb des Piloten.
+  //
+  //      Fehlen aber BEIDE, steht zur Höhe überhaupt nichts, und weder Antragstellende noch
+  //      Bewilligungsbehörde wissen, woran sie sind. Das ist etwas anderes, als bewusst nur
+  //      eine der beiden Größen zu setzen.
+  const quote = zahl("fundingRate");
+  const deckel = zahl("maximum");
+  const hat = (v: number | null) => v !== null && !Number.isNaN(v) && v > 0;
+  if (!hat(quote) && !hat(deckel))
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "fundingRate", severity: "warning",
+        regel: "hoehe_unbestimmt", rechtsstelle: "Ziff. 5.5 der Musterrichtlinie",
+        message:
+          "Zur Höhe der Zuwendung ist nichts angegeben — weder ein Fördersatz noch ein " +
+          "Höchstbetrag. Üblich ist mindestens eine der beiden Größen.",
+      },
+    });
+
+  // 2c — Widerspruch in der Richtlinie selbst: liegt die Bagatellgrenze über dem
+  //      Höchstbetrag, ist kein Vorhaben förderfähig. Anträge unterhalb der Bagatellgrenze
+  //      sind zu klein, oberhalb des Höchstbetrags gibt es nichts mehr — dazwischen bleibt
+  //      nichts. Ein Handwerksfehler, der beim Korrekturlesen leicht durchrutscht.
+  if (hat(deckel) && bagatelle !== null && !Number.isNaN(bagatelle) && bagatelle > deckel!)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "maximum", severity: "error",
+        regel: "grenzen_widerspruch",
+        message:
+          `Die Bagatellgrenze (${bagatelle} Euro) liegt über dem Höchstbetrag ` +
+          `(${deckel} Euro). Damit wäre kein Vorhaben förderfähig.`,
+      },
+    });
+
+  // 2d — Ein Fördersatz über 100 Prozent ist keine Entscheidung, sondern ein Vertipper.
+  if (quote !== null && !Number.isNaN(quote) && quote > 100)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "fundingRate", severity: "error",
+        regel: "foerdersatz_ueber_hundert",
+        message: `Ein Fördersatz von ${quote} Prozent ist nicht möglich.`,
+      },
+    });
+
   // 3 — Erhöhter Fördersatz für Kommunen. Aus der Erläuterung der VB ELER zur
   //     Musterrichtlinie: über 80 Prozent ist die Zustimmung des MdFE nötig.
   const satz = zahl("fundingRate");
@@ -875,9 +924,57 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
   return raus;
 }
 
+/** Höchstdauer einer Landesrichtlinie in Jahren. GAK darf vier, liegt aber außerhalb. */
+export const GELTUNGSDAUER_JAHRE = 3;
+
+/**
+ * Prüfungen zu Baustein 8 (Geltungsdauer).
+ *
+ * Nach Anlage 19 zu VV Nr. 14.2.1 zu § 44 LHO soll die Geltungsdauer drei Jahre nicht
+ * überschreiten. „Soll" heißt: zulässig mit Begründung, deshalb Warnung und nicht Fehler.
+ */
+export function pruefeBaustein8(draft: RichtlinieDraft): Pruefergebnis[] {
+  const feld = (id: string) => draft.sections["8"]?.fields[id]?.value;
+  const von = typeof feld("validFrom") === "string" ? new Date(String(feld("validFrom"))) : null;
+  const bis = typeof feld("validUntil") === "string" ? new Date(String(feld("validUntil"))) : null;
+  if (!von || !bis || Number.isNaN(von.valueOf()) || Number.isNaN(bis.valueOf())) return [];
+
+  if (bis <= von)
+    return [{
+      befund: {
+        sectionId: "8", fieldId: "validUntil", severity: "error",
+        regel: "geltungsdauer_reihenfolge",
+        message: "Das Außerkrafttreten liegt nicht nach dem Inkrafttreten.",
+      },
+    }];
+
+  // Über Kalenderjahre statt über Tage: „drei Jahre" meint den Tag drei Jahre später, nicht
+  // 1095 Tage — bei einem Schaltjahr wäre die Rechnung sonst um einen Tag daneben.
+  const grenze = new Date(von);
+  grenze.setFullYear(grenze.getFullYear() + GELTUNGSDAUER_JAHRE);
+  if (bis <= grenze) return [];
+
+  const jahre = ((bis.valueOf() - von.valueOf()) / (365.2425 * 24 * 3600 * 1000)).toFixed(1);
+  return [{
+    befund: {
+      sectionId: "8", fieldId: "validUntil", severity: "warning",
+      regel: "geltungsdauer", rechtsstelle: "Anlage 19 zu VV Nr. 14.2.1 zu § 44 LHO",
+      message:
+        `Die Geltungsdauer beträgt rund ${jahre} Jahre. Sie soll ${GELTUNGSDAUER_JAHRE} ` +
+        `Jahre nicht überschreiten; eine längere Laufzeit ist zu begründen.`,
+    },
+    vermerk: {
+      adressat: "pruefvermerk", sectionId: "8", regel: "geltungsdauer",
+      rechtsstelle: "Anlage 19 zu VV Nr. 14.2.1 zu § 44 LHO",
+      beurteilung: `Geltungsdauer rund ${jahre} Jahre, Regelgrenze ${GELTUNGSDAUER_JAHRE} Jahre.`,
+      status: "offen",
+    },
+  }];
+}
+
 /** Alle fachlichen Prüfungen. Wächst, wenn weitere Bausteine dazukommen. */
 export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
-  return pruefeBaustein5(draft);
+  return [...pruefeBaustein5(draft), ...pruefeBaustein8(draft)];
 }
 
 /** Kennung eines Vermerkseintrags. Ein Baustein kann jede Regel nur einmal auslösen. */
