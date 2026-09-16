@@ -15,13 +15,16 @@ Satzfilter und Vorschlag sind drei Modellrunden hintereinander. Für einen Chat 
 langsam; für den Durchstich reicht es. Wer das später beschleunigen will, fängt beim
 Satzfilter an, der über mehrere Stapel geht.
 """
+import os
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import vorschlag
-from config import TOP_K
+from adressierung import register
+from config import TOP_K, CORPUS_DIR
 
 app = FastAPI(title="MLEUV Feldvorschläge", version="0.1.0")
 
@@ -67,6 +70,8 @@ class Vorschlag(BaseModel):
     quelle: str | None
     musterbaustein: str | None = None
     fundstelle: str | None = None
+    belegdatei: str | None = None
+    belegseite: int | None = None
     belegzitat: str | None = None
     belegquelle: str | None = None
     beleg_geprueft: bool | None = None
@@ -106,6 +111,46 @@ def gesundheit():
     return {"ok": True,
             "musterbausteine": bausteine,
             "vorlage_eingelesen": any(bausteine.values())}
+
+
+@app.get("/dokument/{datei}")
+def dokument(datei: str):
+    """Quelldokument ausliefern, damit eine Fundstelle anklickbar wird.
+
+    Die Oberfläche hängt `#page=N` an und der Betrachter springt an die Stelle. Ohne das
+    bliebe die Fundstelle eine Behauptung — nachprüfbar nur, wer den Datenordner kennt.
+
+    Zwei Schranken, obwohl der Dienst lokal läuft:
+
+    1. Nur was im Dokumentregister steht. Das Register ist die Liste der Dokumente, über
+       die dieses Werkzeug überhaupt Auskunft gibt; alles andere im Datenordner geht
+       niemanden etwas an, der hier anfragt.
+    2. Der aufgelöste Pfad muss unter CORPUS_DIR liegen. Ein Dateiname wie `../../.env`
+       stünde zwar nicht im Register, aber die zweite Schranke kostet nichts und hält auch
+       dann, wenn jemand das Register später aus einer anderen Quelle füllt.
+
+    Die Dateien stammen teils aus den vertraulichen Ordnern. Solange der Dienst an
+    127.0.0.1 hängt, ist das die Festplatte der Bearbeiterin. Vor jedem Betrieb über das
+    Netz braucht dieser Endpunkt eine Berechtigungsprüfung — und zwar als erster.
+    """
+    reg = register()
+    if datei not in reg:
+        raise HTTPException(status_code=404, detail="Nicht im Dokumentregister.")
+
+    wurzel = os.path.realpath(CORPUS_DIR)
+    treffer = [os.path.join(w, f)
+               for w, _, fs in os.walk(wurzel) for f in fs if f == datei]
+    if not treffer:
+        raise HTTPException(status_code=404, detail="Datei im Datenordner nicht gefunden.")
+
+    pfad = os.path.realpath(treffer[0])
+    if not pfad.startswith(wurzel + os.sep):
+        raise HTTPException(status_code=403, detail="Pfad außerhalb des Datenordners.")
+
+    art = "application/pdf" if pfad.lower().endswith(".pdf") else "application/octet-stream"
+    # inline, nicht als Download: der Zweck ist das Aufschlagen an der richtigen Seite.
+    return FileResponse(pfad, media_type=art,
+                        headers={"Content-Disposition": f'inline; filename="{datei}"'})
 
 
 @app.post("/vorschlag", response_model=Antwort)

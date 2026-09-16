@@ -184,6 +184,35 @@ export interface FieldProposal {
    * Rechtsgrundlage aussehen.
    */
   vorbild?: boolean;
+  /**
+   * Dateiname und Seite der Belegstelle — damit die Fundstelle anklickbar wird.
+   *
+   * Getrennt von `fundstelle`, weil diese die Zitierform trägt („RL Tierheimförderung,
+   * Nummer 4.1 (S. 3)") und daraus kein Dateiname zurückzurechnen ist: sie nennt den
+   * Kurznamen aus dem Register, nicht die Datei.
+   *
+   * Ohne das Öffnen bleibt eine Fundstelle eine Behauptung — nachprüfbar nur für
+   * jemanden, der den Datenordner kennt.
+   */
+  belegdatei?: string;
+  belegseite?: number;
+}
+
+/**
+ * Adresse des Vorschlagsdienstes, der die Quelldokumente ausliefert.
+ *
+ * Er läuft auf der Maschine der Bearbeiterin; die Dokumente liegen in einem lokalen Ordner
+ * und werden bewusst nicht mitgeliefert. Sobald etwas davon über ein Netz erreichbar sein
+ * soll, braucht der Endpunkt eine Berechtigungsprüfung — vertrauliche Ordner sind dabei.
+ */
+export const DOKUMENT_BASIS =
+  (typeof process !== "undefined" && process.env?.VORSCHLAG_URL) || "http://127.0.0.1:8000";
+
+/** Verweis auf die Belegstelle, aufgeschlagen an der richtigen Seite. Null ohne Datei. */
+export function dokumentLink(p: FieldProposal): string | null {
+  if (!p.belegdatei) return null;
+  const seite = p.belegseite ? `#page=${p.belegseite}` : "";
+  return `${DOKUMENT_BASIS}/dokument/${encodeURIComponent(p.belegdatei)}${seite}`;
 }
 export interface ChatExtraction {
   id: string;

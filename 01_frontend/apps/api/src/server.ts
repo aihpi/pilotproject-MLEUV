@@ -211,6 +211,7 @@ type DienstVorschlag = {
   feld: string; label: string; wert: string | null; status: string | null;
   fundstelle: string | null; belegzitat: string | null; deckung: string | null;
   musterbaustein: string | null; begruendung: string | null; konfidenz: number | null;
+  belegdatei: string | null; belegseite: number | null;
 };
 
 async function holeVorschlaege(
@@ -285,6 +286,9 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
         ...(v.deckung ? { deckung: v.deckung } : {}),
         ...(v.belegzitat ? { belegzitat: v.belegzitat } : {}),
         ...(v.fundstelle ? { fundstelle: v.fundstelle } : {}),
+        // Datei und Seite machen die Fundstelle anklickbar; ohne sie bleibt sie Text.
+        ...(v.belegdatei ? { belegdatei: v.belegdatei } : {}),
+        ...(v.belegseite ? { belegseite: v.belegseite } : {}),
         ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
         // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
         ...(vorbild && v.fundstelle ? { vorbild: true } : {}),

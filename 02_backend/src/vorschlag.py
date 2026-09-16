@@ -451,6 +451,13 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
             "quelle": v.get("quelle"),
             "musterbaustein": v.get("musterbaustein"),
             "fundstelle": bloecke[0]["fundstelle"] if bloecke else None,
+            # Dateiname und Seite neben der fertigen Zitierform: nur damit lässt sich die
+            # Fundstelle anklicken und das Quelldokument an der richtigen Stelle öffnen.
+            # Aus der Zitierform zurückzurechnen ginge nicht — sie trägt den Kurznamen aus
+            # dem Register, nicht den Dateinamen.
+            "belegdatei": bloecke[0]["punkt"].payload.get("quelle") if bloecke else None,
+            "belegseite": (bloecke[0]["punkt"].payload.get("seiten") or [None])[0]
+                          if bloecke else None,
             "belegzitat": v.get("belegzitat"),
             "belegquelle": v.get("belegquelle"),
             "beleg_geprueft": v.get("beleg_geprueft"),

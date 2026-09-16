@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   abfrageartFuer,
+  chatStages,
+  dokumentLink,
   emptySections,
   nextChatStage,
   sections,
@@ -95,5 +97,36 @@ describe("Abfragesorte nach Zielfeld", () => {
   it("sonst keine Sorte — dann sieht die Suche den ganzen Korpus", () => {
     expect(abfrageartFuer(["goal", "purpose"])).toBeUndefined();
     expect(abfrageartFuer([])).toBeUndefined();
+  });
+});
+
+
+describe("Fundstelle als Verweis", () => {
+  const p = (extra: Record<string, unknown>) => ({
+    sectionId: "1" as const, fieldId: "goal", label: "Förderziel", value: "x",
+    confidence: 0.9, evidence: "", ...extra,
+  });
+
+  it("Datei und Seite ergeben einen Verweis mit Seitensprung", () => {
+    const link = dokumentLink(p({ belegdatei: "RL Tierheim.pdf", belegseite: 3 }));
+    expect(link).toContain("/dokument/");
+    expect(link).toContain("#page=3");
+  });
+
+  it("Leerzeichen und Umlaute werden kodiert", () => {
+    // Sonst bricht der Verweis bei fast jedem Dokument des Korpus.
+    expect(dokumentLink(p({ belegdatei: "RL Tierheimförderung_16.pdf", belegseite: 1 })))
+      .toContain("RL%20Tierheimf%C3%B6rderung_16.pdf");
+  });
+
+  it("ohne Seite trotzdem ein Verweis, nur ohne Sprung", () => {
+    const link = dokumentLink(p({ belegdatei: "x.pdf" }));
+    expect(link).toContain("x.pdf");
+    expect(link).not.toContain("#page");
+  });
+
+  it("ohne Datei kein Verweis", () => {
+    expect(dokumentLink(p({ belegseite: 3 }))).toBeNull();
+    expect(dokumentLink(p({}))).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
+  dokumentLink,
   nextChatStage,
   type ChatExtraction,
   type FieldProposal,
@@ -63,7 +64,19 @@ function Herkunft({ p }: { p: FieldProposal }) {
           {p.fundstelle && (
             <span className="herkunft__quelle">
               {p.vorbild ? " — so geregelt in " : " — "}
-              {p.fundstelle}
+              {/*
+                Die Fundstelle führt ins Dokument, aufgeschlagen an der richtigen Seite.
+                Ohne das ist sie eine Behauptung, die nur nachprüfen kann, wer den
+                Datenordner kennt — und bei 60 von 101 Dokumenten ist der angezeigte
+                Kurzname eine Setzung, die noch niemand bestätigt hat.
+              */}
+              {dokumentLink(p) ? (
+                <a href={dokumentLink(p)!} target="_blank" rel="noreferrer">
+                  {p.fundstelle}
+                </a>
+              ) : (
+                p.fundstelle
+              )}
             </span>
           )}
           {p.vorbild && (
