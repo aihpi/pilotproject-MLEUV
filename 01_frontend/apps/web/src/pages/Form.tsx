@@ -14,7 +14,13 @@ import { Alert, PageHeader, ProcessSteps, Progress, StatusBadge } from "../compo
 function sectionStatus(d: RichtlinieDraft, id: string) {
   const section = sections.find((s) => s.id === id)!;
   const vals = d.sections[id]?.fields ?? {};
-  const visible = section.fields.filter((f) => fieldVisible(f, d.profile, {}));
+  // Mit den tatsächlichen Werten, nicht mit {}: sonst gilt ein bedingtes Pflichtfeld als
+  // unsichtbar und der Abschnitt meldet "vollständig", obwohl es leer ist. Betrifft die
+  // Antragsfrist und die Auswahlkriterien in Baustein 7.
+  const werte = Object.fromEntries(
+    Object.entries(vals).map(([k, v]) => [k, v.value]),
+  );
+  const visible = section.fields.filter((f) => fieldVisible(f, d.profile, werte));
   const required = visible.filter((f) => f.required);
   if (!Object.keys(vals).length) return "empty";
   if (required.some((f) => !vals[f.id]?.value)) return "invalid";

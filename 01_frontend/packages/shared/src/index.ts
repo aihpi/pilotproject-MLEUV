@@ -393,6 +393,26 @@ export const sections: SectionDefinition[] = [
           { value: "full", label: "Vollfinanzierung" },
         ],
       },
+      // Die Finanzierungsart verzweigt im Prozessmodell sofort: Vollfinanzierung führt zur
+      // Frage nach dem wirtschaftlichen Interesse, Festbetragsfinanzierung zur Abfrage des
+      // Betrags. Beide Felder stehen deshalb hier und nicht weiter unten bei der Höhe.
+      {
+        id: "economicInterest",
+        label: "Wirtschaftliches Interesse der Zuwendungsempfangenden?",
+        kind: "radio",
+        required: true,
+        help: "Bei wirtschaftlichem Interesse ist eine Vollfinanzierung ausgeschlossen.",
+        options: yesNo,
+        visible: (_p, v) => v.financingType === "full",
+      },
+      {
+        id: "fixedAmount",
+        label: "Festbetrag in Euro",
+        kind: "number",
+        required: true,
+        help: "Der feste Zuschussbetrag, unabhängig von den förderfähigen Gesamtkosten.",
+        visible: (_p, v) => v.financingType === "fixed",
+      },
       {
         id: "financingForm",
         label: "Finanzierungsform",
@@ -476,11 +496,47 @@ export const sections: SectionDefinition[] = [
           { value: "anbest-p-g", label: "ANBest-P und ANBest-G" },
         ],
       },
+      // Das Prozessmodell zählt für Baustein 6 auf: Prüfberechtigung, Zweckbindungsfristen,
+      // Inventarisierungspflicht, Geschlechtergleichstellung (optional), Vorgaben aus dem
+      // Beihilferecht und fachspezifische Bestimmungen der Fachreferate. Die ersten vier
+      // stehen als eigene Felder, weil sie eine feste Form haben; der Rest bleibt Freitext.
+      {
+        id: "auditRights",
+        label: "Prüfberechtigte Stellen",
+        kind: "checkbox",
+        required: true,
+        help: "Im Landesrecht sind es der Landesrechnungshof und das zuständige Ministerium.",
+        options: [
+          { value: "lrh", label: "Landesrechnungshof Brandenburg" },
+          { value: "ministry", label: "Zuständiges Ministerium" },
+          { value: "brh", label: "Bundesrechnungshof" },
+          { value: "bwb", label: "Bundesbeauftragte für Wirtschaftlichkeit in der Verwaltung" },
+        ],
+      },
+      {
+        id: "purposeBindingYears",
+        label: "Zweckbindungsfrist in Jahren",
+        kind: "number",
+        help: "Dauer, für die der geförderte Gegenstand zweckentsprechend zu nutzen ist.",
+      },
+      {
+        id: "inventory",
+        label: "Inventarisierungspflicht",
+        kind: "radio",
+        options: yesNo,
+      },
+      {
+        id: "genderEquality",
+        label: "Bestimmung zur Geschlechtergleichstellung",
+        kind: "radio",
+        help: "Optional.",
+        options: yesNo,
+      },
       {
         id: "otherConditions",
         label: "Weitere fachliche Nebenbestimmungen",
         kind: "textarea",
-        help: "Erfassen Sie besondere fachliche Bestimmungen. Prüfrechte und Zweckbindungsfrist werden später anhand der Finanzierungsquelle aus den Mustersätzen ergänzt.",
+        help: "Fachspezifische Bestimmungen der Fachreferate sowie Vorgaben aus dem Beihilferecht.",
       },
     ],
   },
@@ -494,17 +550,6 @@ export const sections: SectionDefinition[] = [
         label: "Bewilligungsbehörde",
         kind: "text",
         required: true,
-      },
-      {
-        id: "applicationType",
-        label: "Verfahrensart",
-        kind: "radio",
-        required: true,
-        options: [
-          { value: "one", label: "Einstufig" },
-          { value: "two", label: "Zweistufig" },
-          { value: "three", label: "Dreistufig" },
-        ],
       },
       {
         id: "selection",
@@ -526,14 +571,55 @@ export const sections: SectionDefinition[] = [
           { value: "variant-2", label: "Variante 2 gemäß Musterrichtlinie" },
         ],
       },
+      // Ziffer 7.1. Das Prozessmodell nennt vier Fallgruppen, aufgespannt aus zwei
+      // Unterscheidungen: analog oder digital, mit oder ohne Antragsfrist. Sie stehen hier
+      // als vier Auswahlwerte und nicht als zwei Felder, weil das Modell sie so führt und
+      // weil je Fallgruppe ein eigener Mustersatz einzutragen ist.
+      {
+        id: "applicationProcedure",
+        label: "Antragsverfahren",
+        kind: "radio",
+        required: true,
+        options: [
+          { value: "analog", label: "Schriftlich, ohne Frist" },
+          { value: "analog-deadline", label: "Schriftlich, mit Antragsfrist" },
+          { value: "digital", label: "Digitales Antragssystem, ohne Frist" },
+          {
+            value: "digital-deadline",
+            label: "Digitales Antragssystem, mit Antragsfrist",
+          },
+        ],
+      },
+      {
+        id: "applicationDeadline",
+        label: "Antragsfrist",
+        kind: "date",
+        required: true,
+        help: "Posteingang beziehungsweise Eingang im Antragssystem.",
+        visible: (_p, v) =>
+          typeof v.applicationProcedure === "string" &&
+          v.applicationProcedure.endsWith("-deadline"),
+      },
       {
         id: "payment",
         label: "Anforderungs- und Auszahlungsverfahren",
         kind: "radio",
         required: true,
+        help: "Die Wahl wirkt auf das Verwendungsnachweisverfahren nach Ziffer 7.4 durch.",
         options: [
           { value: "advance", label: "Vorschussprinzip" },
           { value: "refund", label: "Erstattungsprinzip" },
+        ],
+      },
+      {
+        id: "applicationType",
+        label: "Verfahrensart",
+        kind: "radio",
+        required: true,
+        options: [
+          { value: "one", label: "Einstufig" },
+          { value: "two", label: "Zweistufig (Antrag, Verwendungsnachweis inklusive Auszahlung)" },
+          { value: "three", label: "Dreistufig (Antrag, Auszahlung, Verwendungsnachweis)" },
         ],
       },
     ],
@@ -769,6 +855,8 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
     const v = feld(id);
     return typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : null;
   };
+  /** Eine Zahl ist angegeben — nicht leer, nicht unlesbar, nicht null. */
+  const hat = (v: number | null) => v !== null && !Number.isNaN(v) && v > 0;
 
   // 1 — Bagatellgrenze. Eine Unterschreitung ist zulässig, aber begründungspflichtig.
   const bagatelle = zahl("minimum");
@@ -790,9 +878,48 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
       },
     });
 
-  // 2 — Vollfinanzierung. Nur zulässig, wenn der Zweck anders nicht erreichbar ist, und
-  //     ausgeschlossen bei wirtschaftlichem Interesse der Zuwendungsempfangenden.
-  if (feld("financingType") === "full")
+  // 1b — Fehlbedarfsfinanzierung ohne Höchstbetrag. Ziff. 2.2.2 lässt hier keinen Spielraum:
+  //      „Die Zuwendung ist bei der Bewilligung auf einen Höchstbetrag zu begrenzen." Im
+  //      Prozessmodell ist die Abfrage des Höchstbetrags ein eigener Schritt, der auf die
+  //      Wahl dieser Finanzierungsart unmittelbar folgt.
+  //
+  //      Fehler, nicht Warnung: ohne Deckel ist die Fehlbedarfsfinanzierung ein offener
+  //      Anspruch gegen den Haushalt.
+  if (feld("financingType") === "deficit" && !hat(zahl("maximum")))
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "maximum", severity: "error",
+        regel: "fehlbedarf_ohne_hoechstbetrag",
+        rechtsstelle: "Ziff. 2.2.2 der VV zu § 44 LHO",
+        message:
+          "Bei einer Fehlbedarfsfinanzierung ist die Zuwendung auf einen Höchstbetrag zu " +
+          "begrenzen. Tragen Sie einen Höchstbetrag ein.",
+      },
+    });
+
+  // 1c — Vollfinanzierung bei wirtschaftlichem Interesse. Das Prozessmodell verzweigt an
+  //      dieser Stelle aus der Vollfinanzierung heraus („Andere Finanzierungsart wählen") —
+  //      es wird also gar nicht erst begründet, sondern umgewählt.
+  const wirtschaftlich = feld("economicInterest") === "yes";
+  if (feld("financingType") === "full" && wirtschaftlich)
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "financingType", severity: "error",
+        regel: "vollfinanzierung_wirtschaftliches_interesse",
+        rechtsstelle: "Ziff. 2.4 und 2.5 der VV zu § 44 LHO",
+        message:
+          "Vollfinanzierung ist ausgeschlossen, wenn die Zuwendungsempfangenden ein " +
+          "wirtschaftliches Interesse an der Maßnahme haben. Wählen Sie eine andere " +
+          "Finanzierungsart.",
+      },
+    });
+
+  // 2 — Vollfinanzierung. Nur zulässig, wenn der Zweck anders nicht erreichbar ist.
+  //
+  //     Nur, solange kein wirtschaftliches Interesse vorliegt: dann führt das Modell aus der
+  //     Vollfinanzierung heraus, und eine Begründung fürs MdFE einzuholen wäre verfehlt —
+  //     zu begründen ist nichts, zu ändern ist die Finanzierungsart.
+  if (feld("financingType") === "full" && !wirtschaftlich)
     raus.push({
       befund: {
         sectionId: "5", fieldId: "financingType", severity: "warning",
@@ -821,7 +948,6 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
   //      eine der beiden Größen zu setzen.
   const quote = zahl("fundingRate");
   const deckel = zahl("maximum");
-  const hat = (v: number | null) => v !== null && !Number.isNaN(v) && v > 0;
   if (!hat(quote) && !hat(deckel))
     raus.push({
       befund: {
@@ -924,6 +1050,109 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
   return raus;
 }
 
+// ---------------------------------------------------------------------------------------
+// Fachliche Prüflogik, Baustein 6 (Sonstige Zuwendungsbestimmungen)
+// ---------------------------------------------------------------------------------------
+
+/** Prüforgane, die das Prozessmodell für das Landesrecht nennt: „LHO: LRH + Min". */
+export const PRUEFORGANE_LAND = ["lrh", "ministry"];
+
+/**
+ * Prüfungen zu Baustein 6.
+ *
+ * Der Baustein ist im Modell fast ausschließlich Eintragung — Prüfrechte, Zweckbindung und
+ * Inventarisierung sind Mustersätze, die übernommen werden. Geprüft wird die eine Stelle,
+ * an der das Modell einen festen Inhalt nennt: „Prüforgan: LHO: LRH + Min".
+ */
+export function pruefeBaustein6(draft: RichtlinieDraft): Pruefergebnis[] {
+  const stellen = draft.sections["6"]?.fields["auditRights"]?.value;
+  if (!Array.isArray(stellen) || !stellen.length) return [];
+
+  const fehlend = PRUEFORGANE_LAND.filter((s) => !stellen.includes(s));
+  if (!fehlend.length) return [];
+
+  const namen = fehlend
+    .map((s) => (s === "lrh" ? "der Landesrechnungshof" : "das zuständige Ministerium"))
+    .join(" und ");
+  return [{
+    befund: {
+      sectionId: "6", fieldId: "auditRights", severity: "warning",
+      regel: "pruefrechte_unvollstaendig",
+      message:
+        `Im Landesrecht sind der Landesrechnungshof und das zuständige Ministerium ` +
+        `prüfberechtigt. Nicht angegeben ist ${namen}.`,
+    },
+  }];
+}
+
+// ---------------------------------------------------------------------------------------
+// Fachliche Prüflogik, Baustein 7 (Verfahren)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Prüfungen zu Baustein 7.
+ *
+ * Der Baustein ist im Prozessmodell eine Kette: Bewilligungsbehörde, Antragsauswahl,
+ * vorzeitiger Vorhabenbeginn, Antragsverfahren (7.1), Auszahlungsverfahren (7.3),
+ * Verwendungsnachweis (7.4). Das meiste daran ist Eintragung und keine Prüfung — welcher
+ * Mustersatz einzutragen ist, ergibt sich aus der Auswahl und wird nicht geprüft.
+ *
+ * Geprüft wird nur, wo zwei Angaben einander widersprechen können. Das ist hier genau eine
+ * Stelle, und sie fällt zwischen zwei Felder: sie gehört weder zum Antragsverfahren noch
+ * zum Auszahlungsverfahren allein, und deshalb fällt sie beim Ausfüllen nicht auf.
+ */
+export function pruefeBaustein7(draft: RichtlinieDraft): Pruefergebnis[] {
+  const raus: Pruefergebnis[] = [];
+  const feld = (id: string) => draft.sections["7"]?.fields[id]?.value;
+
+  // Digitale Antragstellung ist derzeit nur für Programme im Erstattungsverfahren
+  // umgesetzt. Die Programmierung im nationalen Bereich erfolgt nach und nach, das
+  // Vorschussprinzip ist dort noch nicht abgebildet.
+  //
+  // Fehler und nicht Warnung: anders als eine Bagatellgrenze unter 2.500 Euro lässt sich
+  // das nicht begründen. Das Verfahren gibt es nicht, also kann die Richtlinie es nicht
+  // vorsehen.
+  const verfahren = feld("applicationProcedure");
+  const digital = typeof verfahren === "string" && verfahren.startsWith("digital");
+  if (digital && feld("payment") === "advance")
+    raus.push({
+      befund: {
+        sectionId: "7", fieldId: "payment", severity: "error",
+        regel: "digital_nur_erstattung",
+        message:
+          "Digitale Antragstellung ist derzeit nur für Programme im Erstattungsverfahren " +
+          "möglich. Wählen Sie entweder das Erstattungsprinzip oder ein schriftliches " +
+          "Antragsverfahren.",
+      },
+    });
+
+  // Kriteriengebundene Auswahl ohne Kriterien. Ziffer 7.2 verlangt im Mustersatz die
+  // Grundlage für die Auswahlentscheidung; ohne sie bleibt dort eine Lücke.
+  //
+  // Warnung und nicht Fehler, weil das Prozessmodell die Kriterien an dieser Stelle
+  // ausdrücklich als optional führt — sie können auch später nachgereicht werden.
+  //
+  // Geprüft wird gegen das vorhandene Feld in Baustein 4 und nicht gegen ein zweites in
+  // Baustein 7: dieselben Kriterien zweimal erfassen zu lassen, hieße sie auseinanderlaufen
+  // zu lassen.
+  const kriterien = draft.sections["4"]?.fields["selectionCriteria"]?.value;
+  const leer =
+    kriterien == null || (typeof kriterien === "string" && kriterien.trim() === "");
+  if (feld("selection") === "criteria" && leer)
+    raus.push({
+      befund: {
+        sectionId: "7", fieldId: "selection", severity: "warning",
+        regel: "auswahlkriterien_fehlen",
+        message:
+          "Kriteriengebundene Auswahl gewählt, aber in Baustein 4 sind keine Auswahl- und " +
+          "Wertungskriterien angegeben. Sie sind die Grundlage der Auswahlentscheidung " +
+          "nach Ziffer 7.2.",
+      },
+    });
+
+  return raus;
+}
+
 /** Höchstdauer einer Landesrichtlinie in Jahren. GAK darf vier, liegt aber außerhalb. */
 export const GELTUNGSDAUER_JAHRE = 3;
 
@@ -972,9 +1201,112 @@ export function pruefeBaustein8(draft: RichtlinieDraft): Pruefergebnis[] {
   }];
 }
 
-/** Alle fachlichen Prüfungen. Wächst, wenn weitere Bausteine dazukommen. */
+/**
+ * Form der Zuwendung gegen die Rechtsgrundlage.
+ *
+ * Das Prozessmodell koppelt beides fest: „Zuschuss — Herkunft der Förderung ist dann § 44/53
+ * LHO. Zuweisung — Herkunft der Förderung ist eine Verwaltungsvorschrift."
+ *
+ * Diese Prüfung steht bewusst VOR der Bindung an § 44 LHO und läuft immer. Sie stammt nicht
+ * aus der VV, sondern aus dem Aufbau des Zuwendungsrechts selbst — und gerade der Fall
+ * „Zuweisung, aber § 44 als Rechtsgrundlage" wäre sonst nie zu sehen.
+ */
+export function pruefeZuwendungsform(draft: RichtlinieDraft): Pruefergebnis[] {
+  const form = draft.sections["5"]?.fields["financingForm"]?.value;
+  const rgl = draft.sections["1"]?.fields["legalBasis"]?.value;
+  if (typeof form !== "string" || typeof rgl !== "string" || !form || !rgl) return [];
+
+  const passt =
+    form === "grant" ? rgl === "lho44" || rgl === "lho53" : rgl === "administrative";
+  if (passt) return [];
+
+  const erwartet =
+    form === "grant"
+      ? "ein Zuschuss beruht auf § 44 oder § 53 LHO"
+      : "eine Zuweisung beruht auf einer Verwaltungsvorschrift";
+  return [{
+    befund: {
+      sectionId: "5", fieldId: "financingForm", severity: "error",
+      regel: "form_passt_nicht_zur_rechtsgrundlage",
+      message:
+        `Die Finanzierungsform passt nicht zur Rechtsgrundlage in Baustein 1 — ${erwartet}. ` +
+        `Ändern Sie eines von beidem.`,
+    },
+  }];
+}
+
+/**
+ * Empfängerkreis: VV zu § 44 LHO oder VVG?
+ *
+ * Im Prozessmodell steht diese Prüfung VOR Baustein 5 und entscheidet, ob die Prüfkette
+ * überhaupt betreten wird. Drei Ergebnisse sind dort benannt:
+ *
+ * 1. VV ist anzuwenden, wenn die Empfänger keine Kommunen sind → weiter zu Baustein 5.
+ * 2. VVG ist anzuwenden, wenn die Empfänger Kommunen sind → „Option ist nicht scope des
+ *    Projektes".
+ * 3. Beides zugleich — im Modell beschrieben, aber ohne gezeichneten Ausgang.
+ *
+ * Anders als bei der Rechtsgrundlage werden die folgenden Prüfungen hier NICHT abgeschaltet.
+ * Bei § 53 LHO wäre die VV die falsche Vorschrift, hier ist sie nur nicht die einzige — die
+ * Feststellung gehört an die Bearbeiterin, das Wegnehmen der Prüfungen nähme ihr etwas weg.
+ */
+export function pruefeEmpfaengerkreis(draft: RichtlinieDraft): Pruefergebnis[] {
+  const empfaenger = draft.sections["3"]?.fields["recipients"]?.value;
+  if (!Array.isArray(empfaenger) || !empfaenger.length) return [];
+  const kommunal = empfaenger.includes("municipal");
+  if (!kommunal) return [];
+  const auchAndere = empfaenger.some((e) => e !== "municipal");
+
+  return [{
+    befund: {
+      sectionId: "3", fieldId: "recipients", severity: "warning",
+      regel: auchAndere ? "empfaengerkreis_gemischt" : "vvg_ausserhalb_pilot",
+      message: auchAndere
+        ? "Der Empfängerkreis umfasst Kommunen und andere Empfangende zugleich. Dann sind " +
+          "VV zu § 44 LHO und VVG nebeneinander einschlägig; die Abgrenzung ist fachlich zu " +
+          "klären und wird von diesem Werkzeug nicht entschieden."
+        : "Zuwendungsempfangende sind ausschließlich Kommunen. Dann ist die VVG anzuwenden " +
+          "und nicht die VV zu § 44 LHO. Dieser Zweig liegt außerhalb des Piloten — die " +
+          "folgenden Prüfungen beruhen auf der VV und sind entsprechend zu bewerten.",
+    },
+  }];
+}
+
+/**
+ * Alle fachlichen Prüfungen. Wächst, wenn weitere Bausteine dazukommen.
+ *
+ * Gebunden an die Rechtsgrundlage: im Prozessmodell hängt die gesamte Prüflogik unterhalb
+ * des Teilprozesses „Prüfung nach § 44 LHO". Jede einzelne Regel zitiert dann auch eine
+ * Ziffer der VV zu § 44 LHO oder eine ihrer Anlagen. Für eine Billigkeitsleistung nach § 53
+ * LHO oder eine Verwaltungsvorschrift ist diese VV nicht einschlägig — die Regeln dort
+ * anzuwenden hieße, mit der falschen Rechtsgrundlage zu prüfen.
+ *
+ * Nur bei ausdrücklich anderer Wahl. Solange die Rechtsgrundlage nicht gesetzt ist, wird
+ * geprüft: der Regelfall ist die Zuwendungsrichtlinie, und eine Prüfung ausfallen zu lassen,
+ * weil ein Feld noch leer ist, wäre die gefährlichere Vorgabe.
+ */
 export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
-  return [...pruefeBaustein5(draft), ...pruefeBaustein8(draft)];
+  const rgl = draft.sections["1"]?.fields["legalBasis"]?.value;
+  const immer = [...pruefeZuwendungsform(draft), ...pruefeEmpfaengerkreis(draft)];
+  if (typeof rgl === "string" && rgl !== "" && rgl !== "lho44")
+    return [...immer, {
+      befund: {
+        sectionId: "1", fieldId: "legalBasis", severity: "warning",
+        regel: "pruefung_nicht_einschlaegig",
+        message:
+          "Die fachlichen Prüfungen dieses Werkzeugs beruhen auf der VV zu § 44 LHO. Für " +
+          "die gewählte Rechtsgrundlage sind sie nicht einschlägig und laufen nicht — " +
+          "Bagatellgrenze, Finanzierungsart, Verfahren und Geltungsdauer sind hier von " +
+          "Hand zu prüfen.",
+      },
+    }];
+  return [
+    ...immer,
+    ...pruefeBaustein5(draft),
+    ...pruefeBaustein6(draft),
+    ...pruefeBaustein7(draft),
+    ...pruefeBaustein8(draft),
+  ];
 }
 
 /** Kennung eines Vermerkseintrags. Ein Baustein kann jede Regel nur einmal auslösen. */

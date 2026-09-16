@@ -117,6 +117,9 @@ function completeDemoDraft(
       }),
       "6": confirmedFields({
         ancillary: moor ? "anbest-p-g" : "anbest-p",
+        auditRights: ["lrh", "ministry"],
+        purposeBindingYears: moor ? 12 : 5,
+        inventory: "yes",
         otherConditions: moor
           ? "Die geförderten Flächen und Anlagen sind zwölf Jahre zweckentsprechend zu nutzen. Wasserstände und Flächennutzung sind jährlich zu dokumentieren."
           : "Die geförderten Anlagen sind mindestens fünf Jahre zweckentsprechend zu betreiben. Wasserverbräuche sind digital zu erfassen und auf Anforderung vorzulegen.",
@@ -126,6 +129,8 @@ function completeDemoDraft(
         applicationType: "one",
         selection: "criteria",
         earlyStart: "variant-1",
+        applicationProcedure: "analog-deadline",
+        applicationDeadline: "2027-03-31",
         payment: "refund",
       }),
       "8": confirmedFields({

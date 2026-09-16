@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  fieldVisible,
+  sections,
   BAGATELLGRENZE_EUR,
   emptySections,
   GELTUNGSDAUER_JAHRE,
   pruefeBaustein5,
+  pruefeBaustein6,
+  pruefeFachlich,
+  pruefeEmpfaengerkreis,
+  pruefeZuwendungsform,
   pruefeBaustein8,
   pruefungenAnwenden,
   validateDraft,
@@ -311,5 +317,232 @@ describe("Baustein 8, Geltungsdauer", () => {
     const d = pruefungenAnwenden(mitDauer("2026-01-01", "2031-01-01"));
     expect(d.vermerk?.map((v) => v.regel)).toContain("geltungsdauer");
     expect(validateDraft(d).issues.some((i) => i.regel === "geltungsdauer")).toBe(true);
+  });
+});
+
+// Die Verzweigungen, die das Prozessmodell direkt hinter „Art der Finanzierung?" aufmacht.
+describe("Baustein 5, Verzweigung der Finanzierungsart", () => {
+  const profil = {
+    jurisdiction: "land", gak: false, stateAid: false, fundingType: "project",
+  } as const;
+  const feld5 = (id: string) =>
+    sections.find((s) => s.id === "5")!.fields.find((f) => f.id === id)!;
+
+  it("Fehlbedarfsfinanzierung ohne Höchstbetrag ist ein Fehler", () => {
+    const [e] = pruefeBaustein5(entwurf({ financingType: "deficit", fundingRate: 50 }))
+      .filter((r) => r.befund.regel === "fehlbedarf_ohne_hoechstbetrag");
+    expect(e!.befund.severity).toBe("error");
+    expect(e!.befund.rechtsstelle).toContain("2.2.2");
+  });
+
+  it("Fehlbedarfsfinanzierung mit Höchstbetrag: kein Befund", () => {
+    expect(regeln(entwurf({ financingType: "deficit", maximum: 500000 })))
+      .not.toContain("fehlbedarf_ohne_hoechstbetrag");
+  });
+
+  it("andere Finanzierungsarten brauchen keinen Höchstbetrag", () => {
+    expect(regeln(entwurf({ financingType: "share", fundingRate: 50 })))
+      .not.toContain("fehlbedarf_ohne_hoechstbetrag");
+  });
+
+  it("Vollfinanzierung bei wirtschaftlichem Interesse ist ein Fehler", () => {
+    const r = regeln(entwurf({ financingType: "full", economicInterest: "yes" }));
+    expect(r).toContain("vollfinanzierung_wirtschaftliches_interesse");
+  });
+
+  it("und dann wird nicht mehr begründet, sondern umgewählt", () => {
+    // Das Modell verzweigt aus der Vollfinanzierung heraus. Ein MdFE-Vermerk über eine
+    // Vollfinanzierung, die es nicht geben darf, wäre eine falsche Aufforderung.
+    const ergebnisse = pruefeBaustein5(
+      entwurf({ financingType: "full", economicInterest: "yes" }),
+    );
+    expect(regeln(entwurf({ financingType: "full", economicInterest: "yes" })))
+      .not.toContain("vollfinanzierung");
+    expect(ergebnisse.some((e) => e.vermerk?.regel === "vollfinanzierung")).toBe(false);
+  });
+
+  it("ohne wirtschaftliches Interesse bleibt die Begründungspflicht", () => {
+    const ergebnisse = pruefeBaustein5(
+      entwurf({ financingType: "full", economicInterest: "no" }),
+    );
+    expect(ergebnisse.some((e) => e.vermerk?.regel === "vollfinanzierung")).toBe(true);
+  });
+
+  it("die bedingten Felder erscheinen nur in ihrem Zweig", () => {
+    expect(fieldVisible(feld5("economicInterest"), profil, { financingType: "full" }))
+      .toBe(true);
+    expect(fieldVisible(feld5("economicInterest"), profil, { financingType: "share" }))
+      .toBe(false);
+    expect(fieldVisible(feld5("fixedAmount"), profil, { financingType: "fixed" }))
+      .toBe(true);
+    expect(fieldVisible(feld5("fixedAmount"), profil, { financingType: "deficit" }))
+      .toBe(false);
+  });
+
+  it("Festbetragsfinanzierung ohne Betrag: Pflichtfeld schlägt an", () => {
+    const d = entwurf({
+      financingType: "fixed", financingForm: "grant", eligibleBasis: "actual",
+      eligibleCosts: "Bau", cumulation: "no", maximum: 1000,
+    });
+    expect(validateDraft(d).issues.map((i) => i.fieldId)).toContain("fixedAmount");
+  });
+});
+
+// Im Prozessmodell hängt die gesamte Prüflogik unter „Prüfung nach § 44 LHO".
+describe("Bindung der Prüfungen an die Rechtsgrundlage", () => {
+  const mitRgl = (rgl: string) => {
+    const d = entwurf({ minimum: 100, financingType: "full" });
+    d.sections["1"] = {
+      fields: {
+        legalBasis: {
+          value: rgl, status: "confirmed", source: "user-form", confirmedByUser: true,
+        },
+      },
+    };
+    return d;
+  };
+
+  it("§ 44 LHO: die Prüfungen laufen", () => {
+    expect(pruefeFachlich(mitRgl("lho44")).map((e) => e.befund.regel))
+      .toContain("bagatellgrenze");
+  });
+
+  it("§ 53 LHO: sie laufen nicht, und das wird gesagt", () => {
+    const r = pruefeFachlich(mitRgl("lho53"));
+    expect(r.map((e) => e.befund.regel)).toEqual(["pruefung_nicht_einschlaegig"]);
+  });
+
+  it("Verwaltungsvorschrift: ebenso", () => {
+    expect(pruefeFachlich(mitRgl("administrative")).map((e) => e.befund.regel))
+      .toEqual(["pruefung_nicht_einschlaegig"]);
+  });
+
+  it("ohne Angabe wird geprüft — ein leeres Feld darf keine Prüfung abschalten", () => {
+    expect(pruefeFachlich(entwurf({ minimum: 100 })).map((e) => e.befund.regel))
+      .toContain("bagatellgrenze");
+  });
+});
+
+// Modell: „Zuschuss — Herkunft § 44/53 LHO. Zuweisung — Herkunft eine Verwaltungsvorschrift."
+describe("Form der Zuwendung gegen die Rechtsgrundlage", () => {
+  const paar = (form: string, rgl: string) => {
+    const d = entwurf({ financingForm: form });
+    d.sections["1"] = {
+      fields: {
+        legalBasis: {
+          value: rgl, status: "confirmed", source: "user-form", confirmedByUser: true,
+        },
+      },
+    };
+    return d;
+  };
+  const regel = (d: RichtlinieDraft) =>
+    pruefeFachlich(d).map((e) => e.befund.regel);
+
+  it("Zuschuss mit § 44 LHO passt", () => {
+    expect(regel(paar("grant", "lho44"))).not.toContain("form_passt_nicht_zur_rechtsgrundlage");
+  });
+
+  it("Zuschuss mit § 53 LHO passt ebenfalls", () => {
+    expect(regel(paar("grant", "lho53"))).not.toContain("form_passt_nicht_zur_rechtsgrundlage");
+  });
+
+  it("Zuweisung mit Verwaltungsvorschrift passt", () => {
+    expect(regel(paar("allocation", "administrative")))
+      .not.toContain("form_passt_nicht_zur_rechtsgrundlage");
+  });
+
+  it("Zuweisung mit § 44 LHO ist ein Fehler", () => {
+    const [e] = pruefeZuwendungsform(paar("allocation", "lho44"));
+    expect(e!.befund.severity).toBe("error");
+    expect(e!.befund.message).toContain("Verwaltungsvorschrift");
+  });
+
+  it("Zuschuss mit Verwaltungsvorschrift ist ein Fehler", () => {
+    // Läuft, obwohl die § 44-Prüfungen für diese Rechtsgrundlage abgeschaltet sind —
+    // sonst bliebe genau dieser Widerspruch unsichtbar.
+    expect(regel(paar("grant", "administrative")))
+      .toContain("form_passt_nicht_zur_rechtsgrundlage");
+  });
+
+  it("solange eines von beiden fehlt, wird nicht geurteilt", () => {
+    expect(pruefeZuwendungsform(paar("grant", ""))).toHaveLength(0);
+    expect(pruefeZuwendungsform(entwurf({ financingForm: "grant" }))).toHaveLength(0);
+  });
+});
+
+// Modell: „VV ist anzuwenden, wenn die Zuwendungsempfänger keine Komunen … sind."
+describe("Empfängerkreis, VV oder VVG", () => {
+  const mitEmpfaengern = (liste: string[]) => {
+    const d = entwurf({ fundingRate: 90 });
+    d.sections["3"] = {
+      fields: {
+        recipients: {
+          value: liste, status: "confirmed", source: "user-form", confirmedByUser: true,
+        },
+      },
+    };
+    return d;
+  };
+
+  it("nur Kommunen: VVG, außerhalb des Piloten", () => {
+    const [e] = pruefeEmpfaengerkreis(mitEmpfaengern(["municipal"]));
+    expect(e!.befund.regel).toBe("vvg_ausserhalb_pilot");
+    expect(e!.befund.severity).toBe("warning");
+  });
+
+  it("Kommunen und andere: gemischt, nicht entschieden", () => {
+    const [e] = pruefeEmpfaengerkreis(mitEmpfaengern(["municipal", "private"]));
+    expect(e!.befund.regel).toBe("empfaengerkreis_gemischt");
+  });
+
+  it("ohne Kommunen: kein Befund", () => {
+    expect(pruefeEmpfaengerkreis(mitEmpfaengern(["private", "natural"]))).toHaveLength(0);
+  });
+
+  it("leerer Empfängerkreis: kein Befund", () => {
+    expect(pruefeEmpfaengerkreis(mitEmpfaengern([]))).toHaveLength(0);
+  });
+
+  it("die übrigen Prüfungen laufen weiter", () => {
+    // Bewusst nicht abgeschaltet: der kommunale Höchstsatz ist gerade hier die Aussage,
+    // auf die es ankommt.
+    const regeln = pruefeFachlich(mitEmpfaengern(["municipal"])).map((e) => e.befund.regel);
+    expect(regeln).toContain("vvg_ausserhalb_pilot");
+    expect(regeln).toContain("kommunaler_hoechstsatz");
+  });
+});
+
+// Modell, Baustein 6: „Prüforgan: LHO: LRH + Min".
+describe("Baustein 6, Prüfberechtigte", () => {
+  const mitStellen = (liste: string[]) => {
+    const d = entwurf({});
+    d.sections["6"] = {
+      fields: {
+        auditRights: {
+          value: liste, status: "confirmed", source: "user-form", confirmedByUser: true,
+        },
+      },
+    };
+    return d;
+  };
+
+  it("Landesrechnungshof und Ministerium: kein Befund", () => {
+    expect(pruefeBaustein6(mitStellen(["lrh", "ministry"]))).toHaveLength(0);
+  });
+
+  it("zusätzliche Stellen stören nicht", () => {
+    expect(pruefeBaustein6(mitStellen(["lrh", "ministry", "brh"]))).toHaveLength(0);
+  });
+
+  it("nur der Rechnungshof: das Ministerium wird benannt", () => {
+    const [e] = pruefeBaustein6(mitStellen(["lrh"]));
+    expect(e!.befund.regel).toBe("pruefrechte_unvollstaendig");
+    expect(e!.befund.message).toContain("Ministerium");
+    expect(e!.befund.message).not.toContain("Landesrechnungshof prüfberechtigt");
+  });
+
+  it("noch nichts ausgewählt: kein Befund, das meldet die Feldprüfung", () => {
+    expect(pruefeBaustein6(mitStellen([]))).toHaveLength(0);
   });
 });
