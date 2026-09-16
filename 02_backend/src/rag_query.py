@@ -18,6 +18,7 @@ from pathlib import Path
 from bmds_prompt_loader import PromptLoader
 from bmds_prompt_security import sanitize_and_wrap
 
+import adressierung
 import satzfilter
 from retrieval import hybrid_search
 from llm import chat
@@ -27,9 +28,17 @@ loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 
 
 def fundstelle(p):
-    seiten = p.get("seiten") or []
-    s = f", S. {', '.join(map(str, seiten))}" if seiten else ""
-    return f"{p.get('quelle')}{s} | {p.get('abschnitt')}"
+    """Fundstelle in Zitierform, über die Adressierung.
+
+    Hier stand bis zuletzt der Dateiname — „RL Tierheimförderung_16.pdf, S. 3 | 4
+    Zuwendungsvoraussetzungen" statt „RL Tierheimförderung, Nummer 4". Die Adressfelder
+    lagen längst im Payload, nur benutzt hat sie diese Stelle nicht, und damit kam die
+    ganze Adressierung nie bei der Nutzerin an.
+
+    `adressierung.fundstelle` fällt von selbst auf die alte Form zurück, solange ein Chunk
+    keine Adresse hat.
+    """
+    return adressierung.fundstelle(p)
 
 
 def bloecke_bilden(hits):
