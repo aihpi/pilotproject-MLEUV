@@ -133,6 +133,41 @@ ABFRAGEARTEN = {
     "vorschlagen": ["richtlinie", "rahmenplan"],
 }
 
+# Die Rolle der Belegstellen im Prompt, je Abfragesorte. Siehe feldvorschlag.yaml.
+#
+# Der Regelfall verbietet jede inhaltliche Übernahme — die Regel entstand, nachdem ein Lauf
+# eine Maßnahmenliste aus einer fremden Richtlinie in den Zuwendungszweck geschrieben hatte.
+_ROLLE_NACHWEIS = (
+    "- BELEGSTELLEN dienen ausschliesslich dem Nachweis. Aus ihnen übernimmst du KEINE\n"
+    "    inhaltlichen Festlegungen. Insbesondere keine Vorhaben, Zielgruppen, Beträge oder\n"
+    "    Ausschlüsse aus anderen Richtlinien — auch dann nicht, wenn sie gut passen."
+)
+
+# Beim Vorschlagen ist genau das der Auftrag. Das Prozessmodell verlangt „Vorschläge aus
+# alten Förderverfahren" und nennt den Musterfall selbst: eine bestehende Richtlinie enthält
+# ähnliche Voraussetzungen für eine neue. Die Grenze verläuft nicht zwischen Übernehmen und
+# Nicht-Übernehmen, sondern zwischen REGELUNGSART und EINZELHEIT — und zwischen Vorschlag
+# und Feststellung.
+_ROLLE_VORBILD = (
+    "- BELEGSTELLEN sind hier VORBILDER aus früheren Förderverfahren des Landes, keine\n"
+    "    Vorschriften. Für diesen Schritt darfst du dich inhaltlich an ihnen orientieren:\n"
+    "    was vergleichbare Richtlinien an dieser Stelle geregelt haben, ist ein zulässiger\n"
+    "    Entwurf. Dabei gilt:\n"
+    "    - Es ist ein VORSCHLAG ZUR BESTÄTIGUNG, keine Feststellung. Schweigt die Angabe\n"
+    "      des Fachreferats dazu — hier der Regelfall —, setze \"deckung\" auf null.\n"
+    "    - Übernimm die REGELUNGSART, nicht die Einzelheiten des fremden Verfahrens. Keine\n"
+    "      Beträge, Fristen, Gebietskulissen, Zielgruppen oder Vorhaben, die dort stehen und\n"
+    "      hier nicht genannt sind.\n"
+    "    - Schreibe nichts wörtlich ab. Ein Wert, der wörtlich in einer Fundstelle steht,\n"
+    "      wird maschinell erkannt und verworfen.\n"
+    "    - Lässt sich auch so nicht sagen, was hier gelten soll, bleibt \"[Unklar]\" richtig."
+)
+
+_UEBERSCHRIFT = {
+    None: "BELEGSTELLEN (nur Nachweis, keine Inhaltsquelle):",
+    "vorschlagen": "BELEGSTELLEN — VORBILDER aus früheren Verfahren (Orientierung erlaubt):",
+}
+
 
 def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None):
     """Belegstellen zum Anliegen: Hybrid-Suche, dann Satzfilter. Nur Nachweis, keine Werte.
@@ -258,7 +293,7 @@ def _abstimmen(laeufe_daten, felder, laeufe, schwelle):
     return heraus, befunde
 
 
-def _pruefen(v, feld, bloecke, rahmen_text="", eingabe=""):
+def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
     """Nachprüfungen an einem Modellvorschlag. Verändert `v` und ergänzt `befunde`."""
     befunde = []
     wert_roh = v.get("wert")
@@ -300,7 +335,20 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe=""):
     # die nachgeprüfte Deckung — nicht, ob der Wert aus dem Musterbaustein formuliert wurde.
     # Die frühere Regel „Quelle ≠ Eingabe → kappen" verwechselte beides und kappte auch dann,
     # wenn die Angabe den Wert ausdrücklich trug.
-    if feld.get("options") and v.get("status") == "suggested" and not v["gedeckt_durch_eingabe"]:
+    # Ein ungedeckter Wert bekommt seine Konfidenz vom System, nicht vom Modell — dessen
+    # Selbstauskunft ist hier nicht belastbar (0,95 für ein Feld, zu dem die Eingabe schwieg).
+    #
+    # Die Abfragesorte entscheidet über den Wortlaut des Befundes, und das ist kein
+    # Schönheitsfehler: „aus dem Regelfall abgeleitet" verweist auf die Musterrichtlinie,
+    # „nach dem Vorbild" auf ein fremdes Verfahren. Das eine ist der vorgesehene Normalfall,
+    # das andere eine Anlehnung, die bestätigt werden muss. Wer den Prüfvermerk liest, muss
+    # die beiden auseinanderhalten können.
+    ungedeckt = v.get("status") == "suggested" and not v["gedeckt_durch_eingabe"]
+    if abfrageart == "vorschlagen" and ungedeckt:
+        v["konfidenz"] = min(float(v.get("konfidenz") or 1.0), KONFIDENZ_ABGELEITET)
+        befunde.append(f"{feld['id']}: nach dem Vorbild eines früheren Verfahrens "
+                       f"vorgeschlagen, nicht durch die Angabe gedeckt")
+    elif feld.get("options") and ungedeckt:
         v["konfidenz"] = min(float(v.get("konfidenz") or 1.0), KONFIDENZ_ABGELEITET)
         befunde.append(f"{feld['id']}: aus dem Regelfall abgeleitet, die Angabe deckt ihn nicht")
 
@@ -393,6 +441,8 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         musterbausteine=rahmen_txt,
         eingabe=eingabe,
         belege=sicher,
+        belege_rolle=_ROLLE_VORBILD if abfrageart == "vorschlagen" else _ROLLE_NACHWEIS,
+        belege_ueberschrift=_UEBERSCHRIFT.get(abfrageart, _UEBERSCHRIFT[None]),
         felder=_felder_text(felder),
     )
     nachricht = [{"role": "system", "content": prompt.system},
@@ -442,7 +492,7 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         if not feld:
             befunde.append(f"unbekanntes Feld verworfen: {v.get('feld')!r}")
             continue
-        befunde += _pruefen(v, feld, bloecke, rahmen_txt, eingabe)
+        befunde += _pruefen(v, feld, bloecke, rahmen_txt, eingabe, abfrageart)
         vorschlaege.append({
             "feld": feld["id"],
             "label": feld.get("label") or feld["id"],

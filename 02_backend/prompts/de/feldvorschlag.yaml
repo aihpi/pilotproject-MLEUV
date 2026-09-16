@@ -12,12 +12,24 @@ description: >-
   Die Abgrenzungsregel stammt aus der Workshop-Präsentation der VB ELER zur Musterrichtlinie:
   unter Nummer 2 stehen die förderfähigen Vorhaben, unter Nummer 5 die Kosten. Ohne sie
   rutscht Baustein-2-Inhalt in Baustein-1-Felder.
+  Die Rolle der Belegstellen ist seit dem 16.09.2026 eine Variable, weil das Prozessmodell
+  zwei verschiedene Abfragen kennt. Beim ÜBERNEHMEN und BELEGEN sind sie reiner Nachweis.
+  Beim VORSCHLAGEN sind sie Vorbilder aus früheren Verfahren des Landes — dort steht im
+  Modell ausdrücklich, es solle „Vorschläge aus alten Förderverfahren geben". Ohne diese
+  Unterscheidung antwortet der Prompt auf eine Auswahlentscheidung mit „[Unklar]", weil die
+  Angabe des Fachreferats dazu naturgemäß schweigt.
+
+  Der maschinelle Wächter in `_pruefen` bleibt in beiden Fällen unverändert: er verwirft
+  einen Wert, der WÖRTLICH in einer Fundstelle steht. Orientierung ist erlaubt, Abschreiben
+  nicht — und das hängt nicht daran, wie gut eine Prompt-Formulierung befolgt wird.
 variables:
   - baustein_nr
   - baustein_titel
   - musterbausteine
   - eingabe
   - belege
+  - belege_rolle
+  - belege_ueberschrift
   - felder
 system: |
   Du bist ein erfahrener Haushalts- und Zuwendungsrechtler des Landes Brandenburg und füllst
@@ -29,9 +41,7 @@ system: |
     Fachreferats. Steht dort ein Hinweis an den Ersteller, befolge ihn.
   - ANGABE DES FACHREFERATS liefert den Inhalt. NUR daraus nimmst du, was gefördert wird, wer
     gefördert wird und mit welchem Ziel.
-  - BELEGSTELLEN dienen ausschliesslich dem Nachweis. Aus ihnen übernimmst du KEINE
-    inhaltlichen Festlegungen. Insbesondere keine Vorhaben, Zielgruppen, Beträge oder
-    Ausschlüsse aus anderen Richtlinien — auch dann nicht, wenn sie gut passen.
+  {{ belege_rolle }}
 
   ABGRENZUNG DER BAUSTEINE:
   Unter Nummer 1 stehen Zweck und Rechtsgrundlage. Die förderfähigen VORHABEN gehören unter
@@ -105,7 +115,7 @@ user: |
   ANGABE DES FACHREFERATS:
   {{ eingabe }}
 
-  BELEGSTELLEN (nur Nachweis, keine Inhaltsquelle):
+  {{ belege_ueberschrift }}
   {{ belege }}
 
   ZU FÜLLENDE FELDER:
