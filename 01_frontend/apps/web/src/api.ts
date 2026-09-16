@@ -4,6 +4,8 @@ import type {
   FundingProfile,
   RichtlinieDraft,
   SectionData,
+  VermerkEintrag,
+  VermerkSicht,
 } from "@richtlinie/shared";
 import { staticApi } from "./api-static";
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -63,6 +65,16 @@ const serverApi = {
         paragraphs: { label: string; value: unknown }[];
       }[];
     }>(`/api/drafts/${id}/preview`),
+  vermerk: (id: string) => request<VermerkSicht>(`/api/drafts/${id}/vermerk`),
+  begruenden: (id: string, eintragId: string, begruendung: string) =>
+    request<VermerkEintrag>(`/api/drafts/${id}/vermerk/${eintragId}/begruendung`, {
+      method: "POST",
+      body: JSON.stringify({ begruendung }),
+    }),
+  bestaetigen: (id: string, eintragId: string) =>
+    request<VermerkEintrag>(`/api/drafts/${id}/vermerk/${eintragId}/bestaetigen`, {
+      method: "POST",
+    }),
 };
 export const api =
   import.meta.env.VITE_STATIC === "true" ? staticApi : serverApi;

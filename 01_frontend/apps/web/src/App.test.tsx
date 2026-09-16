@@ -115,6 +115,10 @@ describe("App", () => {
           (section) => Object.keys(section.fields).length > 0,
         ),
       ).toBe(true);
+      // Beide Beispiele laufen vier Jahre und sind damit nach Anlage 19 begründungs-
+      // pflichtig. Ein Vorführentwurf mit leerem Prüfvermerk zeigte das Gegenteil dessen,
+      // wofür der Vermerk da ist.
+      expect(draft.vermerk?.map((v) => v.regel)).toContain("geltungsdauer");
     }
   });
 });

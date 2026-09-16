@@ -2,6 +2,7 @@ import {
   emptySections,
   chatStages,
   nextChatStage,
+  pruefungenAnwenden,
   sections,
   validateDraft,
   type ChatReply,
@@ -156,6 +157,13 @@ function completeDemoDraft(
       : "2026-08-27T14:30:00.000Z",
   };
   draft.validation = validateDraft(draft);
+  // Auch die Beispiel-Entwürfe durch die fachlichen Prüfungen: sonst ist ihr Prüfvermerk
+  // leer, obwohl beide eine Geltungsdauer von vier Jahren führen — und die ist nach Anlage
+  // 19 zu begründen. Ein Vorführentwurf, dessen Vermerk leer ist, zeigt das Gegenteil
+  // dessen, was er zeigen soll.
+  const gepruft = pruefungenAnwenden(draft);
+  draft.sections = gepruft.sections;
+  draft.vermerk = gepruft.vermerk;
   return draft;
 }
 
@@ -196,6 +204,13 @@ const touch = (draft: RichtlinieDraft) => {
   draft.updatedAt = new Date().toISOString();
   draft.version++;
   draft.validation = validateDraft(draft);
+  // Wie im Dienst: die fachlichen Prüfungen schreiben Vermerkseinträge und
+  // Überarbeitungsanforderungen mit. Ohne das bliebe der Prüfvermerk offline immer leer,
+  // und die Attrappe würde etwas anderes zeigen als der Betrieb — der schlechteste Fall
+  // für eine Vorführung.
+  const gepruft = pruefungenAnwenden(draft);
+  draft.sections = gepruft.sections;
+  draft.vermerk = gepruft.vermerk;
   return store(draft);
 };
 
@@ -295,6 +310,34 @@ export const staticApi = {
     };
   },
   reject: async () => ({ ok: true }),
+  // Der Prüfvermerk auch offline: die Regeln laufen in `shared` und brauchen kein Backend,
+  // also darf die Attrappe hier nicht weniger können als der Dienst.
+  vermerk: async (id: string) => {
+    const alle = get(id).vermerk ?? [];
+    const offen = alle.filter((v) => v.status === "offen").length;
+    const unbestaetigt = alle.filter((v) => v.status === "beantwortet").length;
+    return { eintraege: alle, offen, unbestaetigt,
+             vollstaendig: offen === 0 && unbestaetigt === 0 };
+  },
+  begruenden: async (id: string, eintragId: string, begruendung: string) => {
+    const draft = get(id);
+    const e = (draft.vermerk ?? []).find((v) => v.id === eintragId);
+    if (!e) throw new Error("Eintrag nicht gefunden.");
+    e.begruendung = begruendung.trim();
+    e.status = "beantwortet";
+    store(draft);
+    return e;
+  },
+  bestaetigen: async (id: string, eintragId: string) => {
+    const draft = get(id);
+    const e = (draft.vermerk ?? []).find((v) => v.id === eintragId);
+    if (!e) throw new Error("Eintrag nicht gefunden.");
+    if (!e.begruendung?.trim())
+      throw new Error("Ohne Begründung gibt es nichts zu bestätigen.");
+    e.status = "bestaetigt";
+    store(draft);
+    return e;
+  },
   preview: async (id: string) => {
     const draft = get(id);
     return {

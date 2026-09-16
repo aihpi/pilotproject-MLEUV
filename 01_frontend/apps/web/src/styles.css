@@ -31,5 +31,24 @@
   .herkunft__warnung{margin-left:0}
 }
 
+/* Prüfvermerk: je Eintrag eine Feststellung, ihre Begründung und deren Bearbeitungsstand. */
+.vermerk{list-style:none;padding:0;margin:1rem 0;display:flex;flex-direction:column;gap:1rem}
+.vermerk__eintrag{border:1px solid var(--color-border);border-left:4px solid var(--warning);padding:1rem;background:var(--surface)}
+.vermerk__kopf{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap}
+.vermerk__kopf h3{margin:0;font-size:1rem}
+.vermerk__beurteilung{margin:.5rem 0;font-weight:700}
+.vermerk__stelle{margin:.25rem 0;font-size:.9rem}
+.vermerk__marke{display:inline-block;min-width:7rem;font-weight:700;color:var(--color-text-muted)}
+.vermerk__quelle{color:var(--color-text-muted)}
+.vermerk__hinweis{color:var(--color-text-muted);font-size:.9rem}
+.vermerk__feld{display:block;margin-top:.75rem}
+.vermerk__feld span{display:block;font-weight:700;margin-bottom:.25rem}
+.vermerk__feld textarea{width:100%}
+.vermerk__knoepfe{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+/* Erledigtes tritt zurück, verschwindet aber nicht — der Vermerk ist ein Nachweis. */
+.vermerk__eintrag:has(.badge--confirmed),
+.vermerk__eintrag:has(.badge--empty){border-left-color:var(--color-border)}
+@media(max-width:700px){.vermerk__marke{display:block;min-width:0}}
+
 /* Rechtsstelle und Fundstelle an einem Prüfhinweis. */
 .befund__stelle{display:block;color:var(--color-text-muted);font-size:.88rem}

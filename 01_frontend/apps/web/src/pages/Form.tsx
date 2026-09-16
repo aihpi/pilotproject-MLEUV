@@ -42,6 +42,11 @@ export function TasksPage() {
   const complete = sections.filter(
     (s) => sectionStatus(d, s.id) === "confirmed",
   ).length;
+  // Aus dem Entwurf gezählt statt über einen zweiten Abruf: der Vermerk hängt am Entwurf,
+  // und eine eigene Anfrage nur für eine Zahl wäre eine Ladezeit mehr auf dieser Seite.
+  const offeneVermerke = (d.vermerk ?? []).filter(
+    (v) => v.status === "offen" || v.status === "beantwortet",
+  ).length;
   return (
     <>
       <ProcessSteps stage={1} />
@@ -77,6 +82,15 @@ export function TasksPage() {
       <div className="actions actions--between">
         <Link className="button button--secondary" to={`/entwurf/${id}/chat`}>
           Zurück zum Chat
+        </Link>
+        {/*
+          Der Prüfvermerk ist das zweite Arbeitsergebnis neben der Richtlinie und braucht
+          einen eigenen Einstieg — bisher füllte er sich, ohne dass jemand ihn öffnen
+          konnte. Die Zahl steht daneben, weil eine offene Begründung die Einreichung
+          aufhält und nicht erst am Ende auffallen soll.
+        */}
+        <Link className="button button--secondary" to={`/entwurf/${id}/vermerk`}>
+          Prüfvermerk{offeneVermerke > 0 ? ` (${offeneVermerke} offen)` : ""}
         </Link>
         <Link className="button button--primary" to={`/entwurf/${id}/pruefen`}>
           Gesamtprüfung öffnen

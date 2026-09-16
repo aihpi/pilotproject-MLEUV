@@ -1458,6 +1458,20 @@ export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
   ];
 }
 
+/**
+ * Die Sicht auf den Prüfvermerk, wie der Dienst sie liefert.
+ *
+ * `vollstaendig` ist die Aussage, auf die es ankommt: solange ein Eintrag offen oder
+ * beantwortet-aber-unbestätigt ist, fehlt dem MdFE-Anschreiben eine Begründung — und ohne
+ * die ist die Richtlinie nicht einreichungsreif.
+ */
+export interface VermerkSicht {
+  eintraege: VermerkEintrag[];
+  offen: number;
+  unbestaetigt: number;
+  vollstaendig: boolean;
+}
+
 /** Kennung eines Vermerkseintrags. Ein Baustein kann jede Regel nur einmal auslösen. */
 const vermerkSchluessel = (sectionId: string, regel: string) => `${sectionId}:${regel}`;
 
