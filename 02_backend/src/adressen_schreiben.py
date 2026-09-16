@@ -63,6 +63,13 @@ def main():
                 continue
             if eintrag.get("zitierweise") == "artikel":
                 f["zitierweise"] = "artikel"
+            # Die Dokumentart aus dem Register mitschreiben. Ohne sie im Payload lässt sich
+            # der Korpus zur Laufzeit nicht nach Art einschränken — und genau das verlangt
+            # das Prozessmodell für die Vorschlags-Abfragen: „Nur alte RL des Landes/GAK
+            # als Hilfestellung". Das Register kannte die Art schon, sie stand nur nie im
+            # Index.
+            if eintrag.get("art"):
+                f["art"] = eintrag["art"]
             gesamt += 1
             if f.get("nummer"):
                 mit_nummer += 1

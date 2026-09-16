@@ -49,6 +49,13 @@ class Anfrage(BaseModel):
         description="Mehrfach holen und abstimmen. Dreifache Kosten. Nützlich weniger zur "
                     "Stabilisierung als zur ehrlichen Konfidenz: Uneinigkeit der Läufe ist "
                     "aussagekräftiger als die Selbstauskunft des Modells.")
+    abfrageart: Literal["vorschlagen"] | None = Field(
+        default=None,
+        description="Sorte der Abfrage nach dem Prozessmodell. „vorschlagen“ schränkt den "
+                    "Korpus auf frühere Richtlinien und Rahmenpläne ein — das Modell "
+                    "schreibt das für die KI-Vorschläge zu Voraussetzungen, fachlichen "
+                    "Ausschlüssen und Zuwendungsbestimmungen dreimal wörtlich vor. Ohne "
+                    "Angabe wird der ganze Korpus gesehen.")
     top_k: int = Field(default=TOP_K, ge=1, le=20)
 
 
@@ -76,6 +83,7 @@ class Nachweis(BaseModel):
     """
     modelle: list[str] = []
     dauer_s: dict[str, float] = {}
+    abfrageart: str | None = None
     fundstellen: list[str] = []
     musterbausteine: list[str] = []
     prompts: list[str] = []
@@ -110,7 +118,8 @@ def vorschlag_erzeugen(anfrage: Anfrage):
     try:
         vorschlaege, nachweis = vorschlag.vorschlagen(
             anfrage.abschnitt_nr, anfrage.eingabe.strip(), felder,
-            top_k=anfrage.top_k, konsens=anfrage.konsens)
+            top_k=anfrage.top_k, konsens=anfrage.konsens,
+            abfrageart=anfrage.abfrageart)
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.

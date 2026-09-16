@@ -116,23 +116,42 @@ def _llm_konsens(query, points, top_k, laeufe=None, schwelle=None):
     return [points[i] for i in gewaehlt[:top_k]]
 
 
-def _gueltig_filter(nur_aktuell):
-    """Abgelöste Fassungen ausschließen. must_not statt must: Chunks ohne status-Feld
-    (Altbestand vor Einführung der Gültigkeits-Kuratierung) bleiben so auffindbar."""
-    if not nur_aktuell:
+def _gueltig_filter(nur_aktuell, nur_arten=None):
+    """Abgelöste Fassungen ausschließen, wahlweise auf Dokumentarten einschränken.
+
+    must_not für den Status: Chunks ohne status-Feld (Altbestand vor Einführung der
+    Gültigkeits-Kuratierung) bleiben so auffindbar.
+
+    `nur_arten` dagegen ist ein must — hier ist das Weglassen der Chunks ohne Feld richtig.
+    Wer „nur Richtlinien" verlangt, will kein Dokument dabeihaben, dessen Art unbekannt ist.
+    Das trifft alles, was nicht im Register steht und alles, worauf `adressen_schreiben.py`
+    noch nicht gelaufen ist.
+    """
+    bedingungen = []
+    if nur_aktuell:
+        bedingungen.append(("must_not", models.FieldCondition(
+            key="status", match=models.MatchValue(value="veraltet"))))
+    if nur_arten:
+        bedingungen.append(("must", models.FieldCondition(
+            key="art", match=models.MatchAny(any=list(nur_arten)))))
+    if not bedingungen:
         return None
-    return models.Filter(must_not=[
-        models.FieldCondition(key="status", match=models.MatchValue(value="veraltet"))
-    ])
+    return models.Filter(
+        must=[c for art, c in bedingungen if art == "must"] or None,
+        must_not=[c for art, c in bedingungen if art == "must_not"] or None,
+    )
 
 
-def hybrid_search(query, top_k=TOP_K, rerank=True, nur_aktuell=NUR_AKTUELL, modus="hybrid"):
+def hybrid_search(query, top_k=TOP_K, rerank=True, nur_aktuell=NUR_AKTUELL, modus="hybrid",
+                  nur_arten=None):
     """modus: hybrid (dense+BM25 via RRF) | dense | bm25 — die Einzelmodi dienen dem Vergleich in der Eval.
 
     rerank: True/„rang" (ein Lauf, Rangfolge) | „konsens" (Mehrheitsentscheid) | False (aus).
+    nur_arten: Dokumentarten, auf die eingeschränkt wird, z. B. ["richtlinie", "rahmenplan"].
     """
     cand = max(top_k * 4, 20)  # mehr Kandidaten holen, dann herunter-reranken
-    filt = _gueltig_filter(nur_aktuell)  # schon im Prefetch, sonst verdrängen veraltete Treffer die gültigen
+    # schon im Prefetch, sonst verdrängen veraltete oder artfremde Treffer die gesuchten
+    filt = _gueltig_filter(nur_aktuell, nur_arten)
     if modus == "dense":
         res = _c().query_points(collection_name=COLLECTION, query=embed(query)[0], using="dense",
                                 query_filter=filt, limit=cand, with_payload=True).points

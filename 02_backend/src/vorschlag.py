@@ -117,7 +117,24 @@ def _felder_text(felder):
     return "\n".join(zeilen)
 
 
-def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None):
+# Die Sorten von Abfragen aus dem Prozessmodell, mit dem Korpusausschnitt, den sie sehen.
+#
+# Nur die Sorte „vorschlagen" steht hier, weil nur für sie das Modell einen allgemeinen
+# Filter nennt — und zwar dreimal wörtlich: „Prompt generieren Dokumente: Nur alte RL des
+# Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)". Für die Sorten „übernehmen" und
+# „belegen" benennt das Modell jeweils ein bestimmtes Dokument, keinen Ausschnitt nach Art;
+# die bekommen ihren Filter deshalb vom Aufrufer und keinen Namen hier.
+#
+# Der Unterschied ist haftungsrelevant, nicht technisch: ein Fund aus einer Vorschrift ist
+# Wortlaut mit Fundstelle, ein Vorschlag aus einer fremden Richtlinie ist ein Entwurf zur
+# Bestätigung. Sieht beides gleich aus, wird eine Anlehnung für eine Rechtsgrundlage
+# gehalten.
+ABFRAGEARTEN = {
+    "vorschlagen": ["richtlinie", "rahmenplan"],
+}
+
+
+def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None):
     """Belegstellen zum Anliegen: Hybrid-Suche, dann Satzfilter. Nur Nachweis, keine Werte.
 
     `uhr`: optionales Wörterbuch, in das die Teilzeiten geschrieben werden. Die beiden
@@ -126,7 +143,7 @@ def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None):
     wissen, welcher von beiden es ist.
     """
     t0 = time.monotonic()
-    treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k)
+    treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k, nur_arten=nur_arten)
     bloecke = bloecke_bilden(treffer)
     if uhr is not None:
         uhr["belege_suche"] = round(time.monotonic() - t0, 1)
@@ -317,13 +334,16 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe=""):
 
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
-                konsens=False, mit_belegen=True):
+                konsens=False, mit_belegen=True, abfrageart=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
     konsens: den Vorschlag mehrfach holen und abstimmen, siehe `_abstimmen`. Dreifache
         Kosten, dafür eine gemessene Konfidenz statt der Selbstauskunft des Modells.
     mit_belegen: Fundstellen aus dem Korpus holen und in den Prompt geben.
+    abfrageart: Sorte der Abfrage nach dem Prozessmodell, siehe `ABFRAGEARTEN`. Schränkt den
+        sichtbaren Korpusausschnitt ein und steht im Nachweis, damit die Oberfläche einen
+        Vorschlag nicht wie einen Fund darstellt.
 
     Zu `mit_belegen`: die Suche kostet rund die Hälfte der Antwortzeit, und ob sie beim
     FORMULIEREN etwas beiträgt, ist offen. Der Wert entsteht aus Musterbaustein und
@@ -343,8 +363,14 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
     rahmen_txt = _rahmen_text(bausteine)
     uhr["musterbausteine"] = round(time.monotonic() - t0, 1)
 
+    if abfrageart and abfrageart not in ABFRAGEARTEN:
+        raise ValueError(f"Unbekannte Abfrageart {abfrageart!r}, "
+                         f"bekannt sind {sorted(ABFRAGEARTEN)}")
+    nur_arten = ABFRAGEARTEN.get(abfrageart)
+
     if mit_belegen:
-        bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr)
+        bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr,
+                                      nur_arten=nur_arten)
     else:
         bloecke, metas = [], []
     belege = "\n\n".join(
@@ -443,6 +469,10 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         # habe ich einen Umschlag von 2/3 auf 0/3 nicht erklären können.
         "modelle": modelle,
         "dauer_s": uhr,
+        # Die Sorte der Abfrage gehört zum Nachweis und nicht nur in den Aufruf: an ihr
+        # hängt, ob die Oberfläche eine Fundstelle als Rechtsgrundlage oder als Vorbild
+        # aus einer fremden Richtlinie ausweisen muss.
+        "abfrageart": abfrageart,
         "fundstellen": [b["fundstelle"] for b in bloecke],
         # Der zusammengesetzte Belegtext, damit Aufrufer die Abschreibprüfung wiederholen
         # können, ohne Suche und Satzfilter ein zweites Mal laufen zu lassen — das kostet

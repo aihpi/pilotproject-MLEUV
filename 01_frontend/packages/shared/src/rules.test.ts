@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  abfrageartFuer,
   emptySections,
   nextChatStage,
   sections,
@@ -73,5 +74,26 @@ describe("rules", () => {
     expect(next?.fieldIds).toEqual(["goal", "purpose"]);
     expect(next?.question).toContain("Ziel der Förderung");
     expect(next?.question).toContain("Zuwendungszweck");
+  });
+});
+
+// Modell: „Nur alte RL des Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)."
+describe("Abfragesorte nach Zielfeld", () => {
+  it("Voraussetzungen kommen aus früheren Richtlinien", () => {
+    expect(abfrageartFuer(["requirements"])).toBe("vorschlagen");
+  });
+
+  it("fachliche Ausschlüsse und Zuwendungsbestimmungen ebenso", () => {
+    expect(abfrageartFuer(["exclusions"])).toBe("vorschlagen");
+    expect(abfrageartFuer(["otherConditions"])).toBe("vorschlagen");
+  });
+
+  it("ein Vorschlagsfeld in der Menge genügt", () => {
+    expect(abfrageartFuer(["subject", "requirements"])).toBe("vorschlagen");
+  });
+
+  it("sonst keine Sorte — dann sieht die Suche den ganzen Korpus", () => {
+    expect(abfrageartFuer(["goal", "purpose"])).toBeUndefined();
+    expect(abfrageartFuer([])).toBeUndefined();
   });
 });

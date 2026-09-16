@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { Document, Packer, Paragraph, HeadingLevel } from "docx";
 import {
+  abfrageartFuer,
   draftSchema,
   emptySections,
   chatStages,
@@ -216,19 +217,31 @@ async function holeVorschlaege(
   sectionId: string,
   eingabe: string,
   felder: { id: string; label: string; kind: string; options?: { value: string; label: string }[] }[],
-): Promise<DienstVorschlag[]> {
+): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean }> {
   // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
   // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
   const abbruch = AbortSignal.timeout(180_000);
+  // Die Abfragesorte ergibt sich aus den Zielfeldern, siehe VORSCHLAGSFELDER in shared. Sie
+  // wird hier bestimmt und nicht im Dienst: welche Felder gerade gefüllt werden, weiß nur
+  // diese Seite.
+  const abfrageart = abfrageartFuer(felder.map((f) => f.id));
   const res = await fetch(`${VORSCHLAG_URL}/vorschlag`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ abschnitt_nr: Number(sectionId), eingabe, felder }),
+    body: JSON.stringify({ abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart }),
     signal: abbruch,
   });
   if (!res.ok) throw new Error(`Vorschlagsdienst: HTTP ${res.status}`);
-  const daten = (await res.json()) as { vorschlaege: DienstVorschlag[] };
-  return daten.vorschlaege ?? [];
+  const daten = (await res.json()) as {
+    vorschlaege: DienstVorschlag[];
+    nachweis?: { abfrageart?: string | null };
+  };
+  // Die Sorte kommt aus der ANTWORT zurück und wird nicht aus der Anfrage übernommen: was
+  // der Dienst tatsächlich gesehen hat, weiß nur er.
+  return {
+    vorschlaege: daten.vorschlaege ?? [],
+    vorbild: daten.nachweis?.abfrageart === "vorschlagen",
+  };
 }
 
 app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
@@ -247,7 +260,7 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   let proposals: FieldProposal[] = [];
   let hinweis = "";
   try {
-    const geliefert = await holeVorschlaege(
+    const { vorschlaege: geliefert, vorbild } = await holeVorschlaege(
       stage.sectionId,
       message.trim(),
       targets.map((f) => ({
@@ -273,6 +286,8 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
         ...(v.belegzitat ? { belegzitat: v.belegzitat } : {}),
         ...(v.fundstelle ? { fundstelle: v.fundstelle } : {}),
         ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
+        // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
+        ...(vorbild && v.fundstelle ? { vorbild: true } : {}),
       }));
     const offen = geliefert.filter((v) => v.status === "unklar").map((v) => v.label);
     if (offen.length)

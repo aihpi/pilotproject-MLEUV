@@ -22,7 +22,14 @@
 .herkunft__quelle{color:var(--color-text-muted)}
 .herkunft q{font-style:italic}
 .herkunft__leer{color:var(--warning);font-weight:700}
-@media(max-width:700px){.herkunft__marke{display:block;min-width:0}}
+/* Vorbild aus einer früheren Richtlinie — bindend ist daran nichts, deshalb abgesetzt vom
+   Beleg. Farbe allein trüge die Unterscheidung nicht; sie steht ausgeschrieben daneben. */
+.herkunft__vorbild .herkunft__marke{color:var(--warning)}
+.herkunft__warnung{display:block;margin-left:9.5rem;color:var(--warning);font-weight:700}
+@media(max-width:700px){
+  .herkunft__marke{display:block;min-width:0}
+  .herkunft__warnung{margin-left:0}
+}
 
 /* Rechtsstelle und Fundstelle an einem Prüfhinweis. */
 .befund__stelle{display:block;color:var(--color-text-muted);font-size:.88rem}

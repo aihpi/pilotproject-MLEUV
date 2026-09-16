@@ -174,6 +174,16 @@ export interface FieldProposal {
   belegzitat?: string;
   fundstelle?: string;
   musterbaustein?: string;
+  /**
+   * Die Fundstelle ist ein VORBILD aus einer früheren Richtlinie, keine Rechtsgrundlage.
+   *
+   * Gesetzt, wenn die Abfrage von der Sorte „vorschlagen" war — dann sieht die Suche nur
+   * frühere Richtlinien und Rahmenpläne, und was sie liefert, ist die bisherige Praxis und
+   * keine Vorschrift. Das Prozessmodell trennt beides, und der Unterschied ist
+   * haftungsrelevant: eine Anlehnung an eine fremde Richtlinie darf nicht wie eine
+   * Rechtsgrundlage aussehen.
+   */
+  vorbild?: boolean;
 }
 export interface ChatExtraction {
   id: string;
@@ -718,6 +728,26 @@ export function nextChatStage(draft: RichtlinieDraft): ChatStage | null {
 export function emptySections(): Record<string, SectionData> {
   return Object.fromEntries(sections.map((s) => [s.id, { fields: {} }]));
 }
+/**
+ * Felder, für die das Prozessmodell einen KI-Vorschlag aus früheren Richtlinien vorsieht.
+ *
+ * Das Modell führt dafür eigene Aufgaben — „KI-Vorschlag für Voraussetzungen aus bisherigen
+ * Eingaben", „KI-Vorschlag für Fachliche Ausschlüsse", „KI-Vorschlag zu fachlichen
+ * Zuwendungsbestimmungen" — und schreibt jeder von ihnen denselben Korpusausschnitt vor:
+ * „Nur alte RL des Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)".
+ *
+ * Der Grund steht als Beispiel daneben: „Bspw. Tierheime RL enthält ähnliche
+ * Voraussetzungen für neue Streichelzoo RL". Hier wird nicht aus einer Vorschrift
+ * übernommen, sondern nach dem Vorbild eines früheren Verfahrens entworfen — und was dabei
+ * herauskommt, ist ein Entwurf zur Bestätigung und keine Rechtsgrundlage.
+ */
+export const VORSCHLAGSFELDER = ["requirements", "exclusions", "otherConditions"];
+
+/** Die Abfragesorte für eine Menge von Zielfeldern, oder keine. */
+export function abfrageartFuer(fieldIds: string[]): "vorschlagen" | undefined {
+  return fieldIds.some((id) => VORSCHLAGSFELDER.includes(id)) ? "vorschlagen" : undefined;
+}
+
 export function fieldVisible(
   field: FieldDefinition,
   profile: FundingProfile,

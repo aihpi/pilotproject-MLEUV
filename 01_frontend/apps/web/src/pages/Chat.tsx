@@ -49,11 +49,29 @@ function Herkunft({ p }: { p: FieldProposal }) {
           {p.musterbaustein}
         </p>
       )}
+      {/*
+        Vorbild und Beleg sind verschiedene Dinge, und der Unterschied ist haftungsrelevant.
+        Ein BELEG ist die Regel, nach der formuliert werden musste. Ein VORBILD ist eine
+        frühere Richtlinie, in der etwas Ähnliches geregelt wurde — bindend ist daran
+        nichts. Sähe beides gleich aus, würde eine Anlehnung für eine Rechtsgrundlage
+        gehalten. Das Prozessmodell trennt die beiden Abfragesorten genau deshalb.
+      */}
       {p.belegzitat && (
-        <p>
-          <span className="herkunft__marke">Beleg</span>
+        <p className={p.vorbild ? "herkunft__vorbild" : undefined}>
+          <span className="herkunft__marke">{p.vorbild ? "Vorbild" : "Beleg"}</span>
           <q>{p.belegzitat}</q>
-          {p.fundstelle && <span className="herkunft__quelle"> — {p.fundstelle}</span>}
+          {p.fundstelle && (
+            <span className="herkunft__quelle">
+              {p.vorbild ? " — so geregelt in " : " — "}
+              {p.fundstelle}
+            </span>
+          )}
+          {p.vorbild && (
+            <span className="herkunft__warnung">
+              {" "}
+              Keine Rechtsgrundlage, sondern bisherige Praxis. Bitte fachlich bestätigen.
+            </span>
+          )}
         </p>
       )}
       {nichts && (

@@ -106,4 +106,45 @@ describe("Herkunft im Vorschlagskasten", () => {
     expect(text).toContain("aus dem Regelfall abgeleitet");
     expect(text).toContain("40 %");
   });
+
+  // Das Prozessmodell trennt Fund und Vorschlag. Sähe eine Anlehnung an eine fremde
+  // Richtlinie aus wie eine Fundstelle in der VV, würde sie für eine Rechtsgrundlage
+  // gehalten — der teuerste Fehler, den die Darstellung machen kann.
+  it("weist ein Vorbild aus einer fremden Richtlinie als solches aus", async () => {
+    const { api } = await import("./api");
+    vi.mocked(api.chat).mockResolvedValue({
+      ...antwort,
+      extraction: {
+        ...antwort.extraction,
+        proposals: [{
+          ...antwort.extraction.proposals[0]!,
+          vorbild: true,
+          fundstelle: "Richtlinie Tierheimförderung, Nummer 4.1",
+        }],
+      },
+    });
+    const { container } = zeichnen();
+    const eingabe = await screen.findByLabelText("Ihre Antwort");
+    fireEvent.change(eingabe, { target: { value: "Voraussetzungen?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Antwort senden" }));
+
+    await waitFor(() => expect(screen.getByText("Das habe ich verstanden")).toBeInTheDocument());
+    const text = container.textContent ?? "";
+    expect(text).toContain("Vorbild");
+    expect(text).toContain("so geregelt in");
+    expect(text).toContain("Keine Rechtsgrundlage");
+    // Und ausdrücklich NICHT als Beleg beschriftet.
+    expect(screen.queryByText("Beleg")).toBeNull();
+  });
+
+  it("ohne Vorbild bleibt es ein Beleg", async () => {
+    zeichnen();
+    const eingabe = await screen.findByLabelText("Ihre Antwort");
+    fireEvent.change(eingabe, { target: { value: "Tierheime fördern" } });
+    fireEvent.click(screen.getByRole("button", { name: "Antwort senden" }));
+
+    await waitFor(() => expect(screen.getByText("Das habe ich verstanden")).toBeInTheDocument());
+    expect(screen.getByText("Beleg")).toBeInTheDocument();
+    expect(screen.queryByText("Vorbild")).toBeNull();
+  });
 });
