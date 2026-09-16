@@ -24,7 +24,8 @@ from transformers import AutoTokenizer
 from llm import embed
 from sparse import sparse_many
 from config import (QDRANT_URL, COLLECTION, CORPUS_DIR, MAX_DOCS, OCR_ENABLED,
-                    CHUNK_TOKENIZER, EMBED_BATCH, RECREATE, CORPUS_PREFIXES, PARENT_MAX_CHARS,
+                    CHUNK_TOKENIZER, EMBED_BATCH, RECREATE, CORPUS_PREFIXES, NUR_REGISTRIERT,
+                    TEXTLAYER_MIN_ZEICHEN, TEXTLAYER_ANTEIL, PARENT_MAX_CHARS,
                     veraltete_dokumente)
 
 DOC_GLOBS = ("*.pdf", "*.docx")
@@ -55,6 +56,12 @@ def find_docs(root, limit):
     out = [p for p in out if not os.path.basename(p).startswith(".")]
     if CORPUS_PREFIXES:
         out = [p for p in out if _prefix(p) in CORPUS_PREFIXES]
+    if NUR_REGISTRIERT:
+        from adressierung import register
+        reg = register()
+        vorher = len(out)
+        out = [p for p in out if os.path.basename(p) in reg]
+        print(f"Nur registrierte Dokumente: {len(out)} von {vorher} Dateien.")
     return sorted(out)[:limit]
 
 
@@ -88,6 +95,68 @@ def embed_batch(texts, retries=4):
             wait = 2 ** attempt
             print(f"  Embedding-Fehler ({type(e).__name__}); Retry in {wait}s")
             time.sleep(wait)
+
+
+def textlayer(path):
+    """Roher Textlayer je Seite, ohne Layoutanalyse. Ergibt [] für alles außer PDF."""
+    if not path.lower().endswith(".pdf"):
+        return []
+    import pypdfium2
+    doc = pypdfium2.PdfDocument(path)
+    try:
+        return [doc[i].get_textpage().get_text_range() for i in range(len(doc))]
+    except Exception:
+        return []
+    finally:
+        doc.close()
+
+
+def _stuecke(text, max_zeichen=1500):
+    """Text in embedbare Stücke teilen, an der jeweils größten noch passenden Grenze.
+
+    Drei Stufen, absteigend: Leerzeile, Zeilenumbruch, harte Kappung. Der Textlayer eines
+    Schaubilds kennt keine Absätze — die Kästen kommen als eine einzige Zeilenfolge ohne
+    Leerzeile. Eine Teilung, die nur Absätze kennt, gibt dort alles am Stück zurück, und die
+    Seite landet als ein einziger übergroßer Chunk im Index, wo sie stillschweigend
+    abgeschnitten werden kann.
+    """
+    def teilen(stueck, muster):
+        raus, puffer = [], ""
+        for teil in re.split(muster, stueck):
+            teil = teil.strip()
+            if not teil:
+                continue
+            if puffer and len(puffer) + len(teil) + 1 > max_zeichen:
+                raus.append(puffer)
+                puffer = teil
+            else:
+                puffer = f"{puffer}\n{teil}".strip()
+        if puffer:
+            raus.append(puffer)
+        return raus
+
+    raus = []
+    for absatz in teilen(text, r"\n\s*\n"):
+        if len(absatz) <= max_zeichen:
+            raus.append(absatz)
+            continue
+        for zeilig in teilen(absatz, r"\n"):
+            while len(zeilig) > max_zeichen:       # eine einzelne überlange Zeile
+                raus.append(zeilig[:max_zeichen])
+                zeilig = zeilig[max_zeichen:]
+            if zeilig:
+                raus.append(zeilig)
+    return raus
+
+
+def aus_textlayer(path):
+    """Sub-Chunks samt Seitenzahl aus dem rohen Textlayer. Ergibt (texte, seiten)."""
+    texte, seiten = [], []
+    for nr, seite in enumerate(textlayer(path), 1):
+        for stueck in _stuecke(unicodedata.normalize("NFC", seite)):
+            texte.append(stueck)
+            seiten.append([nr])
+    return texte, seiten
 
 
 def pages_of(chunk):
@@ -134,11 +203,39 @@ def main():
             continue
 
         chunks = [c for c in chunker.chunk(doc) if (c.text or "").strip()]
-        if not chunks:
-            print(f"  [leer] {name}")
-            continue
         subs = [unicodedata.normalize("NFC", c.text.strip()) for c in chunks]
         headings = [" > ".join(getattr(c.meta, "headings", None) or []) for c in chunks]
+        seiten = [pages_of(c) for c in chunks]
+
+        # Rückfall auf den rohen Textlayer.
+        #
+        # docling stuft Kästen und Pfeile eines Schaubilds als Grafik ein und wirft ihren
+        # Text weg. Bei einem Entscheidungsbaum aus dem Korpus blieben von 2.625 Zeichen ein
+        # einziger Chunk mit einem Intranet-Link übrig; die Prüffragen und ihre
+        # Schwellenwerte standen als Text im PDF und fielen trotzdem weg.
+        #
+        # Deshalb hier kein Sonderfall für diese Datei, sondern eine Schranke: verliert die
+        # Layoutanalyse den Großteil des vorhandenen Textes, wird der rohe Textlayer
+        # genommen. Er hat keine Überschriften und keine Gliederung, aber er hat den Inhalt.
+        #
+        # Die Schranke steht bei 30 Prozent und nicht höher: docling entfernt zu Recht
+        # Kopf- und Fußzeilen, und ein Dokument, dessen Seitenzahlen und Behördenkopf
+        # wegfallen, ist gesund. Wer zwei Drittel verliert, ist es nicht.
+        roh_seiten = textlayer(path)
+        roh = sum(len(t) for t in roh_seiten)
+        erkannt = sum(len(s) for s in subs)
+        if roh >= TEXTLAYER_MIN_ZEICHEN and erkannt < roh * TEXTLAYER_ANTEIL:
+            ersatz, ersatz_seiten = aus_textlayer(path)
+            if ersatz:
+                anteil = 100 * erkannt // max(roh, 1)
+                print(f"  [Textlayer] {name}: Layoutanalyse ergab nur {anteil} % des "
+                      f"vorhandenen Textes ({erkannt} von {roh} Zeichen), nehme den Textlayer")
+                subs, seiten = ersatz, ersatz_seiten
+                headings = [""] * len(subs)
+
+        if not subs:
+            print(f"  [leer] {name}")
+            continue
 
         # Parent = Sub-Chunks gleicher Überschrift; leere Überschrift -> eigener Parent
         keys = [h or f"__c{i}" for i, h in enumerate(headings)]
@@ -154,7 +251,7 @@ def main():
         svecs = sparse_many(subs)
 
         points = []
-        for idx, (c, t, h, k, dv, sv) in enumerate(zip(chunks, subs, headings, keys, dvecs, svecs)):
+        for idx, (sn, t, h, k, dv, sv) in enumerate(zip(seiten, subs, headings, keys, dvecs, svecs)):
             points.append(models.PointStruct(
                 id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{name}:{idx}")),
                 vector={"dense": dv, "bm25": sv},
@@ -164,7 +261,7 @@ def main():
                     "parent_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{name}:{k}")),
                     "quelle": name,
                     "abschnitt": h,
-                    "seiten": pages_of(c),
+                    "seiten": sn,
                     "rechtsebene": ebene,
                     "status": status,
                     "chunk_index": idx,

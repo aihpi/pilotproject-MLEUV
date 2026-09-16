@@ -91,4 +91,22 @@ CHUNK_TOKENIZER = os.getenv("CHUNK_TOKENIZER", "sentence-transformers/paraphrase
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "16"))
 RECREATE = os.getenv("RECREATE", "true").lower() == "true"  # Collection bei jedem Lauf neu (Dev)
 CORPUS_PREFIXES = [p.strip() for p in os.getenv("CORPUS_PREFIXES", "").split(",") if p.strip()]  # z.B. "03,04,08"; leer = alle
+# Nur einlesen, was im Dokumentregister steht.
+#
+# Ein Ordner enthält nicht nur Regelwerk. Der vertrauliche Ordner 06 etwa besteht zu vier
+# Fünfteln aus Formularen des Bewilligungsverfahrens — acht fast wortgleiche Bescheidmuster,
+# Antragsvordrucke, Kontroll-Checklisten. Die helfen beim Schreiben einer Richtlinie nicht
+# und konkurrieren bei jeder Suche mit.
+#
+# Das Register entscheidet ohnehin schon über Identität, Art und Zitierweise eines
+# Dokuments. Mit diesem Schalter entscheidet es auch über die Aufnahme: Was aufgenommen
+# werden soll, wird registriert — und bekommt damit zugleich eine Adresse. Ein Dokument
+# ohne Registereintrag wäre ohnehin halb blind, weil der Filter nach Dokumentart es
+# aussortiert.
+NUR_REGISTRIERT = os.getenv("NUR_REGISTRIERT", "false").lower() == "true"
+# Rückfall auf den rohen Textlayer, wenn die Layoutanalyse ein Dokument verliert — siehe
+# die Begründung in ingest.py. Greift erst ab einer Textmenge, bei der ein Verlust auch
+# etwas bedeutet; ein Deckblatt mit 200 Zeichen soll keinen Rückfall auslösen.
+TEXTLAYER_MIN_ZEICHEN = int(os.getenv("TEXTLAYER_MIN_ZEICHEN", "1000"))
+TEXTLAYER_ANTEIL = float(os.getenv("TEXTLAYER_ANTEIL", "0.3"))
 PARENT_MAX_CHARS = int(os.getenv("PARENT_MAX_CHARS", "6000"))  # Kappung des Eltern-Chunks (LLM-Kontext)
