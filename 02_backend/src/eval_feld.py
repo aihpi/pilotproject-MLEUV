@@ -66,9 +66,17 @@ def pruefe_feld(erwartung, v, bloecke_text):
 
     if erwartung.get("eigenstaendig"):
         # Der Kern: der Wert darf nicht wörtlich aus einer abgerufenen Passage stammen.
-        abgeschrieben = bool(wert) and not ist_unklar and _woertlich_in(wert, bloecke_text)
-        ergebnisse.append((not abgeschrieben, "eigenständig formuliert",
-                           "abgeschrieben" if abgeschrieben else "eigen"))
+        #
+        # Ohne Belegtext ist die Prüfung NICHT anwendbar, und sie darf dann auch nicht als
+        # bestanden zählen. Sonst gewinnt ein Durchgang ohne Belege genau dort geschenkt, wo
+        # der Vergleich hinschaut: es gibt nichts, woraus abgeschrieben werden könnte, also
+        # besteht die Prüfung immer. Drei von zwanzig Prüfungen im Satz hängen daran.
+        if not (bloecke_text or "").strip():
+            ergebnisse.append((None, "eigenständig formuliert", "ohne Belege nicht prüfbar"))
+        else:
+            abgeschrieben = bool(wert) and not ist_unklar and _woertlich_in(wert, bloecke_text)
+            ergebnisse.append((not abgeschrieben, "eigenständig formuliert",
+                               "abgeschrieben" if abgeschrieben else "eigen"))
 
     if erwartung.get("gedeckt"):
         ergebnisse.append((bool(v.get("deckung")), "Deckung nachgewiesen",
@@ -93,10 +101,16 @@ def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
     # Derselbe Belegtext, den das Modell gesehen hat — aus dem Nachweis, nicht neu geholt.
     bloecke_text = nachweis.get("belegtext", "")
 
-    zeilen, bestanden, gesamt = [], 0, 0
+    zeilen, bestanden, gesamt, entfallen = [], 0, 0, 0
     for feld_id, erwartung in (fall.get("erwartet") or {}).items():
         for ok, kennung, beobachtung in pruefe_feld(
                 erwartung, nach_feld.get(feld_id), bloecke_text):
+            # `None` heißt „nicht anwendbar" — zählt weder als bestanden noch als Versuch,
+            # sonst wäre die Quote zweier Durchgänge nicht vergleichbar.
+            if ok is None:
+                entfallen += 1
+                zeilen.append((None, feld_id, kennung, beobachtung))
+                continue
             gesamt += 1
             bestanden += ok
             zeilen.append((ok, feld_id, kennung, beobachtung))
@@ -105,7 +119,7 @@ def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
             print(f"      {v['feld']:11} K{v['konfidenz']} {str(v['wert'])[:70]!r}")
         for b in nachweis.get("befunde", []):
             print(f"      ! {b}")
-    return bestanden, gesamt, zeilen, nachweis.get("modelle") or []
+    return bestanden, gesamt, zeilen, nachweis.get("modelle") or [], entfallen
 
 
 def main():
@@ -136,11 +150,12 @@ def main():
         # Je Prüfung zählen, wie oft sie bestanden wurde. Eine Prüfung, die mal grün und mal
         # rot ist, ist etwas anderes als eine, die immer rot ist — und nur die Aufschlüsselung
         # zeigt den Unterschied.
-        quoten, fehlgeschlagen, gesehene_modelle = {}, 0, []
+        quoten, fehlgeschlagen, gesehene_modelle, nicht_pruefbar = {}, 0, [], set()
         for n in range(args.laeufe):
             try:
-                b, g, zeilen, modelle = lauf(fall, felder_def, args.ausfuehrlich, args.konsens,
-                                             mit_belegen=not args.ohne_belege)
+                b, g, zeilen, modelle, _entfallen = lauf(
+                    fall, felder_def, args.ausfuehrlich, args.konsens,
+                    mit_belegen=not args.ohne_belege)
             except Exception as e:                      # Endpunkt weg, Zeitlimit, JSON kaputt
                 print(f"  Lauf {n + 1}: FEHLER {type(e).__name__}: {str(e)[:80]}")
                 fehlgeschlagen += 1
@@ -148,6 +163,9 @@ def main():
             gesehene_modelle += modelle
             summe_b, summe_g = summe_b + b, summe_g + g
             for ok, feld_id, kennung, beobachtung in zeilen:
+                if ok is None:                      # nicht anwendbar, siehe `lauf`
+                    nicht_pruefbar.add(f"{feld_id}: {kennung} — {beobachtung}")
+                    continue
                 schluessel = (feld_id, kennung)
                 treffer, versuche, gesehen = quoten.get(schluessel, (0, 0, []))
                 if not ok:
@@ -166,6 +184,10 @@ def main():
                 wackelig.append(f"{fall['id']} {feld_id}: {kennung}")
         stabil = sum(1 for t, v, _ in quoten.values() if t == v)
         print(f"  {stabil}/{len(quoten)} Prüfungen in allen {gueltige} Läufen bestanden")
+        # Ausgewiesen, nicht verschwiegen: eine entfallene Prüfung ist kein Erfolg, und ein
+        # Vergleich zweier Durchgänge ist nur mit dieser Zahl zu lesen.
+        for n in sorted(nicht_pruefbar):
+            print(f"  entfallen: {n}")
         # Welches Modell geantwortet hat, gehört neben jede Messung: wechselt der Cluster
         # still das Modell, verschieben sich die Zahlen ohne Zutun des Prompts.
         verteilung = Counter(gesehene_modelle)
