@@ -507,30 +507,74 @@ app.get("/api/drafts/:id/preview", async (req) => {
     })),
   };
 });
+/**
+ * Die Richtlinie als Word-Datei — das Dokument, das am Ende weitergegeben wird.
+ *
+ * Hier stand bis zuletzt eine Formularliste: „Bagatellgrenze in Euro: 1000", Feld für Feld.
+ * Das ist eine Zusammenstellung der Angaben, keine Richtlinie. Sobald ein Text erzeugt
+ * wurde, wird er ausgegeben — nummerierte Abschnitte, Fließtext, sonst nichts.
+ *
+ * Ohne Anmerkungen, ohne Befunde, ohne Herkunftsangaben. Die gehören in die Arbeitsansicht
+ * und in den Prüfvermerk, nicht in das Dokument, das an das MdFE geht. Das Konzeptpapier
+ * verlangt zwei Arbeitsergebnisse, nicht eines mit Randnotizen.
+ *
+ * Ist der Text älter als der Entwurf, wird NICHT ausgegeben. Eine Word-Datei, die still
+ * einen überholten Stand trägt, ist genau der Fehler, den dieses Werkzeug verhindern soll —
+ * sie sieht fertig aus und niemand sieht ihr das Alter an.
+ */
 app.post("/api/drafts/:id/export", async (req, reply) => {
   const d = get((req.params as { id: string }).id);
-  const children = [
-    new Paragraph({ text: d.title, heading: HeadingLevel.TITLE }),
-    ...sections.flatMap((s) => {
-      const vals = s.fields
-        .map((f) => ({ f, v: d.sections[s.id]?.fields[f.id]?.value }))
-        .filter((x) => x.v != null && x.v !== "");
-      return vals.length
-        ? [
+  const text = d.richtlinientext;
+
+  if (text && textVeraltet(d))
+    return reply.code(409).send({
+      message:
+        "Der erzeugte Text ist älter als der Entwurf. Erzeugen Sie ihn neu, bevor Sie " +
+        "ihn ausgeben — sonst enthält die Datei einen überholten Stand.",
+    });
+
+  const children = text
+    ? [
+        new Paragraph({ text: d.title, heading: HeadingLevel.TITLE }),
+        ...text.abschnitte
+          .filter((a) => a.text.trim())
+          .flatMap((a) => [
             new Paragraph({
-              text: `${s.id}. ${s.title}`,
+              text: `${a.nr}. ${sections.find((s) => s.id === String(a.nr))?.title ?? ""}`,
               heading: HeadingLevel.HEADING_1,
             }),
-            ...vals.map(
-              ({ f, v }) =>
+            new Paragraph({ text: a.text }),
+          ]),
+      ]
+    : [
+        // Ohne erzeugten Text bleibt nur die Zusammenstellung der Angaben. Sie wird als
+        // solche überschrieben, damit niemand sie für eine Richtlinie hält.
+        new Paragraph({ text: d.title, heading: HeadingLevel.TITLE }),
+        new Paragraph({
+          text:
+            "Zusammenstellung der erfassten Angaben. Dies ist noch kein Richtlinientext — " +
+            "erzeugen Sie ihn über „Richtlinientext“.",
+        }),
+        ...sections.flatMap((s) => {
+          const vals = s.fields
+            .map((f) => ({ f, v: d.sections[s.id]?.fields[f.id]?.value }))
+            .filter((x) => x.v != null && x.v !== "");
+          return vals.length
+            ? [
                 new Paragraph({
-                  text: `${f.label}: ${Array.isArray(v) ? v.join(", ") : String(v)}`,
+                  text: `${s.id}. ${s.title}`,
+                  heading: HeadingLevel.HEADING_1,
                 }),
-            ),
-          ]
-        : [];
-    }),
-  ];
+                ...vals.map(
+                  ({ f, v }) =>
+                    new Paragraph({
+                      text: `${f.label}: ${Array.isArray(v) ? v.join(", ") : String(v)}`,
+                    }),
+                ),
+              ]
+            : [];
+        }),
+      ];
   const buffer = await Packer.toBuffer(
     new Document({ sections: [{ children }] }),
   );
@@ -543,6 +587,58 @@ app.post("/api/drafts/:id/export", async (req, reply) => {
       "content-disposition",
       `attachment; filename="richtlinie-${d.id}.docx"`,
     )
+    .send(buffer);
+});
+
+/**
+ * Der Prüfvermerk als eigenes Dokument — das Anschreiben an das MdFE.
+ *
+ * Das zweite Arbeitsergebnis, das Doc 12 neben der Richtlinie verlangt. Getrennt und nicht
+ * als Anhang: die Richtlinie wird veröffentlicht, das Anschreiben geht ans Finanzministerium.
+ * Wer beides in einer Datei hat, gibt irgendwann das Falsche weiter.
+ *
+ * Offene Punkte werden mit ausgegeben und als offen bezeichnet. Sie wegzulassen hiesse, ein
+ * unvollständiges Anschreiben vollständig aussehen zu lassen.
+ */
+app.post("/api/drafts/:id/export/vermerk", async (req, reply) => {
+  const d = get((req.params as { id: string }).id);
+  const eintraege = (d.vermerk ?? []).filter((v) => v.status !== "gegenstandslos");
+
+  const stand: Record<string, string> = {
+    offen: "OFFEN — Begründung fehlt",
+    beantwortet: "begründet, noch nicht bestätigt",
+    bestaetigt: "begründet und bestätigt",
+    gegenstandslos: "gegenstandslos",
+  };
+
+  const children = [
+    new Paragraph({ text: `Prüfvermerk zu: ${d.title}`, heading: HeadingLevel.TITLE }),
+    new Paragraph({
+      text:
+        eintraege.length === 0
+          ? "Es sind keine begründungspflichtigen Abweichungen festgestellt worden."
+          : "Begründungspflichtige Abweichungen von den Vorgaben nach § 44 LHO:",
+    }),
+    ...eintraege.flatMap((v) => [
+      new Paragraph({
+        text: `Baustein ${v.sectionId} — ${v.regel}`,
+        heading: HeadingLevel.HEADING_1,
+      }),
+      ...(v.rechtsstelle ? [new Paragraph({ text: `Rechtsstelle: ${v.rechtsstelle}` })] : []),
+      new Paragraph({ text: `Feststellung: ${v.beurteilung}` }),
+      new Paragraph({
+        text: `Begründung: ${v.begruendung ?? "— fehlt —"}`,
+      }),
+      new Paragraph({ text: `Stand: ${stand[v.status] ?? v.status}` }),
+    ]),
+  ];
+  const buffer = await Packer.toBuffer(new Document({ sections: [{ children }] }));
+  return reply
+    .header(
+      "content-type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    .header("content-disposition", `attachment; filename="pruefvermerk-${d.id}.docx"`)
     .send(buffer);
 });
 
