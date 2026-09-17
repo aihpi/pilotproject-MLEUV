@@ -16,17 +16,25 @@ langsam; für den Durchstich reicht es. Wer das später beschleunigen will, fän
 Satzfilter an, der über mehrere Stapel geht.
 """
 import os
+import tempfile
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+import pruefmodus
+import richtlinie
 import vorschlag
 from adressierung import register
 from config import TOP_K, CORPUS_DIR, HOLDOUT_DATEIEN
 
 app = FastAPI(title="MLEUV Feldvorschläge", version="0.1.0")
+
+# Obergrenze für einen hochgeladenen Entwurf. Die Richtlinien im Korpus liegen
+# zwischen 140 KB und 4 MB; 20 MB lassen Luft für Scans und begrenzen trotzdem,
+# was ein Fehlgriff an Arbeitsspeicher kostet.
+PRUEFUNG_MAX_BYTES = 20 * 1024 * 1024
 
 
 class Option(BaseModel):
@@ -118,6 +126,86 @@ def gesundheit():
             # Der Holdout gehört hierher, weil er still wirkt: wer ihn vergisst, misst gegen
             # einen Torso und hält ihn für den Korpus.
             "ausgeblendete_dateien": HOLDOUT_DATEIEN}
+
+
+class RichtlinieAnfrage(BaseModel):
+    """Der Entwurf, wie ihn die Node-Seite führt.
+
+    Bewusst nicht nachgebaut: `entwurf` bleibt ein offenes Wörterbuch. Das Schema liegt in
+    `packages/shared` und gehört dort hin; es hier ein zweites Mal zu beschreiben hieße,
+    zwei Quellen zu pflegen, die auseinanderlaufen können, ohne dass es auffällt. Gelesen
+    werden ohnehin nur `sections`, `vermerk` und `validation`.
+    """
+    entwurf: dict
+    abschnitte: list[int] | None = Field(
+        default=None, description="nur diese Abschnitte; ohne Angabe 1 bis 8")
+    titel: dict[int, str] | None = Field(
+        default=None, description="Überschrift je Abschnitt, aus den Abschnittsdefinitionen")
+    felder: dict[int, list[FeldDefinition]] | None = Field(
+        default=None,
+        description="Felddefinitionen je Abschnitt. Nur für die Prüfung auf verworfene "
+                    "Optionen: ohne sie kann der Dienst nicht erkennen, dass der Text eine "
+                    "Auswahl behauptet, die abgewählt wurde.")
+
+
+@app.post("/richtlinie")
+def richtlinie_bauen(anfrage: RichtlinieAnfrage):
+    """Die Richtlinie ausformulieren — der letzte Schritt des Prozessmodells.
+
+    Dauert lange: ein Modellaufruf je Abschnitt, bei acht Abschnitten also mehrere Minuten.
+    Für den Durchstich reicht die offene Verbindung; sobald das stört, ist das der erste
+    Kandidat für das Auftragsmuster mit Statusabfrage.
+    """
+    try:
+        felder = {nr: [f.model_dump(exclude_none=True) for f in liste]
+                  for nr, liste in (anfrage.felder or {}).items()}
+        return richtlinie.bauen(
+            anfrage.entwurf,
+            abschnitte=anfrage.abschnitte or range(1, 9),
+            titel=anfrage.titel,
+            felder=felder or None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
+
+
+@app.post("/pruefen")
+async def pruefen(request: Request, datei: str = "entwurf.pdf"):
+    """Einen hochgeladenen Richtlinienentwurf gegen die Musterstruktur halten — Phase 2.
+
+    Die Datei kommt als roher Inhalt im Rumpf, nicht als Formular-Upload: das spart die
+    Abhängigkeit `python-multipart`, und die Node-Seite reicht die Bytes ohnehin nur durch.
+    Der Dateiname steht im Abfrageteil und entscheidet nur über PDF oder DOCX.
+
+    Zwei Stufen laufen hier, beide ohne Modell: zerlegen und Vollständigkeit. Die dritte —
+    Feldwerte aus dem Text ziehen — kostet einen Modellaufruf je Baustein und wird deshalb
+    ausdrücklich angefordert.
+    """
+    endung = os.path.splitext(datei)[1].lower()
+    if endung not in (".pdf", ".docx"):
+        raise HTTPException(status_code=415, detail="Nur PDF und DOCX.")
+
+    inhalt = await request.body()
+    if not inhalt:
+        raise HTTPException(status_code=400, detail="Leerer Rumpf — keine Datei empfangen.")
+    if len(inhalt) > PRUEFUNG_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Datei zu groß ({len(inhalt) // 1024} KB, erlaubt "
+                   f"{PRUEFUNG_MAX_BYTES // 1024} KB).")
+
+    # Auf Platte, weil pypdfium2 und python-docx einen Pfad wollen. In ein temporäres
+    # Verzeichnis und danach gelöscht: der Entwurf ist fremdes Material, und wir haben
+    # keinen Auftrag, ihn zu behalten.
+    with tempfile.TemporaryDirectory() as ordner:
+        pfad = os.path.join(ordner, os.path.basename(datei))
+        with open(pfad, "wb") as f:
+            f.write(inhalt)
+        try:
+            return pruefmodus.pruefen(pfad)
+        except Exception as e:
+            raise HTTPException(status_code=422,
+                                detail=f"Datei nicht lesbar: {type(e).__name__}: {e}") from e
 
 
 @app.get("/dokument/{datei}")

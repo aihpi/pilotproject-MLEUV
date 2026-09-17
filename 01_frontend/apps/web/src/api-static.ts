@@ -328,6 +328,20 @@ export const staticApi = {
     store(draft);
     return e;
   },
+  // Offline gibt es keinen Vorschlagsdienst, also auch keinen Text. Das wird gesagt statt
+  // erfunden — ein Platzhaltertext sähe aus wie eine Richtlinie.
+  pruefen: async () => {
+    throw new Error(
+      "Im Offline-Betrieb kann kein Entwurf geprüft werden: dafür wird der Prüfdienst " +
+      "gebraucht.",
+    );
+  },
+  richtlinieErzeugen: async () => {
+    throw new Error(
+      "Im Offline-Betrieb kann keine Richtlinie erzeugt werden: dafür wird der " +
+      "Vorschlagsdienst gebraucht.",
+    );
+  },
   bestaetigen: async (id: string, eintragId: string) => {
     const draft = get(id);
     const e = (draft.vermerk ?? []).find((v) => v.id === eintragId);

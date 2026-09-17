@@ -19,6 +19,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   }
   return res.json();
 }
+/** Was der Prüf-Modus zurückgibt. Siehe pruefmodus.py — Struktur bewusst flach. */
+export type Pruefbericht = {
+  abschnitte: Record<string, { titel: string; zeichen: number }>;
+  befunde: { baustein: number; art: string; schwere: "fehler" | "hinweis"; text: string }[];
+};
+
 const serverApi = {
   session: () => request<{ user: { name: string } }>("/api/session"),
   drafts: () => request<RichtlinieDraft[]>("/api/drafts"),
@@ -66,11 +72,24 @@ const serverApi = {
       }[];
     }>(`/api/drafts/${id}/preview`),
   vermerk: (id: string) => request<VermerkSicht>(`/api/drafts/${id}/vermerk`),
+  // Kein Entwurf im Spiel: ein fremdes Dokument wird geprüft und nicht gespeichert.
+  pruefen: async (datei: File): Promise<Pruefbericht> => {
+    const res = await fetch(`/api/pruefen?datei=${encodeURIComponent(datei.name)}`, {
+      method: "POST",
+      headers: { "content-type": datei.type || "application/octet-stream" },
+      body: await datei.arrayBuffer(),
+    });
+    const daten = await res.json();
+    if (!res.ok) throw new Error(daten.message ?? `HTTP ${res.status}`);
+    return daten as Pruefbericht;
+  },
   begruenden: (id: string, eintragId: string, begruendung: string) =>
     request<VermerkEintrag>(`/api/drafts/${id}/vermerk/${eintragId}/begruendung`, {
       method: "POST",
       body: JSON.stringify({ begruendung }),
     }),
+  richtlinieErzeugen: (id: string) =>
+    request<RichtlinieDraft>(`/api/drafts/${id}/richtlinie`, { method: "POST" }),
   bestaetigen: (id: string, eintragId: string) =>
     request<VermerkEintrag>(`/api/drafts/${id}/vermerk/${eintragId}/bestaetigen`, {
       method: "POST",

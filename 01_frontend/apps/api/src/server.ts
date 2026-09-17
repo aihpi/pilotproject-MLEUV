@@ -11,10 +11,12 @@ import {
   chatStages,
   nextChatStage,
   pruefungenAnwenden,
+  textVeraltet,
   sections,
   validateDraft,
   type ChatReply,
   type FieldProposal,
+  type RichtlinienAbschnitt,
   type RichtlinieDraft,
 } from "@richtlinie/shared";
 
@@ -58,6 +60,22 @@ function touch(d: RichtlinieDraft) {
   d.vermerk = gepruft.vermerk;
   void persist();
 }
+
+/**
+ * Ein hochgeladener Entwurf kommt als roher Inhalt, nicht als JSON.
+ *
+ * Fastify kennt von sich aus nur JSON und Text; ohne diesen Leser bekäme die Route einen
+ * Fehler statt der Datei. Weitergereicht wird der Puffer unverändert — diese Seite liest
+ * nicht in das Dokument hinein, das tut der Prüfdienst.
+ */
+for (const art of [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/octet-stream",
+])
+  app.addContentTypeParser(art, { parseAs: "buffer" }, (_req, body, done) =>
+    done(null, body),
+  );
 
 app.get("/api/health", async () => ({ ok: true, mode: "prototype" }));
 app.get("/api/session", async () => ({
@@ -244,6 +262,116 @@ async function holeVorschlaege(
     vorbild: daten.nachweis?.abfrageart === "vorschlagen",
   };
 }
+
+/**
+ * Die Richtlinie ausformulieren — der letzte Schritt des Prozessmodells.
+ *
+ * Die Felddefinitionen gehen mit, wie beim Vorschlag: der Dienst kann ohne sie nicht
+ * erkennen, dass ein Text eine Auswahl behauptet, die abgewählt wurde, und er hätte für
+ * „minimum" nur eine Feldkennung statt der Beschriftung „Bagatellgrenze in Euro".
+ *
+ * Das Ergebnis wird am Entwurf abgelegt, nicht nur zurückgegeben: ein Aufruf dauert
+ * anderthalb Minuten, und niemand soll ihn wiederholen müssen, um nachzulesen. Mit der
+ * Entwurfsversion zusammen — daran erkennt die Oberfläche, dass der Text zu geänderten
+ * Angaben nicht mehr passt.
+ */
+app.post("/api/drafts/:id/richtlinie", async (req, reply) => {
+  const d = get((req.params as { id: string }).id);
+  const abschnitte = sections
+    .map((s) => Number(s.id))
+    .filter((n) => n >= 1 && n <= 8);
+
+  let res: Response;
+  try {
+    res = await fetch(`${VORSCHLAG_URL}/richtlinie`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Grosszügiger als beim Chat: ein Modellaufruf je Abschnitt, acht Abschnitte.
+      signal: AbortSignal.timeout(900_000),
+      body: JSON.stringify({
+        entwurf: d,
+        abschnitte,
+        titel: Object.fromEntries(sections.map((s) => [s.id, s.title])),
+        felder: Object.fromEntries(
+          sections.map((s) => [
+            s.id,
+            s.fields.map((f) => ({
+              id: f.id, label: f.label, kind: f.kind,
+              options: f.options?.map((o) => ({ value: o.value, label: o.label })),
+            })),
+          ]),
+        ),
+      }),
+    });
+  } catch (e) {
+    // Kein Ersatztext, wie beim Vorschlag: lieber keine Richtlinie als eine erfundene.
+    return reply.code(502).send({
+      message: `Der Vorschlagsdienst ist nicht erreichbar (${String(e)}). Es wurde kein Text erzeugt.`,
+    });
+  }
+  if (!res.ok)
+    return reply.code(502).send({
+      message: `Vorschlagsdienst: HTTP ${res.status}. Es wurde kein Text erzeugt.`,
+    });
+
+  const daten = (await res.json()) as {
+    abschnitte: RichtlinienAbschnitt[];
+    befunde: string[];
+  };
+  d.richtlinientext = {
+    abschnitte: daten.abschnitte ?? [],
+    befunde: daten.befunde ?? [],
+    erzeugtAm: new Date().toISOString(),
+    ausVersion: d.version,
+  };
+  await persist();
+  return d;
+});
+
+/**
+ * Prüf-Modus: einen fertigen Entwurf hochladen und gegen die Musterstruktur halten.
+ *
+ * Phase 2 der Vereinbarung. Anders als alles andere hier hängt das an keinem Entwurf — man
+ * lädt ein fremdes Dokument hoch und bekommt eine Auskunft, ohne dass etwas gespeichert
+ * wird. Deshalb kein `:id` in der Adresse.
+ *
+ * `bodyLimit` eigens gesetzt: der Dienst läuft sonst mit 200 KB, und darunter liegt keine
+ * einzige Richtlinie des Korpus.
+ */
+app.post(
+  "/api/pruefen",
+  { bodyLimit: 20 * 1024 * 1024 },
+  async (req, reply) => {
+    const { datei } = req.query as { datei?: string };
+    const inhalt = req.body as Buffer;
+    if (!inhalt?.length)
+      return reply.code(400).send({ message: "Keine Datei empfangen." });
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `${VORSCHLAG_URL}/pruefen?datei=${encodeURIComponent(datei ?? "entwurf.pdf")}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/octet-stream" },
+          body: new Uint8Array(inhalt),
+          signal: AbortSignal.timeout(120_000),
+        },
+      );
+    } catch (e) {
+      return reply.code(502).send({
+        message: `Der Prüfdienst ist nicht erreichbar (${String(e)}).`,
+      });
+    }
+    const daten = await res.json();
+    if (!res.ok)
+      return reply.code(res.status).send({
+        message:
+          (daten as { detail?: string }).detail ?? `Prüfdienst: HTTP ${res.status}`,
+      });
+    return daten;
+  },
+);
 
 app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const d = get((req.params as { id: string }).id);

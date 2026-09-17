@@ -29,6 +29,14 @@ export function Dashboard() {
         <Link className="button button--primary" to="/neu">
           Neue Richtlinie erstellen
         </Link>
+        {/*
+          Der zweite Weg durch dasselbe Wissen: beim Erstellen wird aus Angaben ein Text,
+          beim Prüfen aus einem Text wieder Angaben. Er gehört deshalb gleichrangig neben
+          das Erstellen und nicht in ein Untermenü.
+        */}
+        <Link className="button button--secondary" to="/pruefen">
+          Vorhandenen Entwurf prüfen
+        </Link>
       </div>
       <section aria-labelledby="drafts-title">
         <h2 id="drafts-title">Ihre Entwürfe</h2>

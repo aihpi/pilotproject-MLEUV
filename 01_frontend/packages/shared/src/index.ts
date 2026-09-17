@@ -139,6 +139,59 @@ export const vermerkEintragSchema = z.object({
 });
 export type VermerkEintrag = z.infer<typeof vermerkEintragSchema>;
 
+/**
+ * Ein ausformulierter Abschnitt der Richtlinie — der letzte Schritt des Prozessmodells.
+ *
+ * Zwei Teile mit unterschiedlicher Verlässlichkeit, und die Trennung ist der Punkt: `text`
+ * ist formuliert, `begruendungen` sind gerechnet. Wer welchen Wert beigesteuert hat, welcher
+ * Musterbaustein den Rahmen gab und welche Prüfung lief, steht im Entwurf und wird nur
+ * eingesammelt.
+ *
+ * `befunde` sind die Wächter: ein Satz ohne Rückhalt in Musterbaustein oder Angabe, ein
+ * nicht gefüllter Platzhalter, eine Regelung zu einer abgewählten Option, oder eine
+ * bestätigte Angabe, die im Text fehlt.
+ */
+export const richtlinienAbschnittSchema = z.object({
+  nr: z.number(),
+  text: z.string(),
+  begruendungen: z.array(z.object({
+    feld: z.string(),
+    wert: z.unknown(),
+    herkunft: z.string().nullable().optional(),
+    musterbaustein: z.string().nullable().optional(),
+    fundstelle: z.string().nullable().optional(),
+    pruefungen: z.array(z.string()).default([]),
+    hinweise: z.array(z.string()).default([]),
+  })).default([]),
+  verwendete_bausteine: z.array(z.string()).default([]),
+  offene_platzhalter: z.array(z.string()).default([]),
+  befunde: z.array(z.string()).default([]),
+  uebersprungen: z.string().optional(),
+  fehler: z.string().optional(),
+  dauer_s: z.number().optional(),
+});
+export type RichtlinienAbschnitt = z.infer<typeof richtlinienAbschnittSchema>;
+
+export const richtlinientextSchema = z.object({
+  abschnitte: z.array(richtlinienAbschnittSchema),
+  befunde: z.array(z.string()).default([]),
+  erzeugtAm: z.string(),
+  /** Version des Entwurfs, aus der dieser Text entstand — siehe `textVeraltet`. */
+  ausVersion: z.number(),
+});
+export type Richtlinientext = z.infer<typeof richtlinientextSchema>;
+
+/**
+ * Ist der erzeugte Text älter als der Entwurf?
+ *
+ * Ein Richtlinientext, der zu geänderten Angaben nicht mehr passt, ist gefährlicher als
+ * keiner: er sieht fertig aus. Deshalb wird er nicht verworfen, sondern als veraltet
+ * ausgewiesen — verwerfen hieße, eine Minute Rechenzeit stillschweigend wegzuwerfen.
+ */
+export function textVeraltet(draft: RichtlinieDraft): boolean {
+  return !!draft.richtlinientext && draft.richtlinientext.ausVersion !== draft.version;
+}
+
 export const draftSchema = z.object({
   id: z.string(),
   ownerId: z.string(),
@@ -148,6 +201,8 @@ export const draftSchema = z.object({
   validation: validationResultSchema,
   /** Wächst über die Bausteine; leer, solange keine Prüfung etwas festgestellt hat. */
   vermerk: z.array(vermerkEintragSchema).optional(),
+  /** Der ausformulierte Text, sofern schon erzeugt. Siehe `textVeraltet`. */
+  richtlinientext: richtlinientextSchema.optional(),
   status: z.enum(["draft", "review", "complete"]),
   version: z.number().int(),
   createdAt: z.string(),

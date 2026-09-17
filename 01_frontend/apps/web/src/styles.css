@@ -31,6 +31,36 @@
   .herkunft__warnung{margin-left:0}
 }
 
+/* Beleg im Seitenbereich: das Quelldokument neben dem Vorschlag, aufgeschlagen an der
+   belegten Seite. Ohne offenen Beleg kein Raster — die Seite sieht dann aus wie vorher. */
+.mit-beleg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,42%);gap:1.5rem;align-items:start}
+.mit-beleg__inhalt{min-width:0}
+.beleg{position:sticky;top:1rem;display:flex;flex-direction:column;gap:.5rem;border:1px solid var(--color-border);background:var(--surface);padding:.75rem;max-height:calc(100vh - 2rem)}
+.beleg__kopf{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.beleg__kopf strong{font-size:.9rem}
+.beleg__rahmen{flex:1;min-height:60vh;width:100%;border:0;background:#fff}
+.beleg__fuss{margin:0;font-size:.85rem;color:var(--color-text-muted)}
+/* Schmaler Bildschirm: untereinander statt nebeneinander, der Beleg steht dann unten. */
+@media(max-width:900px){
+  .mit-beleg{grid-template-columns:1fr}
+  .beleg{position:static;max-height:none}
+  .beleg__rahmen{min-height:50vh}
+}
+
+/* Prüf-Modus: die gefundenen Bausteine als Liste, ohne Verweis — sie führen nirgendwohin. */
+.pruef-zeile{display:grid;grid-template-columns:2.5rem 1fr;align-items:center;gap:1rem;padding:1rem}
+.pruef-zeile small{display:block;color:var(--color-text-muted)}
+
+/* Der ausformulierte Richtlinientext, je Abschnitt mit seinen Begründungen. */
+.rl-abschnitt{margin:1.5rem 0;padding-top:1rem;border-top:1px solid var(--color-border)}
+.rl-abschnitt h2{font-size:1.05rem;margin:0 0 .5rem}
+.rl-text{white-space:pre-wrap;line-height:1.6}
+.rl-begruendung{margin-top:.75rem;font-size:.9rem}
+.rl-begruendung summary{cursor:pointer;color:var(--color-text-muted)}
+.rl-begruendung dt{font-weight:700;margin-top:.5rem}
+.rl-begruendung dd{margin:0 0 .25rem}
+.rl-geprueft{color:var(--color-text-muted)}
+
 /* Prüfvermerk: je Eintrag eine Feststellung, ihre Begründung und deren Bearbeitungsstand. */
 .vermerk{list-style:none;padding:0;margin:1rem 0;display:flex;flex-direction:column;gap:1rem}
 .vermerk__eintrag{border:1px solid var(--color-border);border-left:4px solid var(--warning);padding:1rem;background:var(--surface)}

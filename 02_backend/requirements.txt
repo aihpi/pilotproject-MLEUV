@@ -7,5 +7,16 @@ fastembed>=0.4
 bmds-prompt-loader
 bmds-prompt-security
 
+# Die HTTP-Naht zum Frontend (src/api.py). Fehlte hier, obwohl der Dienst ohne sie nicht
+# startet — ein frischer Klon kam bis zum ersten Aufruf und dann nicht weiter.
+fastapi>=0.115
+uvicorn>=0.30
+
+# Rohtext ohne Layoutanalyse: der Rückfall in ingest.py, wenn docling ein Dokument verliert,
+# und das Zerlegen im Prüf-Modus. Kommt als Abhängigkeit von docling mit, wird hier aber
+# unmittelbar benutzt und gehört deshalb genannt.
+pypdfium2>=4.0
+python-docx>=1.1
+
 # Tests: pytest -q  (aus 02_backend). Läuft ohne Netz, Modell und Qdrant.
 pytest>=8.0

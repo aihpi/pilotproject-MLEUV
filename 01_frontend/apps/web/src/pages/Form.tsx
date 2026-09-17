@@ -92,6 +92,13 @@ export function TasksPage() {
         <Link className="button button--secondary" to={`/entwurf/${id}/vermerk`}>
           Prüfvermerk{offeneVermerke > 0 ? ` (${offeneVermerke} offen)` : ""}
         </Link>
+        {/*
+          Der Richtlinientext ist das Arbeitsergebnis, um dessentwillen es das Werkzeug
+          gibt — er braucht einen Einstieg, nicht nur einen Endpunkt.
+        */}
+        <Link className="button button--secondary" to={`/entwurf/${id}/richtlinie`}>
+          Richtlinientext
+        </Link>
         <Link className="button button--primary" to={`/entwurf/${id}/pruefen`}>
           Gesamtprüfung öffnen
         </Link>
