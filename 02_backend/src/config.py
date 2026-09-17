@@ -74,6 +74,23 @@ SATZFILTER_MAX_BLOECKE = int(os.getenv("SATZFILTER_MAX_BLOECKE", "5"))      # je
 STATUS_FILE = os.path.join(BASE, "korpus_status.yaml")
 NUR_AKTUELL = os.getenv("NUR_AKTUELL", "true").lower() == "true"
 
+# Quelldateien, die bei jeder Suche ausgeblendet werden — der Holdout.
+#
+# Wer eine Richtlinie nachbaut, die selbst im Korpus liegt, bekommt sie als Beleg zurück.
+# Das Werkzeug schreibt dann ab, statt herzuleiten, und das Ergebnis sieht besser aus, als
+# es ist (beobachtet am 17.09.2026 an der Katzenkastrationsrichtlinie: Zuwendungszweck mit
+# 94 % Konfidenz, belegt aus Nummer 1.1 derselben Richtlinie).
+#
+# Als Umgebungsvariable und nicht je Anfrage, weil die Node-Seite davon nichts weiß und ein
+# Durchlauf im Browser sonst weiter gegen den vollen Korpus liefe. Ein Holdout gehört ohnehin
+# zum Messaufbau und nicht zur einzelnen Frage.
+#
+# Damit wirkt er still, und das ist gefährlich — wer ihn vergisst, misst gegen einen Torso
+# und hält ihn für den Korpus. Deshalb steht er in /gesundheit und im Nachweis jeder Antwort.
+#
+#     HOLDOUT_DATEIEN=RL Katzenkastration.pdf,RL Neuimker vom 26.pdf
+HOLDOUT_DATEIEN = [d.strip() for d in os.getenv("HOLDOUT_DATEIEN", "").split(",") if d.strip()]
+
 
 def veraltete_dokumente():
     """Dateinamen, die als abgelöst gelten. Leer, wenn die Liste fehlt."""

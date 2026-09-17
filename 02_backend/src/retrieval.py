@@ -15,7 +15,7 @@ from qdrant_client import QdrantClient, models
 
 from llm import embed, chat
 from sparse import sparse
-from config import (QDRANT_URL, COLLECTION, TOP_K, NUR_AKTUELL,
+from config import (QDRANT_URL, COLLECTION, TOP_K, NUR_AKTUELL, HOLDOUT_DATEIEN,
                     KONSENS_LAEUFE, KONSENS_SCHWELLE, KONSENS_TEMPERATUR)
 
 _client = None
@@ -116,8 +116,8 @@ def _llm_konsens(query, points, top_k, laeufe=None, schwelle=None):
     return [points[i] for i in gewaehlt[:top_k]]
 
 
-def _gueltig_filter(nur_aktuell, nur_arten=None):
-    """Abgelöste Fassungen ausschließen, wahlweise auf Dokumentarten einschränken.
+def _gueltig_filter(nur_aktuell, nur_arten=None, ohne_dateien=None):
+    """Abgelöste Fassungen ausschließen, wahlweise auf Arten einschränken, Dateien ausblenden.
 
     must_not für den Status: Chunks ohne status-Feld (Altbestand vor Einführung der
     Gültigkeits-Kuratierung) bleiben so auffindbar.
@@ -126,6 +126,12 @@ def _gueltig_filter(nur_aktuell, nur_arten=None):
     Wer „nur Richtlinien" verlangt, will kein Dokument dabeihaben, dessen Art unbekannt ist.
     Das trifft alles, was nicht im Register steht und alles, worauf `adressen_schreiben.py`
     noch nicht gelaufen ist.
+
+    `ohne_dateien` blendet einzelne Quelldateien aus, ohne sie aus dem Index zu nehmen. Der
+    Anlass: wer eine Richtlinie nachbaut, die selbst im Korpus liegt, bekommt sie als Beleg
+    zurück — das Werkzeug schreibt dann ab, statt herzuleiten, und das Ergebnis sieht besser
+    aus, als es ist. Dasselbe braucht eine ehrliche Messung: ein Holdout heißt „miss so, als
+    gäbe es dieses Dokument nicht", und das soll ein Parameter sein und kein Indexumbau.
     """
     bedingungen = []
     if nur_aktuell:
@@ -134,6 +140,9 @@ def _gueltig_filter(nur_aktuell, nur_arten=None):
     if nur_arten:
         bedingungen.append(("must", models.FieldCondition(
             key="art", match=models.MatchAny(any=list(nur_arten)))))
+    if ohne_dateien:
+        bedingungen.append(("must_not", models.FieldCondition(
+            key="quelle", match=models.MatchAny(any=list(ohne_dateien)))))
     if not bedingungen:
         return None
     return models.Filter(
@@ -143,15 +152,19 @@ def _gueltig_filter(nur_aktuell, nur_arten=None):
 
 
 def hybrid_search(query, top_k=TOP_K, rerank=True, nur_aktuell=NUR_AKTUELL, modus="hybrid",
-                  nur_arten=None):
+                  nur_arten=None, ohne_dateien=None):
     """modus: hybrid (dense+BM25 via RRF) | dense | bm25 — die Einzelmodi dienen dem Vergleich in der Eval.
 
     rerank: True/„rang" (ein Lauf, Rangfolge) | „konsens" (Mehrheitsentscheid) | False (aus).
     nur_arten: Dokumentarten, auf die eingeschränkt wird, z. B. ["richtlinie", "rahmenplan"].
+    ohne_dateien: Quelldateien, die für diese Suche nicht existieren. Ohne Angabe gilt
+        HOLDOUT_DATEIEN aus der Umgebung — siehe config.
     """
+    if ohne_dateien is None:
+        ohne_dateien = HOLDOUT_DATEIEN
     cand = max(top_k * 4, 20)  # mehr Kandidaten holen, dann herunter-reranken
     # schon im Prefetch, sonst verdrängen veraltete oder artfremde Treffer die gesuchten
-    filt = _gueltig_filter(nur_aktuell, nur_arten)
+    filt = _gueltig_filter(nur_aktuell, nur_arten, ohne_dateien)
     if modus == "dense":
         res = _c().query_points(collection_name=COLLECTION, query=embed(query)[0], using="dense",
                                 query_filter=filt, limit=cand, with_payload=True).points

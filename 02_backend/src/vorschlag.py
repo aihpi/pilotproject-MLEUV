@@ -38,7 +38,7 @@ from anfrage import suche
 from rag_query import bloecke_bilden
 from llm import chat
 from config import (BASE, TOP_K, KONSENS_LAEUFE, KONSENS_SCHWELLE,
-                    KONSENS_TEMPERATUR_FELD)
+                    KONSENS_TEMPERATUR_FELD, HOLDOUT_DATEIEN)
 
 loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 
@@ -169,7 +169,8 @@ _UEBERSCHRIFT = {
 }
 
 
-def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None):
+def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
+                 ohne_dateien=None):
     """Belegstellen zum Anliegen: Hybrid-Suche, dann Satzfilter. Nur Nachweis, keine Werte.
 
     `uhr`: optionales Wörterbuch, in das die Teilzeiten geschrieben werden. Die beiden
@@ -178,7 +179,8 @@ def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None):
     wissen, welcher von beiden es ist.
     """
     t0 = time.monotonic()
-    treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k, nur_arten=nur_arten)
+    treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k,
+                    nur_arten=nur_arten, ohne_dateien=ohne_dateien)
     bloecke = bloecke_bilden(treffer)
     if uhr is not None:
         uhr["belege_suche"] = round(time.monotonic() - t0, 1)
@@ -382,7 +384,7 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
 
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
-                konsens=False, mit_belegen=True, abfrageart=None):
+                konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
@@ -418,7 +420,7 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
 
     if mit_belegen:
         bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr,
-                                      nur_arten=nur_arten)
+                                      nur_arten=nur_arten, ohne_dateien=ohne_dateien)
     else:
         bloecke, metas = [], []
     belege = "\n\n".join(
@@ -530,6 +532,10 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         # hängt, ob die Oberfläche eine Fundstelle als Rechtsgrundlage oder als Vorbild
         # aus einer fremden Richtlinie ausweisen muss.
         "abfrageart": abfrageart,
+        # Der Holdout wirkt still; ohne diese Angabe ließe sich eine Messung gegen
+        # einen Torso nicht von einer gegen den vollen Korpus unterscheiden.
+        "ausgeblendete_dateien": (HOLDOUT_DATEIEN if ohne_dateien is None
+                                  else list(ohne_dateien)),
         "fundstellen": [b["fundstelle"] for b in bloecke],
         # Der zusammengesetzte Belegtext, damit Aufrufer die Abschreibprüfung wiederholen
         # können, ohne Suche und Satzfilter ein zweites Mal laufen zu lassen — das kostet

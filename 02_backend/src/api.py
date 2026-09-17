@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 import vorschlag
 from adressierung import register
-from config import TOP_K, CORPUS_DIR
+from config import TOP_K, CORPUS_DIR, HOLDOUT_DATEIEN
 
 app = FastAPI(title="MLEUV Feldvorschläge", version="0.1.0")
 
@@ -89,6 +89,10 @@ class Nachweis(BaseModel):
     modelle: list[str] = []
     dauer_s: dict[str, float] = {}
     abfrageart: str | None = None
+    # Was bei dieser Antwort nicht durchsucht wurde. Ohne diese Angabe wäre eine
+    # Messung gegen einen Holdout von einer gegen den vollen Korpus nicht zu
+    # unterscheiden.
+    ausgeblendete_dateien: list[str] = []
     fundstellen: list[str] = []
     musterbausteine: list[str] = []
     prompts: list[str] = []
@@ -110,7 +114,10 @@ def gesundheit():
     bausteine = {n: len(vorschlag.rahmen(n)) for n in range(1, 9)}
     return {"ok": True,
             "musterbausteine": bausteine,
-            "vorlage_eingelesen": any(bausteine.values())}
+            "vorlage_eingelesen": any(bausteine.values()),
+            # Der Holdout gehört hierher, weil er still wirkt: wer ihn vergisst, misst gegen
+            # einen Torso und hält ihn für den Korpus.
+            "ausgeblendete_dateien": HOLDOUT_DATEIEN}
 
 
 @app.get("/dokument/{datei}")
