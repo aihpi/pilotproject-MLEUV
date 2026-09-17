@@ -9,9 +9,9 @@ description: >-
   0,99 — inhaltlich falsch, formal tadellos belegt. Seitdem gilt: der Musterbaustein gibt den
   Satzrahmen, die Angabe des Fachreferats gibt den Inhalt, die Belegstellen beweisen nur.
 
-  Die Abgrenzungsregel stammt aus der Workshop-Präsentation der VB ELER zur Musterrichtlinie:
-  unter Nummer 2 stehen die förderfähigen Vorhaben, unter Nummer 5 die Kosten. Ohne sie
-  rutscht Baustein-2-Inhalt in Baustein-1-Felder.
+  Die Abgrenzungsregel folgt der Gliederung der Musterrichtlinie: unter Nummer 2 stehen die
+  förderfähigen Vorhaben, unter Nummer 5 die Kosten. Ohne sie rutscht Baustein-2-Inhalt in
+  Baustein-1-Felder.
   Die Rolle der Belegstellen ist seit dem 16.09.2026 eine Variable, weil das Prozessmodell
   zwei verschiedene Abfragen kennt. Beim ÜBERNEHMEN und BELEGEN sind sie reiner Nachweis.
   Beim VORSCHLAGEN sind sie Vorbilder aus früheren Verfahren des Landes — dort steht im

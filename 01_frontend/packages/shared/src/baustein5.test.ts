@@ -102,8 +102,8 @@ describe("Baustein 5, Finanzierung", () => {
 
 describe("Baustein 5, Bemessungsgrundlage", () => {
   it("vereinfachte Kostenoptionen sind im Landesbereich ein Fehler", () => {
-    // Aus der Erläuterung der VB ELER zur Musterrichtlinie: „Im Landesbereich sind keine
-    // VKO'en möglich." Zwei von Arvids fünf Optionen sind genau das.
+    // Vereinfachte Kostenoptionen setzen Art. 83 Abs. 1 GAP-SP-VO voraus und sind damit an
+    // EU-Mittel gebunden. Zwei der fünf Optionen des Felds sind genau das.
     for (const b of ["fixed-rest", "fixed-overhead"]) {
       const treffer = pruefeBaustein5(entwurf({ eligibleBasis: b }))
         .find((e) => e.befund.regel === "vko_nicht_im_land");

@@ -115,8 +115,8 @@ export type ValidationResult = z.infer<typeof validationResultSchema>;
  * Doc 12 verlangt je Baustein einen Formulierungsvorschlag UND einen separaten, über die
  * Bausteine mitwachsenden Vermerk. Im Landesrecht ist dessen Adressat das MdFE: sowohl die
  * Abweichung von der Bagatellgrenze (Ziff. 1.5) als auch die Vollfinanzierung (Ziff. 2.4)
- * verlangen eine fachliche Begründung im MdFE-Anschreiben. Die Vorlagen dafür existieren
- * als Anlagen 06 und 08 des RL-Erlasses.
+ * verlangen eine fachliche Begründung im MdFE-Anschreiben. Vorlagen dafür liegen im
+ * Datenordner.
  */
 export const vermerkEintragSchema = z.object({
   id: z.string(),
