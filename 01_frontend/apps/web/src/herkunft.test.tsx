@@ -66,6 +66,9 @@ describe("Herkunft im Vorschlagskasten", () => {
     // zwei Darstellungen im DOM und jede Abfrage findet zwei Treffer.
     cleanup();
     const { api } = await import("./api");
+    // Auch den Zähler zurücksetzen, nicht nur die Antwort — sonst zählt ein Test die
+    // Aufrufe der vorherigen mit.
+    vi.mocked(api.chat).mockClear();
     vi.mocked(api.chat).mockResolvedValue(antwort);
   });
 
@@ -133,18 +136,67 @@ describe("Herkunft im Vorschlagskasten", () => {
     expect(text).toContain("Vorbild");
     expect(text).toContain("so geregelt in");
     expect(text).toContain("Keine Rechtsgrundlage");
-    // Und ausdrücklich NICHT als Beleg beschriftet.
-    expect(screen.queryByText("Beleg")).toBeNull();
+    expect(screen.queryByText("Dazu gefunden")).toBeNull();
   });
 
-  it("ohne Vorbild bleibt es ein Beleg", async () => {
+  it("Enter sendet, Umschalt+Enter macht einen Absatz", async () => {
+    // Der Hilfetext versprach das Senden per Tastatur, bevor es jemand gebaut hatte.
+    const { api } = await import("./api");
     zeichnen();
+    const eingabe = await screen.findByLabelText("Ihre Antwort");
+    fireEvent.change(eingabe, { target: { value: "Tierheime fördern" } });
+    fireEvent.keyDown(eingabe, { key: "Enter", shiftKey: true });
+    expect(api.chat).not.toHaveBeenCalled();
+    fireEvent.keyDown(eingabe, { key: "Enter" });
+    await waitFor(() => expect(api.chat).toHaveBeenCalledWith("d1", "Tierheime fördern"));
+  });
+
+  it("ein Klick auf die Fundstelle öffnet den Beleg daneben, nicht in einem neuen Tab", async () => {
+    // Beim Prüfen lautet die Frage „steht das da wirklich so" — dafür muss man Vorschlag
+    // und Beleg gleichzeitig sehen.
+    const { api } = await import("./api");
+    vi.mocked(api.chat).mockResolvedValue({
+      ...antwort,
+      extraction: {
+        ...antwort.extraction,
+        proposals: [{
+          ...antwort.extraction.proposals[0]!,
+          belegdatei: "RL Tierheimförderung_16.pdf",
+          belegseite: 3,
+        }],
+      },
+    });
+    zeichnen();
+    const eingabe = await screen.findByLabelText("Ihre Antwort");
+    fireEvent.change(eingabe, { target: { value: "Tierheime fördern" } });
+    fireEvent.click(screen.getByRole("button", { name: "Antwort senden" }));
+    await waitFor(() => expect(screen.getByText("Das habe ich verstanden")).toBeInTheDocument());
+
+    expect(screen.queryByRole("complementary")).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /VV zu § 44 LHO/ }));
+
+    const panel = await screen.findByRole("complementary");
+    expect(panel).toBeInTheDocument();
+    const rahmen = panel.querySelector("iframe");
+    expect(rahmen?.getAttribute("src")).toContain("#page=3");
+    expect(rahmen?.getAttribute("src")).toContain("RL%20Tierheimf%C3%B6rderung_16.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Schließen" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  });
+
+  it("ohne Vorbild heißt es „Dazu gefunden“, nicht „Beleg“", async () => {
+    // Gemessen: die Fundstelle verankert das Modell (88 % gegen 76 % Regeltreue), sie
+    // belegt den Wert aber nicht. „Beleg" versprach mehr, als dahintersteht.
+    const { container } = zeichnen();
     const eingabe = await screen.findByLabelText("Ihre Antwort");
     fireEvent.change(eingabe, { target: { value: "Tierheime fördern" } });
     fireEvent.click(screen.getByRole("button", { name: "Antwort senden" }));
 
     await waitFor(() => expect(screen.getByText("Das habe ich verstanden")).toBeInTheDocument());
-    expect(screen.getByText("Beleg")).toBeInTheDocument();
+    expect(screen.getByText("Dazu gefunden")).toBeInTheDocument();
     expect(screen.queryByText("Vorbild")).toBeNull();
+    // Der Zusatz ist wichtiger als die Marke: ohne ihn liest man auch dies als Bestätigung.
+    expect(container.textContent).toContain("Kein Nachweis für diesen Wert");
   });
 });

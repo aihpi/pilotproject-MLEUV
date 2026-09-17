@@ -21,7 +21,10 @@ type Msg = { role: "assistant" | "user"; text: string };
  * Der Grad wird aus den vorliegenden Angaben benannt, nicht aus der Zahl abgelesen: „durch
  * Ihre Angabe gedeckt" sagt mehr als „95 Prozent".
  */
-function Herkunft({ p }: { p: FieldProposal }) {
+/** Ein aufgeschlagener Beleg im Seitenbereich. */
+type Beleg = { url: string; titel: string };
+
+function Herkunft({ p, onBeleg }: { p: FieldProposal; onBeleg: (b: Beleg) => void }) {
   const nichts = !p.deckung && !p.belegzitat && !p.musterbaustein;
   if (nichts && p.confidence == null) return null;
   const grad = p.deckung
@@ -51,15 +54,21 @@ function Herkunft({ p }: { p: FieldProposal }) {
         </p>
       )}
       {/*
-        Vorbild und Beleg sind verschiedene Dinge, und der Unterschied ist haftungsrelevant.
-        Ein BELEG ist die Regel, nach der formuliert werden musste. Ein VORBILD ist eine
-        frühere Richtlinie, in der etwas Ähnliches geregelt wurde — bindend ist daran
-        nichts. Sähe beides gleich aus, würde eine Anlehnung für eine Rechtsgrundlage
-        gehalten. Das Prozessmodell trennt die beiden Abfragesorten genau deshalb.
+        Die Marke hieß bis zuletzt „Beleg", und das versprach mehr, als dahintersteht.
+        Gemessen am 17.09.2026: mit Fundstellen arbeitet das Werkzeug zu 88 Prozent
+        regeltreu, ohne zu 76 — die Fundstelle VERANKERT das Modell, sie BELEGT den Wert
+        aber nicht. Das Zitat selbst ist echt und wird zeichengenau gegen die Quelle
+        geprüft; ungeprüft bleibt, ob es diesen Wert stützt.
+
+        „Vorbild" bleibt davon unberührt: bei den Vorschlagsfeldern ist die fremde
+        Richtlinie tatsächlich die Vorlage, und diese Unterscheidung ist haftungsrelevant.
+        Sähe beides gleich aus, würde eine Anlehnung für eine Rechtsgrundlage gehalten.
       */}
       {p.belegzitat && (
         <p className={p.vorbild ? "herkunft__vorbild" : undefined}>
-          <span className="herkunft__marke">{p.vorbild ? "Vorbild" : "Beleg"}</span>
+          <span className="herkunft__marke">
+            {p.vorbild ? "Vorbild" : "Dazu gefunden"}
+          </span>
           <q>{p.belegzitat}</q>
           {p.fundstelle && (
             <span className="herkunft__quelle">
@@ -71,7 +80,17 @@ function Herkunft({ p }: { p: FieldProposal }) {
                 Kurzname eine Setzung, die noch niemand bestätigt hat.
               */}
               {dokumentLink(p) ? (
-                <a href={dokumentLink(p)!} target="_blank" rel="noreferrer">
+                <a
+                  href={dokumentLink(p)!}
+                  onClick={(e) => {
+                    // Kein neues Fenster: Beleg und Vorschlag will man nebeneinander
+                    // sehen, nicht abwechselnd. Der href bleibt trotzdem stehen —
+                    // Mittelklick und „In neuem Tab öffnen" sollen weiter gehen, und
+                    // ohne Javascript ist der Verweis immer noch ein Verweis.
+                    e.preventDefault();
+                    onBeleg({ url: dokumentLink(p)!, titel: p.fundstelle! });
+                  }}
+                >
                   {p.fundstelle}
                 </a>
               ) : (
@@ -79,12 +98,15 @@ function Herkunft({ p }: { p: FieldProposal }) {
               )}
             </span>
           )}
-          {p.vorbild && (
-            <span className="herkunft__warnung">
-              {" "}
-              Keine Rechtsgrundlage, sondern bisherige Praxis. Bitte fachlich bestätigen.
-            </span>
-          )}
+          {/*
+            Der Zusatz ist wichtiger als die Marke. Ohne ihn liest man auch „Dazu gefunden"
+            noch als Bestätigung des Wertes — und genau das ist es nicht.
+          */}
+          <span className="herkunft__warnung">
+            {p.vorbild
+              ? " Keine Rechtsgrundlage, sondern bisherige Praxis. Bitte fachlich bestätigen."
+              : " Kein Nachweis für diesen Wert — die Stelle gehört zum Thema, mehr nicht."}
+          </span>
         </p>
       )}
       {nichts && (
@@ -106,6 +128,7 @@ export function ChatPage() {
   const [input, setInput] = useState("");
   const [extraction, setExtraction] = useState<ChatExtraction | null>(null);
   const [progress, setProgress] = useState(0);
+  const [beleg, setBeleg] = useState<Beleg | null>(null);
   useEffect(() => {
     if (!draft || msgs.length) return;
     setMsgs([
@@ -141,7 +164,8 @@ export function ChatPage() {
     chat.mutate(value);
   }
   return (
-    <>
+    <div className={beleg ? "mit-beleg" : undefined}>
+      <div className="mit-beleg__inhalt">
       <PageHeader
         eyebrow={`Entwurf · ${draft?.title ?? "wird geladen"}`}
         title="Geführte Erhebung"
@@ -186,7 +210,7 @@ export function ChatPage() {
                 <dt>{p.label}</dt>
                 <dd>
                   {p.value}
-                  <Herkunft p={p} />
+                  <Herkunft p={p} onBeleg={setBeleg} />
                 </dd>
               </div>
             ))}
@@ -235,12 +259,21 @@ export function ChatPage() {
           rows={4}
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sendet, Umschalt+Enter macht einen Absatz. Der Hilfetext hat das
+            // vorher versprochen, ohne dass es jemand gebaut hatte.
+            //
+            // `isComposing` ausnehmen: wer über eine Eingabemethode schreibt, schließt
+            // mit Enter ein Wort ab und will nicht senden.
+            if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            send();
+          }}
           disabled={!!extraction || chat.isPending}
           aria-describedby="chat-help"
         />
         <p id="chat-help" className="help">
-          Sie können mehrere Sätze schreiben. Mit Strg + Enter senden Sie
-          ebenfalls.
+          Mit Enter senden, mit Umschalt + Enter einen Absatz machen.
         </p>
         <button
           className="button button--primary"
@@ -257,6 +290,41 @@ export function ChatPage() {
           Strukturierten Entwurf prüfen
         </Link>
       </div>
-    </>
+      </div>
+
+      {/*
+        Der Beleg neben dem Vorschlag, nicht an seiner Stelle. Ein eingebetteter Betrachter
+        statt eines neuen Fensters: die Frage beim Prüfen lautet „steht das da wirklich so",
+        und dafür muss man beides gleichzeitig sehen.
+
+        Ein <iframe> auf das PDF, weil jeder Browser einen Betrachter mitbringt und `#page=N`
+        versteht. Ein eigener Betrachter im Bündel wäre mehrere hundert Kilobyte für eine
+        Anzeige, die das Betriebssystem schon kann.
+      */}
+      {beleg && (
+        <aside className="beleg" aria-label={`Belegstelle ${beleg.titel}`}>
+          <header className="beleg__kopf">
+            <strong>{beleg.titel}</strong>
+            <button
+              type="button"
+              className="button button--tertiary"
+              onClick={() => setBeleg(null)}
+            >
+              Schließen
+            </button>
+          </header>
+          <iframe className="beleg__rahmen" src={beleg.url} title={beleg.titel} />
+          <p className="beleg__fuss">
+            {/* Für den Fall, dass der eingebaute Betrachter streikt — etwa weil der
+                Vorschlagsdienst nicht läuft. */}
+            Zeigt der Bereich nichts,{" "}
+            <a href={beleg.url} target="_blank" rel="noreferrer">
+              öffnen Sie das Dokument in einem neuen Tab
+            </a>
+            .
+          </p>
+        </aside>
+      )}
+    </div>
   );
 }
