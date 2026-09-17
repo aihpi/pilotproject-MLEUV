@@ -1,8 +1,8 @@
 # Gültigkeit der Korpus-Dokumente.
 #
 # Ohne diese Angabe liegen mehrere Fassungen derselben Vorschrift gleichrangig im Index,
-# und das Retrieval kann aus veraltetem Recht zitieren — das größte Rechtsrisiko laut
-# 04_planung_pilotprojekt/datengrundlage.md.
+# und das Retrieval kann aus veraltetem Recht zitieren — das größte Rechtsrisiko der
+# Datengrundlage.
 #
 # Nur eintragen, was fachlich geklärt ist. Alles, was hier nicht steht, gilt als "aktuell".
 # ingest.py schreibt den Status in die Payload jedes Chunks, retrieval.py filtert darauf.

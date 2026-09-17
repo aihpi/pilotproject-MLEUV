@@ -3,7 +3,7 @@
 Warum: Die Überschrift „1.3 Zuwendungsempfänger" kommt im Rahmenplan 27-mal vor, ohne dass
 etwas sagt, zu welchem Förderbereich sie gehört. Damit ist eine Fundstelle nicht eindeutig,
 und Fragen wie „alle Empfängerkreise des Förderbereichs 1" sind über eine Ähnlichkeitssuche
-grundsätzlich nicht beantwortbar (siehe 04_planung_pilotprojekt/versuch_gak_prompt_h03.md).
+grundsätzlich nicht beantwortbar — das ist gemessen, nicht vermutet.
 
 Struktur des Rahmenplans:
     Teil I  Allgemeiner Teil (Bereiche A bis C)

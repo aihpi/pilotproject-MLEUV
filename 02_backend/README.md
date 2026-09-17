@@ -56,4 +56,4 @@ SATZFILTER=false python src/rag_query.py "…"   # Satzfilter aus
 - **Datenschutz:** Bis der Cluster-Endpoint im Datenschutz-Rahmen bestätigt ist, nur nicht-vertrauliche Dokumente indexieren. `CORPUS_DIR` zeigt per Default auf die Beispiel-Richtlinien, nicht auf die Ordner 05, 06, 07.
 - **docling** lädt beim ersten Lauf Modelle herunter, das kann einen Moment dauern.
 - **docling-serve** läuft im Compose bereits mit, wird aber vom Durchstich noch nicht genutzt. Die Umstellung auf docling-serve kommt mit dem herausgelösten Spark-Code.
-- Details zu den Spark-Teilen und ihrem Einbau: `../04_planung_pilotprojekt/spark_code_befund.md`; Arbeitsliste: `../04_planung_pilotprojekt/naechste_schritte.md`.
+- Details zu den Spark-Teilen, ihrem Einbau und die Arbeitsliste liegen in den Planungsunterlagen (nicht im Repositorium).
