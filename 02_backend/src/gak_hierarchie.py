@@ -5,7 +5,7 @@ etwas sagt, zu welchem Förderbereich sie gehört. Damit ist eine Fundstelle nic
 und Fragen wie „alle Empfängerkreise des Förderbereichs 1" sind über eine Ähnlichkeitssuche
 grundsätzlich nicht beantwortbar (siehe 04_planung_pilotprojekt/versuch_gak_prompt_h03.md).
 
-Struktur laut Vermerk der VB ELER vom 20.08.2026:
+Struktur des Rahmenplans:
     Teil I  Allgemeiner Teil (Bereiche A bis C)
     Teil II Fördergrundsätze -> Förderbereich 1..9
               -> allgemeine Bestimmungen + Maßnahmengruppen (A, B, C …)

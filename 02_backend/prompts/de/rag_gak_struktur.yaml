@@ -1,9 +1,9 @@
 id: rag_gak_struktur
 description: >-
   Variante zu rag_system mit Rolle und vorgegebener Systematik des GAK-Rahmenplans.
-  Wortlaut aus dem Vermerk des MLEUV (VB ELER) vom 20.08.2026 zu Frage H-03, dort als
-  Versuch vorgeschlagen: Reicht es, dem Modell die Gliederung zu ERKLÄREN, statt sie in
-  den Metadaten mitzuführen? Bewusst als eigene Datei und nicht als Änderung an
+  Geht auf Frage H-03 zurück und ist dort als Versuch vorgeschlagen: Reicht es, dem Modell
+  die Gliederung zu ERKLÄREN, statt sie in den Metadaten mitzuführen? Bewusst als eigene
+  Datei und nicht als Änderung an
   rag_system, damit frühere Messungen zuordenbar bleiben.
 variables:
   - kontext

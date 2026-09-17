@@ -1190,8 +1190,8 @@ export function pruefeBaustein5(draft: RichtlinieDraft): Pruefergebnis[] {
       },
     });
 
-  // 3 — Erhöhter Fördersatz für Kommunen. Aus der Erläuterung der VB ELER zur
-  //     Musterrichtlinie: über 80 Prozent ist die Zustimmung des MdFE nötig.
+  // 3 — Erhöhter Fördersatz für Kommunen: über 80 Prozent ist die Zustimmung des MdFE
+  //     nötig.
   const satz = zahl("fundingRate");
   if (satz !== null && !Number.isNaN(satz) && satz > KOMMUNAL_HOECHSTSATZ_PROZENT && kommunal)
     raus.push({
