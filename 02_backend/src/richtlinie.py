@@ -78,9 +78,9 @@ def bestaetigte_werte(entwurf, abschnitt_nr):
         raus.append({
             "feld": feld_id,
             "wert": wert,
-            # Herkunft, wie sie der Vorschlagsdienst hinterlassen hat. `source` ist Arvids
-            # Feld (user-form, user-chat, ki), `musterbaustein` und `fundstelle` kommen aus
-            # unserer Naht.
+            # Herkunft, wie sie der Vorschlagsdienst hinterlassen hat. `source` ist ein Feld
+            # des Frontends (user-form, user-chat, ki), `musterbaustein` und `fundstelle`
+            # kommen aus unserer Naht.
             "herkunft": feld.get("source"),
             "musterbaustein": feld.get("musterbaustein"),
             "fundstelle": feld.get("fundstelle"),

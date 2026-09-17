@@ -1,6 +1,6 @@
 """HTTP-Naht zum Frontend: ein Dienst, der Feldvorschläge liefert.
 
-Arbeitsteilung, abgeleitet aus dem Prozessmodell: Arvids Node-API bleibt die Schnittstelle
+Arbeitsteilung, abgeleitet aus dem Prozessmodell: die Node-API bleibt die Schnittstelle
 nach außen — sie kennt den Entwurf, die Chat-Stufe und die Felddefinitionen. Dieser Dienst
 kennt den Korpus, die Musterbausteine und das Modell. Er bekommt gesagt, welche Felder zu
 füllen sind, und liefert Vorschläge mit Beleg zurück.

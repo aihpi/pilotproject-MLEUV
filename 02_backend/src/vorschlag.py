@@ -1,11 +1,11 @@
 """Feldvorschläge für einen Baustein: aus Nutzereingabe wird ein Wert je Formularfeld.
 
-Das ist die Naht zum Frontend. Arvids Chat-Endpunkt gibt heute die Eingabe unverändert in
+Das ist die Naht zum Frontend. Dessen Chat-Endpunkt gibt heute die Eingabe unverändert in
 jedes Zielfeld zurück; hier entsteht der echte Vorschlag — mit Musterbaustein-Bezug,
 Belegzitat und Konfidenz.
 
-Die Zielfelder kommen vom Aufrufer, nicht aus diesem Modul. Sie stehen in Arvids
-`packages/shared` (Feldliste, Typ, Optionen), und die Frontend-Seite entscheidet über
+Die Zielfelder kommen vom Aufrufer, nicht aus diesem Modul. Sie stehen im `packages/shared`
+des Frontends (Feldliste, Typ, Optionen), und die Frontend-Seite entscheidet über
 `nextChatStage`, welche als nächstes dran sind. Sie hier nachzubauen wäre eine Doppelung mit
 stillem Driftrisiko — wer die Auswahl trifft, liefert sie mit.
 
