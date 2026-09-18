@@ -10,11 +10,16 @@ import {
   emptySections,
   chatStages,
   nextChatStage,
+  istBelegSatz,
   pruefungenAnwenden,
+  stufeGilt,
+  stufenFelder,
   textVeraltet,
   sections,
   validateDraft,
+  VORSCHLAGSFELDER,
   type ChatReply,
+  type FieldDefinition,
   type FieldProposal,
   type RichtlinienAbschnitt,
   type RichtlinieDraft,
@@ -382,48 +387,87 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
     });
   const stage = nextChatStage(d) ?? chatStages[0]!;
   const def = sections.find((s) => s.id === stage.sectionId)!;
-  const targets = stage.fieldIds
-    .map((id) => def.fields.find((f) => f.id === id)!)
-    .filter(Boolean);
+  // Der Verlauf wächst VOR der Anfrage, damit die aktuelle Nachricht mitgeht. Er wird auch
+  // dann behalten, wenn der Dienst ausfällt — die Bearbeiterin soll nach einer Störung nicht
+  // von vorn erzählen müssen.
+  d.chatVerlauf = [...(d.chatVerlauf ?? []), message.trim()];
+  await persist();
+  const eingabe = d.chatVerlauf.join("\n\n");
+  const targets = stufenFelder(stage, d);
 
   let proposals: FieldProposal[] = [];
   let hinweis = "";
   try {
-    const { vorschlaege: geliefert, vorbild } = await holeVorschlaege(
-      stage.sectionId,
-      message.trim(),
-      targets.map((f) => ({
-        id: f.id, label: f.label, kind: f.kind,
-        options: f.options?.map((o) => ({ value: o.value, label: o.label })),
-      })),
+    // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
+    // beim ÜBERNEHMEN ist eine Fundstelle ein Nachweis, beim VORSCHLAGEN ein Vorbild aus
+    // einem früheren Verfahren. In einer gemeinsamen Anfrage bekäme die ganze Antwort die
+    // Sorte des ersten passenden Feldes, und ein aus der Eingabe übernommener Fördersatz
+    // sähe aus wie eine Empfehlung. Sie laufen nebeneinander, die Wartezeit bleibt gleich.
+    const [uebernahme, vorschlag] = await Promise.all(
+      (
+        [
+          targets.filter((f) => !VORSCHLAGSFELDER.includes(f.id)),
+          targets.filter((f) => VORSCHLAGSFELDER.includes(f.id)),
+        ] as FieldDefinition[][]
+      ).map((gruppe) =>
+        gruppe.length
+          ? holeVorschlaege(
+              stage.sectionId,
+              eingabe,
+              gruppe.map((f) => ({
+                id: f.id, label: f.label, kind: f.kind,
+                options: f.options?.map((o) => ({ value: o.value, label: o.label })),
+              })),
+            )
+          : Promise.resolve({ vorschlaege: [], vorbild: false }),
+      ),
     );
+    const geliefert = [...uebernahme!.vorschlaege, ...vorschlag!.vorschlaege];
+    const istVorbild = new Set(vorschlag!.vorschlaege.map((v) => v.feld));
+
     // „[Unklar]" ist eine Auskunft, kein Vorschlag: der Dienst sagt damit, dass die Angabe
     // das Feld nicht deckt. Ein solcher Wert gehört nicht in den Bestätigen-Dialog.
     proposals = geliefert
       .filter((v) => v.wert && v.status !== "unklar" && v.status !== "invalid")
-      .map((v) => ({
-        sectionId: stage.sectionId,
-        fieldId: v.feld,
-        label: v.label,
-        value: String(v.wert),
-        confidence: v.konfidenz ?? 0,
-        evidence: v.begruendung ?? "",
-        // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
-        // Oberfläche muss Deckung (aus der Eingabe) und Beleg (aus dem Regelwerk)
-        // auseinanderhalten können, sonst sieht beides gleich aus.
-        ...(v.deckung ? { deckung: v.deckung } : {}),
-        ...(v.belegzitat ? { belegzitat: v.belegzitat } : {}),
-        ...(v.fundstelle ? { fundstelle: v.fundstelle } : {}),
-        // Datei und Seite machen die Fundstelle anklickbar; ohne sie bleibt sie Text.
-        ...(v.belegdatei ? { belegdatei: v.belegdatei } : {}),
-        ...(v.belegseite ? { belegseite: v.belegseite } : {}),
-        ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
-        // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
-        ...(vorbild && v.fundstelle ? { vorbild: true } : {}),
-      }));
-    const offen = geliefert.filter((v) => v.status === "unklar").map((v) => v.label);
+      .map((v) => {
+        // Eine Fundstelle nur dort, wo sie etwas bedeutet. Beim ÜBERNEHMEN kommt der Wert
+        // aus der Eingabe der Bearbeiterin — der Korpus hat dazu nichts beizutragen, und was
+        // die Suche trotzdem findet, ist bestenfalls themenverwandt. Im Probelauf waren das
+        // ein Satzfragment, ein für zwei Felder wortgleicher Rechtsgrundlagensatz und eine
+        // Gliederungsüberschrift. Alle drei standen unter „kein Nachweis" und verwirrten
+        // trotzdem, weil dort überhaupt etwas stand.
+        const beleg = istVorbild.has(v.feld) && istBelegSatz(v.belegzitat);
+        return {
+          sectionId: stage.sectionId,
+          fieldId: v.feld,
+          label: v.label,
+          value: String(v.wert),
+          confidence: v.konfidenz ?? 0,
+          evidence: v.begruendung ?? "",
+          // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
+          // Oberfläche muss Deckung (aus der Eingabe) und Beleg (aus dem Regelwerk)
+          // auseinanderhalten können, sonst sieht beides gleich aus.
+          ...(v.deckung ? { deckung: v.deckung } : {}),
+          ...(beleg && v.belegzitat ? { belegzitat: v.belegzitat } : {}),
+          ...(beleg && v.fundstelle ? { fundstelle: v.fundstelle } : {}),
+          // Datei und Seite machen die Fundstelle anklickbar; ohne sie bleibt sie Text.
+          ...(beleg && v.belegdatei ? { belegdatei: v.belegdatei } : {}),
+          ...(beleg && v.belegseite ? { belegseite: v.belegseite } : {}),
+          ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
+          // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
+          ...(beleg && v.fundstelle ? { vorbild: true } : {}),
+        };
+      });
+    // Offen bleibt, was die Stufe ausdrücklich erfragt. Für die übrigen Felder des
+    // Abschnitts wird mitgesammelt, aber nicht gemahnt — sonst listet jede Antwort ein
+    // Dutzend Felder auf, nach denen niemand gefragt hat.
+    const offen = geliefert
+      .filter((v) => v.status === "unklar" && stage.fieldIds.includes(v.feld))
+      .map((v) => v.label);
     if (offen.length)
-      hinweis = ` Zu ${offen.join(" und ")} konnte aus Ihrer Angabe nichts abgeleitet werden.`;
+      hinweis =
+        ` Bitte nennen Sie noch: ${offen.join(", ")}. ` +
+        "Sie können es auch später im Formular eintragen.";
   } catch (e) {
     const grund = e instanceof Error ? e.message : String(e);
     return {
@@ -440,16 +484,22 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
     };
   }
 
-  const nextIndex = Math.min(
-    chatStages.indexOf(stage) + 1,
-    chatStages.length - 1,
-  );
-  const next = chatStages[nextIndex];
+  // Die nächste Frage ist die nächste GÜLTIGE Stufe, nicht der nächste Eintrag im Feld.
+  // Nach Position gewählt kann sie eine Stufe nennen, die der gegenwärtige Pfad gar nicht
+  // vorsieht — die Bearbeiterin liest dann eine Frage, die das Werkzeug beim nächsten Zug
+  // überspringt, und der Sprung sieht aus wie ein Fehler.
+  const next = chatStages
+    .slice(chatStages.indexOf(stage) + 1)
+    .find((s) => stufeGilt(s, d));
   return {
     message:
       (proposals.length
         ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
-        : `Aus Ihrer Angabe lässt sich für „${def.title}“ noch kein Vorschlag ableiten.`) +
+        : // Ohne Vorschlag sagt der Hinweis bereits, was fehlt. Beides zusammen wäre
+          // dieselbe Auskunft zweimal, einmal auf Abschnitts- und einmal auf Feldebene.
+          hinweis
+          ? `Für „${def.title}“ fehlt noch etwas.`
+          : `Aus Ihrer Angabe lässt sich für „${def.title}“ noch kein Vorschlag ableiten.`) +
       hinweis,
     extraction: {
       id: randomUUID(),

@@ -203,6 +203,18 @@ export const draftSchema = z.object({
   vermerk: z.array(vermerkEintragSchema).optional(),
   /** Der ausformulierte Text, sofern schon erzeugt. Siehe `textVeraltet`. */
   richtlinientext: richtlinientextSchema.optional(),
+  /**
+   * Was die Bearbeiterin im Chat geschrieben hat, in der Reihenfolge der Eingabe.
+   *
+   * Ohne das war jede Nachricht nur für die gerade laufende Stufe da: wer den Empfängerkreis
+   * nennt, während nach dem Zuwendungszweck gefragt ist, hat ihn umsonst genannt. Im
+   * Prozessmodell gibt es diese Trichter nicht — die Bearbeiterin beschreibt ihre Förderidee,
+   * und das Werkzeug holt sich daraus, was es für den jeweiligen Baustein braucht.
+   *
+   * Deshalb geht der ganze Verlauf in jede Anfrage. Er ersetzt keine Bestätigung: Werte
+   * entstehen weiterhin nur als Vorschlag und nur für die Felder der laufenden Stufe.
+   */
+  chatVerlauf: z.array(z.string()).optional(),
   status: z.enum(["draft", "review", "complete"]),
   version: z.number().int(),
   createdAt: z.string(),
@@ -787,8 +799,11 @@ export const chatStages: ChatStage[] = [
     question: "Welche Maßnahmen oder Vorhaben sollen konkret gefördert werden?",
   },
   {
+    // `recipients` gehört dazu und nicht nur die Beschreibung: an der Auswahl „Kommunen"
+    // hängt der kommunale Höchstsatz. Stand hier nur `recipientDetails`, blieb die Auswahl
+    // leer, und die Regel konnte nicht greifen — sie hatte ihre Eingangsgröße nie.
     sectionId: "3",
-    fieldIds: ["recipientDetails"],
+    fieldIds: ["recipients", "recipientDetails"],
     question:
       "Wer soll die Förderung beantragen können? Bitte beschreiben Sie die Zielgruppen (Zuwendungsempfangende). Berücksichtigen Sie Einschränkungen zum Wirtschaftssektor (z. B. Landwirtschaft, Fischerei oder Forst), zur Größe des Unternehmens (z. B. KMU) und zur Rechtsnatur der Antragstellenden (z. B. natürliche oder juristische Personen).",
   },
@@ -804,9 +819,16 @@ export const chatStages: ChatStage[] = [
     // führt dafür eine eigene Aufgabe „Eingabe über Chat-Interface", weil die Entscheidung
     // „sehr individuell ist und von verschiedenen Faktoren abhängt". Die Frage nannte sie
     // schon, erhoben wurde sie bisher nur per Klick.
-    fieldIds: ["eligibleCosts", "eligibleBasis"],
+    //
+    // Fördersatz, Finanzierungsart und Finanzierungsform stehen mit in der Frage, weil sie
+    // sonst niemand erhebt: die Frage nannte sie nicht, also gingen sie auch nicht in die
+    // Anfrage, und wer sie trotzdem nannte, verlor die Angabe. An ihnen hängen drei
+    // Prüfregeln — kommunaler Höchstsatz, Vollfinanzierung, Zuwendungsform.
+    fieldIds: [
+      "eligibleCosts", "eligibleBasis", "fundingRate", "financingType", "financingForm",
+    ],
     question:
-      "Welche Ausgaben oder Kosten sollen förderfähig sein, und wie sollen sie bemessen werden — als Spitzabrechnung der tatsächlichen Kosten oder über feste Beträge?",
+      "Welche Ausgaben oder Kosten sollen förderfähig sein, wie sollen sie bemessen werden — als Spitzabrechnung der tatsächlichen Kosten oder über feste Beträge —, und wie hoch soll die Förderung sein (Fördersatz, Finanzierungsart, Finanzierungsform)?",
   },
 ];
 
@@ -817,7 +839,7 @@ export const chatStages: ChatStage[] = [
  * Vermutung des Modells darf keinen Pfad festlegen. Der Unterschied ist wichtiger, als er
  * aussieht — ein still übersprungener Schritt ist ein Fehler, den niemand sieht.
  */
-function bestaetigteWerte(draft: RichtlinieDraft): Record<string, unknown> {
+export function bestaetigteWerte(draft: RichtlinieDraft): Record<string, unknown> {
   const werte: Record<string, unknown> = {};
   for (const abschnitt of Object.values(draft.sections))
     for (const [id, feld] of Object.entries(abschnitt.fields))
@@ -850,6 +872,47 @@ export function stufeGilt(stage: ChatStage, draft: RichtlinieDraft): boolean {
   return felder.some((f) => fieldVisible(f, draft.profile, werte));
 }
 
+/**
+ * Die Felder, für die eine Stufe einen Vorschlag holen soll.
+ *
+ * NICHT `stage.fieldIds` — das sind die Felder, nach denen die Frage ausdrücklich fragt, und
+ * es sind weniger. Baustein 5 hat elf Felder, die Frage nennt zwei; bis hierher gingen auch
+ * nur diese zwei in die Anfrage. Wer „der Fördersatz soll 90 Prozent betragen" schrieb,
+ * bekam den Wert nirgends abgelegt, und weil die Prüfregeln auf den Feldern sitzen, schlug
+ * auch keine an. Ein stiller Verlust, der wie ein fehlerfreier Entwurf aussieht.
+ *
+ * Gesammelt wird deshalb für jedes sichtbare, noch unbestätigte Feld des Abschnitts. Die
+ * Frage bleibt die schmale — sie soll die Bearbeiterin führen, nicht abfragen. Deckt ihre
+ * Antwort mehr ab, wird das mitgenommen; deckt sie weniger ab, kommt für den Rest `[Unklar]`
+ * und damit gar kein Vorschlag.
+ *
+ * Bestätigte Felder bleiben außen vor: was ein Mensch entschieden hat, schlägt das Werkzeug
+ * nicht erneut vor.
+ */
+export function stufenFelder(
+  stage: ChatStage,
+  draft: RichtlinieDraft,
+): FieldDefinition[] {
+  const werte = bestaetigteWerte(draft);
+  return (sections.find((s) => s.id === stage.sectionId)?.fields ?? []).filter(
+    (f) =>
+      fieldVisible(f, draft.profile, werte) &&
+      !draft.sections[stage.sectionId]?.fields[f.id]?.confirmedByUser,
+  );
+}
+
+/**
+ * Die nächste Stufe, oder keine.
+ *
+ * Offen ist eine Stufe, solange eines ihrer GEFRAGTEN Felder (`stage.fieldIds`) unbestätigt
+ * ist — nicht solange irgendein Feld des Abschnitts offen ist. Der Unterschied ist nötig,
+ * weil Abschnitte optionale Felder haben, die oft leer bleiben (Ausschlüsse, Weiterleitung);
+ * am weiten Maßstab gemessen käme das Gespräch nie von der Stelle.
+ *
+ * Gesammelt wird trotzdem breit, siehe `stufenFelder`. Hat eine frühere Antwort die
+ * gefragten Felder einer späteren Stufe schon gefüllt und die Bearbeiterin sie bestätigt,
+ * wird diese Stufe übersprungen — genau dafür ist der Verlauf da.
+ */
 export function nextChatStage(draft: RichtlinieDraft): ChatStage | null {
   return (
     chatStages.find(
@@ -891,6 +954,35 @@ export const VORSCHLAGSFELDER = [
   // zurück, sieht eine freie Auswahlentscheidung aus wie eine gebundene.
   "eligibleBasis", "eligibleCosts",
 ];
+
+/**
+ * Taugt dieses Zitat als Fundstelle — oder ist es eine Überschrift, ein Tabellenrest?
+ *
+ * Der Satzfilter schneidet Textstücke auf ihre tragenden Sätze zurück, prüft aber nicht, ob
+ * das Ergebnis überhaupt ein Satz ist. Im Probelauf kamen „Nennung der Fördergegenstände"
+ * (eine Gliederungsüberschrift) und „5.4, 1 = Bemessungsgrundlage: Ausgaben.." (ein Rest aus
+ * einer Tabelle) als Fundstellen zurück. Beides kann nichts belegen: eine Überschrift
+ * benennt ein Thema, sie trifft keine Aussage.
+ *
+ * Dasselbe Maß wie `ist_ueberschrift` im Vorschlagsdienst, wo es beim Ausformulieren schon
+ * angewandt wird — kurz und ohne Satzende. Im Belegweg fehlte es, also lief die Erkenntnis
+ * nur auf einer von zwei Strecken mit.
+ *
+ * Die Längengrenze ist großzügig: ein langer Absatz ohne Schlusspunkt ist ein abgeschnittener
+ * Satz, keine Überschrift. Überschriften sind kurz — das ist ihr Zweck.
+ */
+export function istBelegSatz(zitat: string | null | undefined): boolean {
+  const t = (zitat ?? "").trim();
+  if (t.length < 40) return false;
+  // Spuren einer Tabelle: das Gleichheitszeichen trennt dort Zelle von Zelle. In einem
+  // Rechtstext kommt es praktisch nicht vor — „5.4, 1 = Bemessungsgrundlage: Ausgaben.."
+  // ist eine Zeile aus dem Raster, kein Satz, und sie endet trotzdem auf einen Punkt.
+  if (t.includes("=")) return false;
+  // Doppelpunkte am Ende kündigen eine Aufzählung an, die hier nicht mehr steht; doppelte
+  // Punkte sind eine abgeschnittene Zelle.
+  if (t.endsWith("..")) return false;
+  return /[.!?][)"”»]?$/.test(t) || t.length >= 120;
+}
 
 /** Die Abfragesorte für eine Menge von Zielfeldern, oder keine. */
 export function abfrageartFuer(fieldIds: string[]): "vorschlagen" | undefined {
