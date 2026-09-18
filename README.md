@@ -1,66 +1,104 @@
 <div style="background-color: #ffffff; color: #000000; padding: 10px;">
 <img src="00_aisc\img\logo_aisc_bmftr.jpg">
-<h1> Your title.
+<h1> Richtlinien-Assistent MLEUV
 </div>
 
-Your Project Description with a nice image
+KI-gestütztes Werkzeug zur Erstellung von Förderrichtlinien nach § 44 LHO. Pilotprojekt mit
+dem Ministerium für Landwirtschaft, Umwelt und Verbraucherschutz Brandenburg.
+
+Das Werkzeug führt durch die elf Bausteine der Musterstruktur, schlägt je Feld einen Wert vor,
+sagt dazu, woher der Wert stammt, und formuliert am Ende den Richtlinientext aus. Es
+entscheidet nichts: jeder Vorschlag wird bestätigt, geändert oder verworfen.
 
 ## Features
 
-- **Key Feature 1**: A description of the Key features
-- **Key Feature 2**: A description of the Key features
+- **Geführte Erhebung.** Ein Chat fragt die Eckpunkte in fester Reihenfolge ab und ordnet
+  freie Antworten den Formularfeldern zu.
+- **Belegte Vorschläge.** Zu jedem Wert werden Herkunft, Musterbaustein und Fundstelle
+  ausgewiesen; das Zitat wird zeichengenau gegen das Quelldokument geprüft. Was die Eingabe
+  nicht deckt, wird `[Unklar]` genannt statt geraten.
+- **Prüfung nach Regelwerk.** Schwellenwerte und Bestimmungen aus dem Prozessmodell laufen
+  deterministisch mit — ohne Modell und damit ohne Streuung.
+- **Zwei Arbeitsergebnisse.** Die Richtlinie und, getrennt davon, der Prüfvermerk mit den
+  begründungspflichtigen Abweichungen.
+- **Lokaler Betrieb.** Suchindex und Dokumente bleiben im Haus; das Sprachmodell läuft auf
+  dem Cluster des AI Service Centre.
 
 ## Setup and Installation
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- NVIDIA GPU with CUDA support (optional, but recommended for faster performance)
+- Docker und Docker Compose
+- Python 3.11+ und Node 20
+- Zugang zum LiteLLM-Endpunkt des AI Service Centre
 
 ### Quick Start
 
-1. Clone the repository:
-   ```bash
-   git clone ...
-   cd ...
-   ```
+```bash
+# 1 Suchindex
+cd 02_backend && docker compose up -d
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cp .env.example .env        # Schlüssel und Modelle eintragen
+python src/ingest.py        # Dokumente in den Index
 
-2. Run the setup or install dependencies:
-   ```bash
-   chmod +x setup.sh
-   ./setup.sh
-   ```
+# 2 Vorschlagsdienst
+LITELLM_LOCAL_MODEL_COST_MAP=True .venv/bin/uvicorn api:app --port 8000 --app-dir src
 
-3. Access the application:
-   - Frontend: ...
-   - Backend API: ...
+# 3 Oberfläche, eigene Shell
+cd 01_frontend && npm install && npm run dev
+```
+
+- Frontend: <http://localhost:5173>
+- Node-API: <http://localhost:4317> · Vorschlagsdienst: <http://localhost:8000>
+
+Die `docker-compose.yml` im Wurzelverzeichnis ist eine ungenutzte Vorlage; maßgeblich ist
+`02_backend/docker-compose.yml`.
+
+**Aufbau, Dienste und Datenflüsse:** [infrastruktur.md](infrastruktur.md).
 
 ## User Guide
 
-### Using the Tool
-1. A brief description of using the tool.
-2. Be clear and simple.
+Bedienung aller Funktionen der Oberfläche: **[handbuch.md](handbuch.md)**.
+
+Kurz: Entwurf anlegen, im Chat die Eckpunkte erheben, die elf Bausteine im Formular prüfen
+und ergänzen, offene Begründungen im Prüfvermerk beantworten, Richtlinientext erzeugen, beide
+Word-Dateien ausgeben.
 
 ### Recommendations
-Any additional hints for using the tool.
 
+- Vor der ersten Benutzung `curl -s http://127.0.0.1:8000/gesundheit` aufrufen. Steht dort
+  `"vorlage_eingelesen": false`, fehlen die Satzrahmen und die Vorschläge werden schlechter,
+  ohne dass es auffällt.
+- Eine Chat-Antwort dauert 40 Sekunden bis zwei Minuten, der vollständige Richtlinientext
+  mehrere Minuten. Das ist keine Störung.
+- Herkunftsangaben lesen, bevor ein Vorschlag übernommen wird: „Dazu gefunden" belegt das
+  Thema, nicht den Wert; „Vorbild" ist bisherige Praxis, keine Rechtsgrundlage.
 
 ## Limitations
 
-- **Limitation 1**: List of Limitations
-- **Limitation 2**: List of Limitations
-
+- **Kein Ersatz für fachliche und rechtliche Prüfung.** Das Werkzeug erstellt einen Vorschlag
+  zur Überarbeitung, keine fertige Richtlinie.
+- **Einzelnutzer, keine Anmeldung.** Alles läuft lokal auf `127.0.0.1`; gleichzeitiges
+  Arbeiten mehrerer Personen ist nicht vorgesehen.
+- **Die Redaktionsansicht (Stufe 2) ist ein Mockup** mit Demo-Daten. Der echte Textweg ist die
+  Seite „Richtlinientext".
+- **Nicht gemessen** sind die inhaltliche Deckung einer Aussage durch ihre Fundstelle und die
+  Trefferquote je Formularfeld über den ganzen Katalog.
+- **Vertrauliche Dokumente** verlassen das Haus nicht; ihre Titel und Inhalte stehen in keiner
+  Datei dieses Repositoriums.
 
 ## References
 
-- [Reference 1](https://hpi.de/kisz)
-- [Reference 2](https://hpi.de/kisz)
+- [AI Service Centre Berlin-Brandenburg](https://hpi.de/kisz)
 
 ## Author
-- [Your Name](https://hpi.de/kisz)
+
+- [Jill Barvencik](https://hpi.de/kisz), AI Service Centre Berlin-Brandenburg
 
 ## License
 
+Siehe [LICENSE](LICENSE). Übernommene Teile des Spark-Vorprojekts stehen unter EUPL-1.2 und
+werden mit Namensnennung nachgenutzt.
 
 ---
 

@@ -209,3 +209,7 @@ cython_debug/
 
 # Planungsunterlagen des Pilotprojekts – bleiben lokal
 04_planung_pilotprojekt/
+
+# Lokale Einstellungen von Claude Code
+.claude/settings.json
+.claude/settings.local.json
