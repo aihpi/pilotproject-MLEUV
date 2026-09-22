@@ -60,6 +60,10 @@ function zeichnen() {
   );
 }
 
+/** Nur der Text des Bestätigen-Kastens, ohne Fortschrittsbalken und Seitenrahmen. */
+const kastenText = (container: HTMLElement) =>
+  container.querySelector(".proposal")?.textContent ?? "";
+
 describe("Herkunft im Vorschlagskasten", () => {
   beforeEach(async () => {
     // Ohne aktivierte Globals räumt testing-library nicht von selbst auf; sonst stehen
@@ -84,7 +88,12 @@ describe("Herkunft im Vorschlagskasten", () => {
     expect(text).toContain("damit der Tierschutz verbessert wird");
     expect(text).toContain("1.1");
     expect(text).toContain("VV zu § 44 LHO, Nummer 1.1 (S. 2)");
-    expect(text).toContain("95 %");
+    // Die Prozentzahl ist seit dem 22.09.2026 absichtlich weg: sie misst die Deckung durch
+    // die Eingabe, nicht die fachliche Güte, und lag über alle beobachteten Felder zwischen
+    // 94 und 100 — eine Zahl, die nicht streut, trennt nichts.
+    // Nur im Vorschlagskasten prüfen: der Fortschrittsbalken der Seite führt zu Recht eine
+    // Prozentzahl.
+    expect(kastenText(container)).not.toMatch(/\d+\s*%/);
   });
 
   it("markiert einen Vorschlag ohne Deckung als abgeleitet", async () => {
@@ -107,7 +116,7 @@ describe("Herkunft im Vorschlagskasten", () => {
     await waitFor(() => expect(screen.getByText("Das habe ich verstanden")).toBeInTheDocument());
     const text = container.textContent ?? "";
     expect(text).toContain("aus dem Regelfall abgeleitet");
-    expect(text).toContain("40 %");
+    expect(kastenText(container)).not.toMatch(/\d+\s*%/);
   });
 
   // Das Prozessmodell trennt Fund und Vorschlag. Sähe eine Anlehnung an eine fremde

@@ -9,9 +9,15 @@ import type {
 } from "@richtlinie/shared";
 import { staticApi } from "./api-static";
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  // Die Kopfzeile nur setzen, wenn auch etwas im Rumpf steht. Ein POST ohne Rumpf, aber mit
+  // `content-type: application/json`, lehnt Fastify ab: „Body cannot be empty when
+  // content-type is set to 'application/json'". Genau das traf „Begründung bestätigen" —
+  // der Schritt braucht keine Daten, nur die Adresse des Eintrags.
   const res = await fetch(url, {
     ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: init?.body
+      ? { "content-type": "application/json", ...init?.headers }
+      : { ...init?.headers },
   });
   if (!res.ok) {
     const b = await res.json().catch(() => ({ message: "Unbekannter Fehler" }));
@@ -53,14 +59,26 @@ const serverApi = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+  // Ohne Nachricht: aus dem bisherigen Verlauf füllen, ohne dass die Bearbeiterin „wie oben"
+  // tippen muss.
+  chatAusVerlauf: (id: string) =>
+    request<ChatReply>(`/api/drafts/${id}/chat/messages`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   confirm: (id: string, extractionId: string, proposals: FieldProposal[]) =>
     request<{ draft: RichtlinieDraft; nextQuestion: string }>(
       `/api/drafts/${id}/extractions/${extractionId}/confirm`,
       { method: "POST", body: JSON.stringify({ proposals }) },
     ),
   reject: (id: string, extractionId: string) =>
-    request(`/api/drafts/${id}/extractions/${extractionId}/reject`, {
-      method: "POST",
+    request<{ ok: boolean; nextQuestion?: string }>(
+      `/api/drafts/${id}/extractions/${extractionId}/reject`,
+      { method: "POST" },
+    ),
+  loeschen: (id: string) =>
+    fetch(`/api/drafts/${id}`, { method: "DELETE" }).then((res) => {
+      if (!res.ok) throw new Error("Der Entwurf konnte nicht gelöscht werden.");
     }),
   preview: (id: string) =>
     request<{

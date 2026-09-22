@@ -9,8 +9,11 @@ import {
   draftSchema,
   emptySections,
   chatStages,
+  feldwertAusVorschlag,
+  naechsteFrage,
   nextChatStage,
   istBelegSatz,
+  istWiederholung,
   pruefungenAnwenden,
   stufeGilt,
   stufenFelder,
@@ -141,6 +144,23 @@ app.patch("/api/drafts/:id", async (req) => {
   touch(d);
   return d;
 });
+/**
+ * Einen Entwurf löschen.
+ *
+ * Fehlte bis zum 22.09.2026 ganz: was einmal angelegt war, stand für immer in der Übersicht.
+ * Beim Durchtesten entsteht mit jeder Runde ein neuer, und alte tragen Werte aus einem
+ * früheren Stand — die Liste wird unbrauchbar, und niemand kann aufräumen.
+ *
+ * Endgültig, ohne Papierkorb: der Zustand liegt in einer Datei, ein zweiter Stand dafür wäre
+ * mehr Maschinerie als der Prototyp trägt. Die Rückfrage steht deshalb in der Oberfläche.
+ */
+app.delete("/api/drafts/:id", async (req, reply) => {
+  const d = get((req.params as { id: string }).id);
+  drafts = drafts.filter((x) => x.id !== d.id);
+  await persist();
+  return reply.code(204).send();
+});
+
 app.post("/api/drafts/:id/validate", async (req) => {
   const d = get((req.params as { id: string }).id);
   d.validation = validateDraft(d);
@@ -231,7 +251,9 @@ app.get("/api/drafts/:id/vermerk", async (req) => {
 const VORSCHLAG_URL = process.env.VORSCHLAG_URL ?? "http://127.0.0.1:8000";
 
 type DienstVorschlag = {
-  feld: string; label: string; wert: string | null; status: string | null;
+  feld: string; label: string;
+  wert: string | number | boolean | string[] | null;
+  status: string | null;
   fundstelle: string | null; belegzitat: string | null; deckung: string | null;
   musterbaustein: string | null; begruendung: string | null; konfidenz: number | null;
   belegdatei: string | null; belegseite: number | null;
@@ -380,8 +402,15 @@ app.post(
 
 app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const d = get((req.params as { id: string }).id);
-  const { message } = req.body as { message: string };
-  if (!message?.trim())
+  const { message } = req.body as { message?: string };
+  // Ohne Nachricht heißt: aus dem VERLAUF füllen.
+  //
+  // Die Bearbeiterin hat ihre Förderidee am Stück erzählt und wurde danach Stufe für Stufe
+  // nach Dingen gefragt, die längst dastanden — sie musste jedes Mal „wie oben" tippen,
+  // damit das Werkzeug nachsieht. Der Aufruf kostet nicht mehr als dieses „wie oben": er
+  // findet nur früher statt und ohne Aufforderung.
+  const neu = message?.trim() ?? "";
+  if (!neu && !(d.chatVerlauf ?? []).length)
     throw Object.assign(new Error("Bitte geben Sie eine Nachricht ein."), {
       statusCode: 400,
     });
@@ -390,9 +419,12 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   // Der Verlauf wächst VOR der Anfrage, damit die aktuelle Nachricht mitgeht. Er wird auch
   // dann behalten, wenn der Dienst ausfällt — die Bearbeiterin soll nach einer Störung nicht
   // von vorn erzählen müssen.
-  d.chatVerlauf = [...(d.chatVerlauf ?? []), message.trim()];
+  if (neu) d.chatVerlauf = [...(d.chatVerlauf ?? []), neu];
+  // Diese Stufe ist damit gefragt worden — auch wenn die Antwort nichts hergibt. Die
+  // Rückschau „habe ich schon übernommen" soll nur nennen, wonach NIE gefragt wurde.
+  d.gefragteStufen = [...new Set([...(d.gefragteStufen ?? []), stage.sectionId])];
   await persist();
-  const eingabe = d.chatVerlauf.join("\n\n");
+  const eingabe = (d.chatVerlauf ?? []).join("\n\n");
   const targets = stufenFelder(stage, d);
 
   let proposals: FieldProposal[] = [];
@@ -437,11 +469,12 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
         // Gliederungsüberschrift. Alle drei standen unter „kein Nachweis" und verwirrten
         // trotzdem, weil dort überhaupt etwas stand.
         const beleg = istVorbild.has(v.feld) && istBelegSatz(v.belegzitat);
+        const kind = targets.find((f) => f.id === v.feld)?.kind ?? "text";
         return {
           sectionId: stage.sectionId,
           fieldId: v.feld,
           label: v.label,
-          value: String(v.wert),
+          value: feldwertAusVorschlag(v.wert, kind),
           confidence: v.konfidenz ?? 0,
           evidence: v.begruendung ?? "",
           // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
@@ -458,6 +491,25 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
           ...(beleg && v.fundstelle ? { vorbild: true } : {}),
         };
       });
+    // Beim Blick in den Verlauf zählt nur, was dort auch steht.
+    //
+    // Ein Wert ohne Deckung ist aus dem Regelfall abgeleitet — eine Vermutung, die ihre
+    // Berechtigung hat, wenn jemand gerade nach dem Abschnitt gefragt wurde und nichts dazu
+    // sagen konnte. Unaufgefordert vorgelegt ist sie etwas anderes: dann behauptet das
+    // Werkzeug, in den bisherigen Angaben stehe etwas, das dort nicht steht. Nach dem
+    // Bestätigen des Titels kamen so Vorschläge für Rechtsgrundlage und Zuwendungszweck,
+    // obwohl im Verlauf nur der Titel stand.
+    if (!neu) proposals = proposals.filter((p) => p.deckung);
+    // Und nichts vorschlagen, was ein anderer Abschnitt schon regelt — siehe
+    // `istWiederholung`. Der Befund gehört in die Antwort, nicht ins Schweigen: die
+    // Bearbeiterin soll sehen, dass hier etwas weggelassen wurde und warum.
+    const wiederholt = proposals.filter((p) => istWiederholung(p.value, d, p.sectionId));
+    if (wiederholt.length) {
+      proposals = proposals.filter((p) => !wiederholt.includes(p));
+      hinweis +=
+        ` Weggelassen, weil schon in einem anderen Abschnitt geregelt: ` +
+        `${wiederholt.map((p) => p.label).join(", ")}.`;
+    }
     // Offen bleibt, was die Stufe ausdrücklich erfragt. Für die übrigen Felder des
     // Abschnitts wird mitgesammelt, aber nicht gemahnt — sonst listet jede Antwort ein
     // Dutzend Felder auf, nach denen niemand gefragt hat.
@@ -493,13 +545,20 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
     .find((s) => stufeGilt(s, d));
   return {
     message:
+      // Der Wortlaut hängt daran, ob gerade etwas gesagt wurde. „Ich habe Ihre Angabe
+      // zugeordnet" nach einem Blick in den Verlauf liest sich, als hätte die Bearbeiterin
+      // etwas geschrieben — sie hat aber nur bestätigt und wartet.
       (proposals.length
-        ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+        ? neu
+          ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+          : `Zu „${def.title}“ steht in Ihren bisherigen Angaben schon etwas. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
         : // Ohne Vorschlag sagt der Hinweis bereits, was fehlt. Beides zusammen wäre
           // dieselbe Auskunft zweimal, einmal auf Abschnitts- und einmal auf Feldebene.
           hinweis
           ? `Für „${def.title}“ fehlt noch etwas.`
-          : `Aus Ihrer Angabe lässt sich für „${def.title}“ noch kein Vorschlag ableiten.`) +
+          : neu
+            ? `Aus Ihrer Angabe lässt sich für „${def.title}“ noch kein Vorschlag ableiten.`
+            : `Zu „${def.title}“ finde ich in Ihren bisherigen Angaben nichts.`) +
       hinweis,
     extraction: {
       id: randomUUID(),
@@ -527,20 +586,39 @@ app.post("/api/drafts/:id/extractions/:extractionId/confirm", async (req) => {
       confirmedByUser: true,
     };
     if (p.fieldId === "title") {
-      d.title = p.value;
+      d.title = String(p.value ?? "");
     }
   }
   touch(d);
   return {
     draft: d,
-    nextQuestion:
-      nextChatStage(d)?.question ??
-      "Die geführte Erhebung ist abgeschlossen. Prüfen Sie nun den strukturierten Entwurf.",
+    // Die eben bestätigte Stufe wird nicht noch einmal als „schon übernommen" aufgezählt.
+    nextQuestion: naechsteFrage(d, proposals[0]?.sectionId),
   };
 });
-app.post("/api/drafts/:id/extractions/:extractionId/reject", async () => ({
-  ok: true,
-}));
+/**
+ * „Überspringen" — und diesmal wird wirklich übersprungen.
+ *
+ * Vorher gab diese Route nur `ok` zurück. Der Kasten schloss sich, `nextChatStage` fand
+ * dieselbe Stufe wieder unerledigt, und die Frage kam erneut. Konnte das Gespräch ein
+ * Pflichtfeld nicht füllen, gab es keinen Ausweg mehr — die Bearbeiterin saß fest.
+ *
+ * Bestätigt wird dabei nichts: die Felder bleiben offen und werden in der Gesamtprüfung
+ * weiter angemahnt. Übersprungen ist nur die FRAGE, nicht die Angabe.
+ */
+app.post("/api/drafts/:id/extractions/:extractionId/reject", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const stage = nextChatStage(d);
+  if (stage)
+    d.uebersprungeneStufen = [
+      ...new Set([...(d.uebersprungeneStufen ?? []), stage.sectionId]),
+    ];
+  await persist();
+  return {
+    ok: true,
+    nextQuestion: naechsteFrage(d, stage?.sectionId),
+  };
+});
 app.get("/api/drafts/:id/preview", async (req) => {
   const d = get((req.params as { id: string }).id);
   return {

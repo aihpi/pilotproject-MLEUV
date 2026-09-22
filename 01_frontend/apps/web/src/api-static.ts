@@ -1,6 +1,7 @@
 import {
   emptySections,
   chatStages,
+  naechsteFrage,
   nextChatStage,
   pruefungenAnwenden,
   sections,
@@ -253,10 +254,17 @@ export const staticApi = {
     if (patch.status) draft.status = patch.status;
     return touch(draft);
   },
+  chatAusVerlauf: async (id: string): Promise<ChatReply> =>
+    staticApi.chat(id, (get(id).chatVerlauf ?? []).join("\n\n")),
   chat: async (id: string, message: string): Promise<ChatReply> => {
     const draft = get(id);
     const stage = nextChatStage(draft) ?? chatStages[0]!;
     const def = sections.find((s) => s.id === stage.sectionId)!;
+    // Wie im Dienst: gefragt ist gefragt, auch wenn nichts dabei herauskommt.
+    draft.gefragteStufen = [
+      ...new Set([...(draft.gefragteStufen ?? []), stage.sectionId]),
+    ];
+    store(draft);
     const proposals: FieldProposal[] = stage.fieldIds.map((fieldId) => {
       const field = def.fields.find((f) => f.id === fieldId)!;
       return {
@@ -299,17 +307,29 @@ export const staticApi = {
         evidence: p.evidence,
         confirmedByUser: true,
       };
-      if (p.fieldId === "title") draft.title = p.value;
+      if (p.fieldId === "title") draft.title = String(p.value ?? "");
     }
     touch(draft);
     return {
       draft,
-      nextQuestion:
-        nextChatStage(draft)?.question ??
-        "Die geführte Erhebung ist abgeschlossen. Prüfen Sie nun den strukturierten Entwurf.",
+      nextQuestion: naechsteFrage(draft, proposals[0]?.sectionId),
     };
   },
-  reject: async () => ({ ok: true }),
+  // Auch im Offline-Mockup überspringt „Überspringen" wirklich — sonst verhält sich die
+  // Oberfläche dort anders als am laufenden Dienst, und Fehler zeigen sich erst spät.
+  reject: async (id: string) => {
+    const draft = get(id);
+    const stage = nextChatStage(draft);
+    if (stage)
+      draft.uebersprungeneStufen = [
+        ...new Set([...(draft.uebersprungeneStufen ?? []), stage.sectionId]),
+      ];
+    store(draft);
+    return {
+      ok: true,
+      nextQuestion: naechsteFrage(draft, stage?.sectionId),
+    };
+  },
   // Der Prüfvermerk auch offline: die Regeln laufen in `shared` und brauchen kein Backend,
   // also darf die Attrappe hier nicht weniger können als der Dienst.
   vermerk: async (id: string) => {
@@ -351,6 +371,9 @@ export const staticApi = {
     e.status = "bestaetigt";
     store(draft);
     return e;
+  },
+  loeschen: async (id: string) => {
+    save(load().filter((d) => d.id !== id));
   },
   preview: async (id: string) => {
     const draft = get(id);

@@ -215,6 +215,28 @@ export const draftSchema = z.object({
    * entstehen weiterhin nur als Vorschlag und nur für die Felder der laufenden Stufe.
    */
   chatVerlauf: z.array(z.string()).optional(),
+  /**
+   * Chat-Stufen, die die Bearbeiterin übersprungen hat (Abschnittsnummern).
+   *
+   * „Überspringen" war bis hierher folgenlos: der Kasten schloss sich, und beim nächsten Zug
+   * kam dieselbe Frage wieder. Konnte ein Pflichtfeld aus dem Gespräch nicht gefüllt werden
+   * — im Durchlauf vom 22.09.2026 der Empfängerkreis —, drehte sich das Gespräch endlos im
+   * Kreis, ohne dass es einen Ausweg gab.
+   *
+   * Übersprungen heißt nicht erledigt: die Felder bleiben unbestätigt, die Gesamtprüfung
+   * mahnt sie weiter an, und im Formular sind sie auszufüllen. Es heißt nur, dass das
+   * GESPRÄCH nicht noch einmal danach fragt.
+   */
+  uebersprungeneStufen: z.array(z.string()).optional(),
+  /**
+   * Chat-Stufen, deren Frage schon einmal gestellt wurde (Abschnittsnummern).
+   *
+   * Nur dafür da, die Rückschau „habe ich schon übernommen" ehrlich zu halten: aufgezählt
+   * gehört, was das Gespräch NIE gefragt hat und trotzdem aus einer früheren Antwort gefüllt
+   * wurde. Ohne diese Unterscheidung wuchs die Liste mit jedem Zug und wiederholte am Ende
+   * alles, was die Bearbeiterin selbst beantwortet hatte.
+   */
+  gefragteStufen: z.array(z.string()).optional(),
   status: z.enum(["draft", "review", "complete"]),
   version: z.number().int(),
   createdAt: z.string(),
@@ -226,7 +248,14 @@ export interface FieldProposal {
   sectionId: SectionId;
   fieldId: string;
   label: string;
-  value: string;
+  /**
+   * Derselbe Typ wie im Formularfeld, siehe `fieldValueSchema`.
+   *
+   * Vorher `string`: ein Fördersatz wurde dann zu "90" und eine Mehrfachauswahl zu
+   * "municipal" statt `["municipal"]`. Bestätigt landete der falsche Typ im Entwurf, und die
+   * Prüfregeln — die auf Zahlen und Listen rechnen — liefen daran vorbei, ohne zu meckern.
+   */
+  value: FieldValue["value"];
   confidence: number;
   evidence: string;
   /**
@@ -447,6 +476,11 @@ export const sections: SectionDefinition[] = [
         id: "forwardingRules",
         label: "Bedingungen der Weiterleitung",
         kind: "textarea",
+        // Nur, wenn überhaupt weitergeleitet werden darf. Ohne diese Bedingung wurde das
+        // Feld auch bei „nicht zulässig" erhoben und mit „Keine Weiterleitung zulässig"
+        // gefüllt — eine Regelung zu einem Fall, den die Richtlinie ausschließt. Im
+        // Richtlinientext stünde das als eigener Absatz.
+        visible: (_p, v) => v["forwarding"] === "yes",
       },
     ],
   },
@@ -671,10 +705,22 @@ export const sections: SectionDefinition[] = [
         label: "Vorzeitiger Vorhabenbeginn",
         kind: "radio",
         required: true,
-        help: "Wählen Sie die einschlägige Variante der Musterrichtlinie.",
+        // Die Beschriftungen nennen den Inhalt, nicht die Nummer. „Variante 1 gemäß
+        // Musterrichtlinie" verlangt von der Bearbeiterin, ein Dokument aufzuschlagen,
+        // das die Oberfläche ihr nicht zeigt — und bis dahin rät sie. Der Wortlaut steht
+        // in Musterbaustein 7.1 und passt in eine Zeile.
+        help: "Nach Musterbaustein 7.1 der Musterrichtlinie.",
         options: [
-          { value: "variant-1", label: "Variante 1 gemäß Musterrichtlinie" },
-          { value: "variant-2", label: "Variante 2 gemäß Musterrichtlinie" },
+          {
+            value: "variant-1",
+            label:
+              "Variante 1 — nur noch nicht begonnene Vorhaben (Grundsatz nach § 44 LHO)",
+          },
+          {
+            value: "variant-2",
+            label:
+              "Variante 2 — Beginn mit Antragstellung zulässig, ohne Genehmigung des vorzeitigen Vorhabenbeginns",
+          },
         ],
       },
       // Ziffer 7.1. Das Prozessmodell nennt vier Fallgruppen, aufgespannt aus zwei
@@ -862,6 +908,7 @@ export function bestaetigteWerte(draft: RichtlinieDraft): Record<string, unknown
  * und der ist an dieser Stelle bereits von einem Menschen bestätigt.
  */
 export function stufeGilt(stage: ChatStage, draft: RichtlinieDraft): boolean {
+  if (draft.uebersprungeneStufen?.includes(stage.sectionId)) return false;
   if (stage.gilt && !stage.gilt(draft)) return false;
   const werte = bestaetigteWerte(draft);
   const felder = (sections.find((s) => s.id === stage.sectionId)?.fields ?? [])
@@ -926,6 +973,96 @@ export function nextChatStage(draft: RichtlinieDraft): ChatStage | null {
   );
 }
 
+/**
+ * Ein Feldwert, wie ihn ein Mensch liest.
+ *
+ * Auswahlfelder tragen intern eine Kennung — `municipal`, `actual`, `share`. Für eine
+ * Rückfrage an die Bearbeiterin („Ihre bisherigen Angaben: …") ist die Kennung wertlos; sie
+ * soll wiedererkennen, was sie gesagt hat.
+ */
+export function feldwertText(
+  sectionId: string,
+  fieldId: string,
+  wert: FieldValue["value"],
+): string {
+  const feld = sections
+    .find((s) => s.id === sectionId)
+    ?.fields.find((f) => f.id === fieldId);
+  const lesbar = (v: unknown) =>
+    feld?.options?.find((o) => o.value === String(v))?.label ?? String(v);
+  if (wert === null || wert === undefined) return "";
+  return Array.isArray(wert) ? wert.map(lesbar).join(", ") : lesbar(wert);
+}
+
+/**
+ * Stufen, die das Gespräch übergehen wird, weil frühere Angaben sie schon decken.
+ *
+ * Bis hierher verschwanden sie wortlos: wer seine Förderidee am Stück erzählt, füllt damit
+ * mehrere Bausteine, und die zugehörigen Fragen kamen einfach nicht mehr. Aus Sicht der
+ * Bearbeiterin sprang das Gespräch — sie konnte nicht sehen, was das Werkzeug ihr in den
+ * Mund gelegt hat, und nichts ergänzen.
+ *
+ * Ergibt je Stufe die bestätigten Werte ihrer gefragten Felder, damit die Oberfläche sie
+ * zeigen und nachfragen kann. Nur die Stufen VOR der nächsten offenen — was danach kommt,
+ * ist noch nicht an der Reihe.
+ */
+export function gedeckteStufen(
+  draft: RichtlinieDraft,
+  ohne?: string,
+): { stage: ChatStage; werte: { label: string; wert: string }[] }[] {
+  const naechste = nextChatStage(draft);
+  const grenze = naechste ? chatStages.indexOf(naechste) : chatStages.length;
+  return chatStages.slice(0, grenze).flatMap((stage) => {
+    // Die eben beantwortete Stufe nicht aufzählen. Sie steht schon im Bestätigen-Kasten
+    // darüber, und sie noch einmal als „habe ich übernommen" zu melden, liest sich wie ein
+    // zweiter Vorgang.
+    if (stage.sectionId === ohne) return [];
+    // Und nichts aufzählen, wonach das Gespräch gefragt hat. Die Rückschau ist für das
+    // gedacht, was die Bearbeiterin NEBENBEI mitgeliefert hat — beantwortete Fragen weiss
+    // sie selbst.
+    if (draft.gefragteStufen?.includes(stage.sectionId)) return [];
+    if (!stufeGilt(stage, draft)) return [];
+    const felder = sections.find((s) => s.id === stage.sectionId)?.fields ?? [];
+    const werte = stage.fieldIds.flatMap((id) => {
+      const feld = draft.sections[stage.sectionId]?.fields[id];
+      if (!feld?.confirmedByUser) return [];
+      return [{
+        label: felder.find((f) => f.id === id)?.label ?? id,
+        wert: feldwertText(stage.sectionId, id, feld.value),
+      }];
+    });
+    return werte.length ? [{ stage, werte }] : [];
+  });
+}
+
+const ERHEBUNG_FERTIG =
+  "Die geführte Erhebung ist abgeschlossen. Prüfen Sie nun den strukturierten Entwurf.";
+
+/**
+ * Die nächste Nachricht des Assistenten: was schon gedeckt ist, dann die offene Frage.
+ *
+ * An einer Stelle gebaut, weil Dienst und Offline-Attrappe sie beide brauchen und weil eine
+ * auseinanderlaufende Gesprächsführung der schwerste Fehler dieser Naht wäre — die
+ * Bearbeiterin merkt ihn erst, wenn sie beides nebeneinander sieht.
+ */
+export function naechsteFrage(draft: RichtlinieDraft, ohne?: string): string {
+  const gedeckt = gedeckteStufen(draft, ohne);
+  const frage = nextChatStage(draft)?.question ?? ERHEBUNG_FERTIG;
+  if (!gedeckt.length) return frage;
+  const uebernommen = gedeckt
+    .map(({ stage, werte }) => {
+      const titel = sections.find((s) => s.id === stage.sectionId)?.title ?? stage.sectionId;
+      return `${titel}\n${werte.map((w) => `  • ${w.label}: ${w.wert}`).join("\n")}`;
+    })
+    .join("\n");
+  return (
+    "Aus Ihren bisherigen Angaben habe ich schon übernommen:\n\n" +
+    uebernommen +
+    "\n\nMöchten Sie dazu etwas ergänzen oder ändern? Wenn nicht, weiter:\n\n" +
+    frage
+  );
+}
+
 export function emptySections(): Record<string, SectionData> {
   return Object.fromEntries(sections.map((s) => [s.id, { fields: {} }]));
 }
@@ -982,6 +1119,89 @@ export function istBelegSatz(zitat: string | null | undefined): boolean {
   // Punkte sind eine abgeschnittene Zelle.
   if (t.endsWith("..")) return false;
   return /[.!?][)"”»]?$/.test(t) || t.length >= 120;
+}
+
+/**
+ * Den Wert aus dem Vorschlagsdienst in den Typ des Formularfelds bringen.
+ *
+ * Das Modell antwortet in Text, das Formular rechnet in Zahlen und Listen. Ohne diese Naht
+ * steht im Fördersatz "90 Prozent" statt 90, und `pruefeBaustein5` vergleicht eine
+ * Zeichenkette mit einer Zahl — ohne Fehler, aber ohne Befund. Eine Mehrfachauswahl kommt
+ * als "municipal" zurück und nicht als `["municipal"]`; der kommunale Höchstsatz sucht dann
+ * in einer Zeichenkette nach einem Listeneintrag und findet nichts.
+ *
+ * Was sich nicht umwandeln lässt, bleibt unverändert: lieber ein sichtbar unpassender Wert
+ * im Feld als eine erfundene Zahl. Die Auswahlprüfung des Formulars fängt ihn ab.
+ */
+export function feldwertAusVorschlag(
+  wert: string | number | boolean | string[] | null,
+  kind: FieldDefinition["kind"],
+): FieldValue["value"] {
+  if (wert === null || wert === undefined) return null;
+  if (kind === "checkbox") {
+    if (Array.isArray(wert)) return wert.map((w) => normalisiereAuswahl(w));
+    // Das Modell liefert Mehrfachauswahlen gern als Aufzählung in einer Zeile.
+    return String(wert)
+      .split(/[,;]|\bund\b/)
+      .map((w) => normalisiereAuswahl(w))
+      .filter(Boolean);
+  }
+  if (Array.isArray(wert)) return wert.join(", ");
+  if (kind === "number") {
+    if (typeof wert === "number") return wert;
+    // „90 Prozent", „90 %", „1.500 Euro" — die Einheit steht im Feldnamen, nicht im Wert.
+    const roh = String(wert).replace(/\./g, "").replace(",", ".");
+    const treffer = roh.match(/-?\d+(\.\d+)?/);
+    return treffer ? Number(treffer[0]) : String(wert);
+  }
+  if (kind === "radio") return normalisiereAuswahl(wert);
+  return typeof wert === "boolean" ? wert : String(wert);
+}
+
+/** Wortmenge eines Textes, kurze Wörter weggelassen. */
+function _woerter(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[\wäöüß]{5,}/g) ?? []).filter(Boolean),
+  );
+}
+
+/**
+ * Wiederholt dieser Vorschlag, was in einem ANDEREN Abschnitt schon bestätigt ist?
+ *
+ * Die breite Sammlung hat einen Preis: jedes Feld eines Abschnitts bekommt den ganzen
+ * Gesprächsverlauf zu sehen und greift sich heraus, was irgendwie passt. In den
+ * Zuwendungsvoraussetzungen landete so der Empfängerkreis, der Fördergegenstand und die
+ * Weiterleitungsregel — alles schon anderswo geregelt, hier bloß noch einmal erzählt.
+ *
+ * Der Schaden ist doppelt: die Richtlinie regelt dieselbe Sache zweimal, und dem Abschnitt,
+ * dem der Inhalt gehört, fehlt er hinterher. Im Durchlauf vom 22.09.2026 stand die
+ * Weiterleitungsregel im Text von Baustein 4 und fehlte in Baustein 3 — gemeldet wurde nur
+ * das Fehlen, nicht die Ursache.
+ *
+ * Verglichen werden Wörter, kein Modell. Ein umformulierter Satz teilt mit seinem Vorbild
+ * fast alle tragenden Wörter; eine eigenständige Regelung tut das nicht. Die Schwelle ist
+ * hoch angesetzt — im Zweifel lieber eine Dopplung stehen lassen als eine echte Angabe
+ * verwerfen, denn das Fehlende fällt auf, das Doppelte auch, aber das Verworfene nicht.
+ */
+export function istWiederholung(
+  wert: FieldValue["value"],
+  draft: RichtlinieDraft,
+  sectionId: string,
+): boolean {
+  if (typeof wert !== "string" || wert.trim().length < 60) return false;
+  const neu = _woerter(wert);
+  if (neu.size < 5) return false;
+  for (const [sid, abschnitt] of Object.entries(draft.sections)) {
+    if (sid === sectionId) continue;
+    for (const feld of Object.values(abschnitt.fields)) {
+      if (!feld.confirmedByUser || typeof feld.value !== "string") continue;
+      const alt = _woerter(feld.value);
+      if (alt.size < 5) continue;
+      const gemeinsam = [...neu].filter((w) => alt.has(w)).length;
+      if (gemeinsam / Math.min(neu.size, alt.size) >= 0.8) return true;
+    }
+  }
+  return false;
 }
 
 /** Die Abfragesorte für eine Menge von Zielfeldern, oder keine. */
