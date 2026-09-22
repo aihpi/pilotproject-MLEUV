@@ -59,7 +59,7 @@ function Abschnitt({ a }: { a: RichtlinienAbschnitt }) {
               <dl>
                 {a.begruendungen.map((b) => (
                   <div key={b.feld}>
-                    <dt>{b.feld}</dt>
+                    <dt>{feldName(a.nr, b.feld)}</dt>
                     <dd>
                       {b.herkunft === "user-chat"
                         ? "aus Ihrer Chat-Angabe"
@@ -82,6 +82,21 @@ function Abschnitt({ a }: { a: RichtlinienAbschnitt }) {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Die Beschriftung eines Feldes statt seiner Kennung.
+ *
+ * Hier stand `fundingRate`, `eligibleBasis`, `recipients` — Namen aus dem Schema, die in der
+ * Oberfläche nichts zu suchen haben. Wer den Herkunftsnachweis liest, soll das Feld
+ * wiedererkennen, das er selbst ausgefüllt hat.
+ */
+function feldName(abschnittNr: number | string, feldId: string): string {
+  return (
+    sections
+      .find((s) => s.id === String(abschnittNr))
+      ?.fields.find((f) => f.id === feldId)?.label ?? feldId
   );
 }
 

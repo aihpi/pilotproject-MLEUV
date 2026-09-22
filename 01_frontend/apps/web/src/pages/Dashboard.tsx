@@ -1,16 +1,24 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import type { FundingProfile } from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, PageHeader, Progress } from "../components";
 
 export function Dashboard() {
+  const qc = useQueryClient();
   const {
     data = [],
     isLoading,
     error,
   } = useQuery({ queryKey: ["drafts"], queryFn: api.drafts });
+  // Löschen ist endgültig und trifft Arbeit, die jemand geleistet hat. Deshalb eine
+  // Rückfrage, die den Titel nennt — ein „Wirklich löschen?" ohne Gegenstand beantwortet
+  // man zu leicht mit ja.
+  const loeschen = useMutation({
+    mutationFn: (id: string) => api.loeschen(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drafts"] }),
+  });
   return (
     <>
       <PageHeader eyebrow="Arbeitsbereich" title="Förderrichtlinien erstellen">
@@ -79,6 +87,22 @@ export function Dashboard() {
                 )}
                 label="Vollständigkeit"
               />
+              <div className="actions actions--karte">
+                <button
+                  className="button button--tertiary"
+                  disabled={loeschen.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `„${d.title}" endgültig löschen? Das lässt sich nicht rückgängig machen.`,
+                      )
+                    )
+                      loeschen.mutate(d.id);
+                  }}
+                >
+                  Löschen
+                </button>
+              </div>
             </article>
           ))}
         </div>

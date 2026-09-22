@@ -12,9 +12,22 @@ export function ReviewPage() {
     queryFn: () => api.draft(id),
   });
   if (!draft) return <p role="status">Prüfung wird geladen …</p>;
-  const errors = draft.validation.issues.filter(
-    (issue) => issue.severity === "error",
+  // Zwei Sorten von Fehlern, die nichts miteinander zu tun haben — und die bis zum
+  // 22.09.2026 unter einer Überschrift standen.
+  //
+  // Ein fehlendes Pflichtfeld ist unfertige Arbeit. Ein fachlicher Fehler ist eine
+  // Regelverletzung: das Außerkrafttreten lag vor dem Inkrafttreten, und die Meldung
+  // erschien unter „Pflichtangaben fehlen". Wer die Liste liest, sucht dort nach Lücken und
+  // liest über einen Widerspruch hinweg — er stand da und wurde trotzdem nicht gesehen.
+  //
+  // Unterschieden an der `regel`: nur die fachlichen Prüfungen tragen eine.
+  const fehlend = draft.validation.issues.filter(
+    (issue) => issue.severity === "error" && !issue.regel,
   );
+  const fachfehler = draft.validation.issues.filter(
+    (issue) => issue.severity === "error" && issue.regel,
+  );
+  const errors = fehlend;
   const warnings = draft.validation.issues.filter(
     (issue) => issue.severity === "warning",
   );
@@ -57,6 +70,32 @@ export function ReviewPage() {
             werden. Eine fachliche und rechtliche Freigabe ist weiterhin
             erforderlich.
           </p>
+        </Alert>
+      )}
+      {fachfehler.length > 0 && (
+        <Alert
+          kind="error"
+          title={`${fachfehler.length} fachliche Beanstandung${fachfehler.length === 1 ? "" : "en"}`}
+        >
+          <p>
+            Diese Angaben widersprechen einer Regel. Anders als eine fehlende
+            Pflichtangabe lassen sie sich nicht durch Ergänzen beheben — der Wert
+            selbst muss geändert werden.
+          </p>
+          <ul>
+            {fachfehler.map((issue, index) => (
+              <li key={`fach-${issue.fieldId}-${index}`}>
+                <Link
+                  to={`/entwurf/${id}/abschnitt/${issue.sectionId}#${issue.fieldId}`}
+                >
+                  {issue.message}
+                </Link>
+                {issue.rechtsstelle && (
+                  <small> · {issue.rechtsstelle}</small>
+                )}
+              </li>
+            ))}
+          </ul>
         </Alert>
       )}
       {warnings.length > 0 && (

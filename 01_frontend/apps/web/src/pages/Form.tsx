@@ -24,6 +24,18 @@ function sectionStatus(d: RichtlinieDraft, id: string) {
   const required = visible.filter((f) => f.required);
   if (!Object.keys(vals).length) return "empty";
   if (required.some((f) => !vals[f.id]?.value)) return "invalid";
+  // Ein Regelverstoß macht den Abschnitt nicht vollständig.
+  //
+  // Gezählt wurden bis zum 22.09.2026 nur die Pflichtfelder. Baustein 8 stand deshalb auf
+  // „Vollständig", während das Außerkrafttreten vor dem Inkrafttreten lag — beide Felder
+  // waren gefüllt und bestätigt, die Sache war trotzdem falsch. In der Abschnittsliste sieht
+  // man nur diesen Status, und ein Häkchen dort heißt: hier muss ich nicht mehr hinsehen.
+  if (
+    d.validation.issues.some(
+      (i) => i.sectionId === section.id && i.severity === "error" && i.regel,
+    )
+  )
+    return "invalid";
   if (
     Object.values(vals).some(
       (v) => v.status === "suggested" || !v.confirmedByUser,
@@ -183,6 +195,11 @@ function Input({
     <input
       id={field.id}
       type={field.kind}
+      // Ein Datumsfeld nimmt sonst jedes Jahr an — im Probelauf ging der 31.03.222222
+      // anstandslos durch. Eine Förderrichtlinie tritt weder vor der Landeshaushaltsordnung
+      // in Kraft noch im sechsstelligen Jahr außer Kraft; der Browser weist es damit selbst
+      // ab, bevor irgendeine Prüfung es sehen muss.
+      {...(field.kind === "date" ? { min: "2000-01-01", max: "2099-12-31" } : {})}
       value={String(value ?? "")}
       onChange={(e) =>
         onChange(
