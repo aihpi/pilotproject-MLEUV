@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 import pruefmodus
 import richtlinie
+import protokoll
 import vorschlag
 from adressierung import register
 from config import TOP_K, CORPUS_DIR, HOLDOUT_DATEIEN
@@ -73,7 +74,11 @@ class Anfrage(BaseModel):
 class Vorschlag(BaseModel):
     feld: str
     label: str
-    wert: str | None
+    # Die Typen des Formularfelds, nicht nur Text. Ein Fördersatz kommt als Zahl zurück, eine
+    # Mehrfachauswahl als Liste — stand hier `str | None`, verwarf die Antwortprüfung den
+    # ganzen Vorschlag mit HTTP 500, und zwar erst NACH den Modellaufrufen. Aufgefallen ist
+    # das lange nicht, weil bis dahin nur Textfelder erfragt wurden.
+    wert: str | int | float | bool | list[str] | None
     status: Literal["suggested", "unklar", "invalid"] | None
     quelle: str | None
     musterbaustein: str | None = None
@@ -159,12 +164,23 @@ def richtlinie_bauen(anfrage: RichtlinieAnfrage):
     try:
         felder = {nr: [f.model_dump(exclude_none=True) for f in liste]
                   for nr, liste in (anfrage.felder or {}).items()}
-        return richtlinie.bauen(
+        ergebnis = richtlinie.bauen(
             anfrage.entwurf,
             abschnitte=anfrage.abschnitte or range(1, 9),
             titel=anfrage.titel,
             felder=felder or None,
         )
+        protokoll.schreibe(
+            "richtlinie",
+            abschnitte=[a.get("nr") for a in ergebnis.get("abschnitte", [])],
+            # Je Abschnitt nur Umfang und Beanstandungen — der Text selbst steht im Entwurf.
+            zeichen={a.get("nr"): len(a.get("text") or "")
+                     for a in ergebnis.get("abschnitte", [])},
+            nachbesserungen={a.get("nr"): len((a.get("nachweis") or {}).get("modelle") or [])
+                             for a in ergebnis.get("abschnitte", [])},
+            befunde=ergebnis.get("befunde"),
+        )
+        return ergebnis
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
 
@@ -264,6 +280,21 @@ def vorschlag_erzeugen(anfrage: Anfrage):
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.
         raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
+
+    protokoll.schreibe(
+        "vorschlag",
+        abschnitt=anfrage.abschnitt_nr,
+        abfrageart=anfrage.abfrageart,
+        eingabe=anfrage.eingabe.strip(),
+        felder=[f["id"] for f in felder],
+        # Je Vorschlag nur das Entscheidende: was kam heraus, woher, wie sicher.
+        werte=[{"feld": v["feld"], "wert": v["wert"], "status": v["status"],
+                "gedeckt": bool(v.get("deckung")), "konfidenz": v.get("konfidenz")}
+               for v in vorschlaege],
+        befunde=nachweis.get("befunde"),
+        dauer_s=nachweis.get("dauer_s"),
+        modelle=nachweis.get("modelle"),
+    )
 
     if nachweis.get("fehler"):
         raise HTTPException(status_code=502, detail=nachweis["fehler"])

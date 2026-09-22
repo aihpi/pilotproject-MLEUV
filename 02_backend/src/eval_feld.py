@@ -43,7 +43,15 @@ def pruefe_feld(erwartung, v, bloecke_text):
     statt „2 von 3".
     """
     ergebnisse = []
-    wert = "" if v is None else str(v.get("wert") or "")
+    # `or ""` wäre falsch: die Zahl 0 und die leere Liste sind Werte, keine Abwesenheit. Ein
+    # Fördersatz von 0 Prozent ist eine Festlegung — sie als „nichts geliefert" zu lesen,
+    # verdeckt genau den Fall, den jemand prüfen wollte.
+    roh = None if v is None else v.get("wert")
+    # Mehrfachauswahlen kommen als Liste. Für den Vergleich zu einer Zeile verbinden, aber
+    # mit Trennzeichen statt über die Python-Darstellung — `enthaelt: [private]` soll nicht
+    # an Klammern und Anführungszeichen hängen.
+    wert = ", ".join(str(x) for x in roh) if isinstance(roh, list) else \
+        ("" if roh is None else str(roh))
     ist_unklar = normalisieren(wert).lower() == UNKLAR.lower()
 
     if v is None:

@@ -213,3 +213,6 @@ cython_debug/
 # Lokale Einstellungen von Claude Code
 .claude/settings.json
 .claude/settings.local.json
+
+# Laufzeitdaten des Vorschlagsdienstes: Qdrant-Index und Protokoll
+02_backend/.data/

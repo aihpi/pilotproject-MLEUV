@@ -37,6 +37,77 @@ felder:
       - {value: lho53, label: Billigkeitsleistung nach § 53 LHO}
       - {value: administrative, label: Verwaltungsvorschriften}
 
+  # --- Baustein 3, Zuwendungsempfänger ---
+  # Das Auswahlfeld, an dem der kommunale Höchstsatz hängt. Es blieb im Durchlauf vom
+  # 22.09.2026 dreimal leer, obwohl die Gruppen wörtlich genannt waren.
+  recipients:
+    id: recipients
+    label: Zuwendungsempfänger
+    kind: checkbox
+    options:
+      - {value: natural, label: Natürliche Personen}
+      - {value: private, label: Juristische Personen des privaten Rechts}
+      - {value: public, label: Juristische Personen des öffentlichen Rechts}
+      - {value: municipal, label: Kommunen und kommunale Einrichtungen}
+      - {value: sme, label: Kleine und mittlere Unternehmen}
+      - {value: research, label: Hochschulen und Forschungseinrichtungen}
+      - {value: other, label: Weitere Gruppen}
+  recipientDetails:
+    id: recipientDetails
+    label: Konkretisierung der Zielgruppe
+    kind: textarea
+
+  # --- Baustein 2 ---
+  subject:
+    id: subject
+    label: Gegenstand der Förderung
+    kind: textarea
+
+  # --- Baustein 5, Art, Umfang und Höhe ---
+  # Die Felder, die bis zum 22.09.2026 nie erhoben wurden, weil die Chat-Stufe nur zwei
+  # ihrer elf Felder an den Dienst weitergab. An dreien davon hängen Prüfregeln.
+  financingType:
+    id: financingType
+    label: Finanzierungsart
+    kind: radio
+    options:
+      - {value: share, label: Anteilfinanzierung}
+      - {value: deficit, label: Fehlbedarfsfinanzierung}
+      - {value: fixed, label: Festbetragsfinanzierung}
+      - {value: full, label: Vollfinanzierung}
+  financingForm:
+    id: financingForm
+    label: Finanzierungsform
+    kind: radio
+    options:
+      - {value: allocation, label: Zuweisung}
+      - {value: grant, label: Zuschuss}
+  eligibleBasis:
+    id: eligibleBasis
+    label: Bemessungsgrundlage
+    kind: radio
+    options:
+      - {value: actual, label: Spitzabrechnung}
+      - {value: overhead, label: Spitzabrechnung mit Gemeinkosten}
+      - {value: fixed-rates, label: Feste Beträge}
+      - {value: fixed-rest, label: Feste Beträge mit Pauschalfinanzierung der Restkosten}
+  eligibleCosts:
+    id: eligibleCosts
+    label: Zuwendungsfähige Ausgaben oder Kosten
+    kind: textarea
+  fundingRate:
+    id: fundingRate
+    label: Fördersatz in Prozent
+    kind: number
+  fixedAmount:
+    id: fixedAmount
+    label: Festbetrag in Euro
+    kind: number
+  minimum:
+    id: minimum
+    label: Bagatellgrenze in Euro
+    kind: number
+
 faelle:
 
   - id: F-01-vollstaendig
@@ -115,3 +186,123 @@ faelle:
     erwartet:
       purpose: {enthaelt: [bewässerung], eigenstaendig: true}
       legalBasis: {wert: lho44}
+
+  # ---------------------------------------------------------------------------
+  # Aus den Durchläufen über die Oberfläche am 18. und 22.09.2026.
+  #
+  # Jeder Fall hier stand vorher eine Stunde lang in einem Browserfenster. Sie sind der
+  # Grund, warum diese Sammlung überhaupt über Baustein 1 hinauswächst: der Fehler, der den
+  # ganzen Tag gekostet hat — Fördersatz und Finanzierungsart kamen nie in den Feldern an —
+  # wäre von keinem der sechs Fälle darüber gemeldet worden.
+  # ---------------------------------------------------------------------------
+
+  - id: F-07-baustein5-vollstaendig
+    notiz: >-
+      Der Fall, an dem alles hing. Eine Angabe nennt Kosten, Bemessungsgrundlage,
+      Fördersatz, Finanzierungsart und Finanzierungsform auf einmal — alle fünf müssen
+      ankommen. Kommt der Fördersatz nicht als ZAHL, rechnet die Prüfregel zum kommunalen
+      Höchstsatz an ihm vorbei, ohne zu meckern.
+    abschnitt_nr: 5
+    eingabe: >-
+      Förderfähig sind die Tierarztkosten und die Kosten für Mikrochips, abgerechnet wird
+      spitz nach tatsächlichen Kosten. Der Fördersatz beträgt 90 Prozent, als
+      Anteilfinanzierung in Form eines Zuschusses.
+    felder: [eligibleCosts, eligibleBasis, fundingRate, financingType, financingForm]
+    erwartet:
+      eligibleCosts: {enthaelt: [mikrochip], gedeckt: true}
+      eligibleBasis: {wert: actual}
+      fundingRate: {wert: 90, gedeckt: true}
+      financingType: {wert: share}
+      financingForm: {wert: grant}
+
+  - id: F-08-mehrfachauswahl
+    notiz: >-
+      Der Empfängerkreis, an dem der kommunale Höchstsatz hängt. Blieb dreimal in Folge
+      leer: das Feld war dem Modell als Einfachauswahl beschrieben, es sah nur die
+      Kennungen statt der Beschriftungen, und die Liste kam als JSON-ZEICHENKETTE zurück.
+      Beide Gruppen müssen ankommen, nicht nur die erste.
+    abschnitt_nr: 3
+    eingabe: >-
+      Zuwendungsempfänger sind Kommunen und kommunale Einrichtungen sowie juristische
+      Personen des privaten Rechts, insbesondere amtlich anerkannte Tierschutzvereine.
+    felder: [recipients, recipientDetails]
+    erwartet:
+      recipients: {enthaelt: [municipal, private], gedeckt: true}
+      recipientDetails: {enthaelt: [tierschutzverein]}
+
+  - id: F-09-festbetrag
+    notiz: >-
+      Der Festbetragszweig, bisher nie geprüft. Ausgerechnet sein Musterbaustein stand im
+      Katzentext, obwohl Anteilfinanzierung gewählt war. Hier ist er richtig — und der
+      Betrag muss als Zahl im eigenen Feld landen, nicht im Fließtext.
+    abschnitt_nr: 5
+    eingabe: >-
+      Gefördert wird mit einem Festbetrag je Mitglied und Jahr in Höhe von 12 Euro, als
+      Festbetragsfinanzierung in Form eines Zuschusses.
+    felder: [financingType, financingForm, fixedAmount, fundingRate]
+    erwartet:
+      financingType: {wert: fixed}
+      financingForm: {wert: grant}
+      fixedAmount: {wert: 12, gedeckt: true}
+      fundingRate: {unklar: true}
+
+  - id: F-10-bagatellgrenze
+    notiz: >-
+      Unterhalb der Regelgrenze von 2.500 Euro. Der Wert muss als Zahl ankommen, damit die
+      Prüfregel einen begründungspflichtigen Vermerkseintrag erzeugen kann. Kommt „1.000
+      Euro" als Text, schlägt sie nicht an — und ein ruhiger Bildschirm sähe aus wie ein
+      fehlerfreier Entwurf.
+    abschnitt_nr: 5
+    eingabe: Die Bagatellgrenze liegt bei 1.000 Euro.
+    felder: [minimum]
+    erwartet:
+      minimum: {wert: 1000, gedeckt: true}
+
+  - id: F-11-keine-kommunen
+    notiz: >-
+      Die Gegenprobe zu F-08: Empfänger ohne Kommunen. Der kommunale Höchstsatz DARF dann
+      nicht anschlagen. Eine Regel, die immer auslöst, ist so unbrauchbar wie eine, die nie
+      auslöst — geprüft wird hier die Eingangsgröße dafür.
+    abschnitt_nr: 3
+    eingabe: >-
+      Zuwendungsempfänger sind juristische Personen des privaten Rechts, nämlich nach dem
+      Bundeswaldgesetz anerkannte forstwirtschaftliche Zusammenschlüsse.
+    felder: [recipients, recipientDetails]
+    erwartet:
+      recipients: {enthaelt: [private], nicht: [municipal], gedeckt: true}
+      recipientDetails: {enthaelt: [zusammenschl]}
+
+  - id: F-12-lange-eingabe
+    notiz: >-
+      Eine Angabe, die fünf Bausteine auf einmal deckt. Unter dieser Last kopierte das
+      Modell denselben Rohsatz in Förderziel UND Zuwendungszweck, beide mit Konfidenz 0,99.
+      Die beiden müssen verschieden sein: das Ziel ist der Zustand, der Zweck das, was
+      gefördert wird.
+    abschnitt_nr: 1
+    eingabe: >-
+      Wir wollen erreichen, dass es weniger freilebende Katzen im Land Brandenburg gibt und
+      diese Tiere nicht länger unter Krankheiten und Unterernährung leiden. Gefördert werden
+      das Einfangen und die Kastration freilebender Katzen durch Tierärztinnen und
+      Tierärzte, die Kennzeichnung mit einem Mikrochip und die Registrierung in einem
+      Haustierregister. Zuwendungsempfänger sind Kommunen und kommunale Einrichtungen sowie
+      juristische Personen des privaten Rechts. Förderfähig sind die Tierarztkosten und die
+      Kosten für Mikrochips, abgerechnet wird spitz nach tatsächlichen Kosten. Der
+      Fördersatz beträgt 90 Prozent, als Anteilfinanzierung in Form eines Zuschusses.
+    felder: [goal, purpose, legalBasis]
+    erwartet:
+      goal: {enthaelt: [katzen], gedeckt: true}
+      purpose: {enthaelt: [kastration], gedeckt: true}
+      legalBasis: {wert: lho44}
+
+  - id: F-13-forst-gegenstand
+    notiz: >-
+      Zweiter Sachbereich neben dem Tierschutz, und die Richtlinie dazu liegt im Holdout.
+      Prüft, ob der Gegenstand eigenständig formuliert wird, wenn die naheliegende Vorlage
+      NICHT im Index steht.
+    abschnitt_nr: 2
+    eingabe: >-
+      Gefördert werden die Gründung und die laufende Geschäftsführung anerkannter
+      forstwirtschaftlicher Zusammenschlüsse sowie Fortbildungen für ihre Mitglieder.
+    felder: [subject]
+    erwartet:
+      subject: {enthaelt: [zusammenschl], eigenstaendig: true, gedeckt: true}
