@@ -48,6 +48,14 @@ PLATZHALTER = re.compile(r"X{2,}|<[^>]{2,60}>", re.I)
 # nichts mehr, wie schon in vorschlag._woertlich_in.
 SATZ_MINDESTLAENGE = 40
 
+# Wie oft ein beanstandeter Abschnitt neu geschrieben werden darf.
+#
+# Einer. Ein Abschnitt dauert rund eine Minute, elf Abschnitte machen den Unterschied
+# zwischen „mehrere Minuten" und „Kaffeepause". Und die Erfahrung mit dem Satzfilter gilt
+# auch hier: was ein zweiter Anlauf nicht behebt, behebt ein dritter selten — es ist dann
+# meist die Angabe, die fehlt, und nicht die Formulierung.
+NACHBESSERUNG_VERSUCHE = 1
+
 
 def _norm(s):
     s = unicodedata.normalize("NFKC", str(s or ""))
@@ -180,6 +188,22 @@ def _saetze(text):
     return [s.strip() for s in roh if len(s.strip()) >= SATZ_MINDESTLAENGE]
 
 
+# Felder, bei denen ein Vorkommen im Satzrahmen den Wächter entlastet.
+#
+# Nur `legalBasis`, und dafür gibt es einen Grund. Die Standardformel jeder Richtlinie nennt
+# die Verwaltungsvorschriften als QUELLE („… und der Verwaltungsvorschriften zu § 44 LHO"),
+# nicht als Dokumentart. Das ist kein Widerspruch zur Wahl „Zuwendung nach § 44 LHO", und die
+# Gefahr, die hier wirklich droht — dass sich das Dokument selbst Verwaltungsvorschrift nennt
+# — deckt `pruefe_selbstbezeichnung` gezielt ab.
+#
+# Für jedes andere Feld wäre die Entlastung verhängnisvoll, und sie war es: die
+# Musterrichtlinie führt zu Baustein 5 ALLE Finanzierungsarten auf, also steht
+# „Festbetragsfinanzierung" immer im Satzrahmen. Der Wächter schwieg damit genau in dem Fall,
+# für den er gebaut wurde — im Durchlauf vom 22.09.2026 stand ein Festbetragssatz samt
+# Platzhaltern im Text, obwohl Anteilfinanzierung bestätigt war, und gemeldet wurde nichts.
+_RAHMEN_ENTLASTET = {"legalBasis"}
+
+
 def pruefe_verworfene_optionen(text, felder, werte, bausteine=None):
     """Behauptet der Text etwas, das ausdrücklich nicht gewählt wurde?
 
@@ -213,6 +237,8 @@ def pruefe_verworfene_optionen(text, felder, werte, bausteine=None):
         wert = gewaehlt.get(f.get("id"))
         if not optionen or wert is None:
             continue
+        # Der Satzrahmen entlastet NUR die Felder aus `_RAHMEN_ENTLASTET`, siehe dort.
+        entlastet = f.get("id") in _RAHMEN_ENTLASTET
         angenommen = wert if isinstance(wert, list) else [wert]
         for o in optionen:
             if o.get("value") in angenommen:
@@ -221,7 +247,7 @@ def pruefe_verworfene_optionen(text, felder, werte, bausteine=None):
             # Kurze Beschriftungen („Ja", „Nein", „Land") treffen zu häufig zufällig.
             if len(beschriftung) < 8 or _norm(beschriftung) not in kleintext:
                 continue
-            if _norm(beschriftung) in rahmen:
+            if entlastet and _norm(beschriftung) in rahmen:
                 continue
             befunde.append(
                 f"{f['id']}: Der Text nennt „{beschriftung}“, gewählt wurde aber "
@@ -320,7 +346,7 @@ def _beschriftung(optionen, werte):
     return ", ".join(namen) or ", ".join(str(w) for w in werte)
 
 
-def pruefe_text(text, bausteine, werte):
+def pruefe_text(text, bausteine, werte, felder=None):
     """Lässt sich jeder Satz auf einen Musterbaustein oder eine bestätigte Angabe zurückführen?
 
     Zeichenvergleich, kein Modellaufruf — dieselbe Begründung wie bei der Abschreibprüfung
@@ -332,8 +358,15 @@ def pruefe_text(text, bausteine, werte):
     keine Überlappung hat, ist entweder frei erfunden oder eine Formulierung, die niemand
     zugeordnet hat — beides gehört gemeldet, nicht verworfen.
     """
+    # Die Werte als KLARTEXT, nicht als Kennung. Mit `str(wert)` stand hier
+    # "['municipal', 'private']", und der Satz „Der Kreis der Zuwendungsempfangenden umfasst
+    # Kommunen und kommunale Einrichtungen sowie juristische Personen des privaten Rechts"
+    # kam auf 18 Prozent Überlappung — gemeldet als Satz ohne Rückhalt, obwohl er genau die
+    # bestätigte Auswahl wiedergibt. Ein Fehlalarm an der Stelle, an der die Prüfung
+    # Vertrauen schaffen soll, ist teurer als ein übersehener Fund.
+    nach_id = {f.get("id"): f for f in felder or []}
     quelle = _norm(" ".join([t.get("text") or "" for t in bausteine]
-                            + [str(w["wert"]) for w in werte]))
+                            + [_klartext(w["wert"], nach_id.get(w["feld"])) for w in werte]))
     quellwoerter = set(re.findall(r"\w{5,}", quelle))
     befunde = []
     for satz in _saetze(text):
@@ -377,30 +410,70 @@ def abschnitt_bauen(entwurf, abschnitt_nr, titel=None, nur_landesrecht=True, fel
         werte=sanitize_and_wrap(_werte_text(werte, felder), tag_name="angaben",
                                 max_length=50000).wrapped_content,
     )
+    def pruefen(text):
+        return (pruefe_text(text, bausteine, werte, felder)
+                + pruefe_verworfene_optionen(text, felder, werte, bausteine)
+                + pruefe_fehlende_werte(text, felder, werte)
+                + pruefe_selbstbezeichnung(text, werte))
+
     t0 = time.monotonic()
-    antwort, modell = chat([{"role": "system", "content": prompt.system},
-                            {"role": "user", "content": prompt.user}],
-                           temperature=0, mit_modell=True)
-    dauer = round(time.monotonic() - t0, 1)
+    verlauf = [{"role": "system", "content": prompt.system},
+               {"role": "user", "content": prompt.user}]
+    modelle, bester = [], None
 
-    try:
-        daten = json.loads(re.sub(r"^```(?:json)?|```$", "", (antwort or "").strip(),
-                                  flags=re.M))
-    except json.JSONDecodeError as e:
-        return "", {"fehler": f"Antwort war kein JSON: {e}", "begruendungen": [],
-                    "befunde": [], "modelle": [modell], "dauer_s": dauer}
+    # Nachbessern statt nur melden.
+    #
+    # Die Wächter fanden im Durchlauf vom 22.09.2026 alles Richtige — einen Abschnitt ohne
+    # den bestätigten Fördergegenstand, einen Festbetragssatz trotz Anteilfinanzierung — und
+    # der fehlerhafte Text blieb trotzdem stehen. Ein Befund, den nur ein Mensch beheben
+    # kann, verschiebt die Arbeit, statt sie abzunehmen.
+    #
+    # Die Befunde sind zeichengenau und damit als Auftrag brauchbar: sie benennen, welcher
+    # bestätigte Wert fehlt und welche verworfene Option im Text steht. Genau das geht zurück
+    # ans Modell.
+    #
+    # Behalten wird der bessere Versuch, nicht der letzte. Ein zweiter Durchgang kann etwas
+    # anderes kaputtmachen, und ein Nachbesserungsschritt darf das Ergebnis nie
+    # verschlechtern.
+    for versuch in range(NACHBESSERUNG_VERSUCHE + 1):
+        antwort, modell = chat(verlauf, temperature=0, mit_modell=True)
+        modelle.append(modell)
+        try:
+            daten = json.loads(re.sub(r"^```(?:json)?|```$", "", (antwort or "").strip(),
+                                      flags=re.M))
+        except json.JSONDecodeError as e:
+            if bester:
+                break
+            return "", {"fehler": f"Antwort war kein JSON: {e}", "begruendungen": [],
+                        "befunde": [], "modelle": modelle,
+                        "dauer_s": round(time.monotonic() - t0, 1)}
 
-    text = (daten.get("text") or "").strip()
+        text = (daten.get("text") or "").strip()
+        befunde = pruefen(text)
+        if bester is None or len(befunde) < len(bester[2]):
+            bester = (text, daten, befunde)
+        if not befunde or versuch == NACHBESSERUNG_VERSUCHE:
+            break
+        verlauf = verlauf + [
+            {"role": "assistant", "content": antwort or ""},
+            {"role": "user", "content":
+                "Die Nachprüfung hat an deinem Abschnitt Folgendes beanstandet:\n\n"
+                + "\n".join(f"- {b}" for b in befunde)
+                + "\n\nSchreibe den Abschnitt erneut und behebe genau diese Punkte. "
+                  "Es gelten unverändert dieselben Quellen: Musterbausteine als Satzrahmen, "
+                  "bestätigte Angaben als Inhalt. Erfinde nichts hinzu, um einen Punkt zu "
+                  "erledigen — fehlt dir eine Angabe, lass die Stelle weg. Antworte wieder "
+                  "ausschließlich im vorgegebenen JSON-Schema."},
+        ]
+
+    text, daten, befunde = bester
     return text, {
         "begruendungen": begruendungen(entwurf, abschnitt_nr),
         "verwendete_bausteine": daten.get("verwendete_bausteine") or [],
         "offene_platzhalter": daten.get("offene_platzhalter") or [],
-        "befunde": (pruefe_text(text, bausteine, werte)
-                    + pruefe_verworfene_optionen(text, felder, werte, bausteine)
-                    + pruefe_fehlende_werte(text, felder, werte)
-                    + pruefe_selbstbezeichnung(text, werte)),
-        "modelle": [modell],
-        "dauer_s": dauer,
+        "befunde": befunde,
+        "modelle": modelle,
+        "dauer_s": round(time.monotonic() - t0, 1),
     }
 
 

@@ -340,3 +340,118 @@ class TestSelbstbezeichnung:
     def test_ohne_rechtsgrundlage_keine_aussage(self):
         text = "Nach Maßgabe dieser Verwaltungsvorschrift."
         assert richtlinie.pruefe_selbstbezeichnung(text, []) == []
+
+
+class TestSatzrahmenEntlastetNurDieRechtsgrundlage:
+    """Der Wächter schwieg genau dort, wo er gebraucht wurde.
+
+    Durchlauf vom 22.09.2026: bestätigt war Anteilfinanzierung, im Text stand der
+    Musterbaustein zur Festbetragsfinanzierung samt Platzhaltern XX und YY — und kein Befund.
+    Ursache war die Entlastung durch den Satzrahmen: die Musterrichtlinie führt zu Baustein 5
+    alle Finanzierungsarten auf, also steht die verworfene Option dort immer.
+
+    Für `legalBasis` bleibt die Entlastung richtig, siehe TestKeinFehlalarmAusDemSatzrahmen.
+    """
+    felder = [{"id": "financingType", "options": [
+        {"value": "share", "label": "Anteilfinanzierung"},
+        {"value": "fixed", "label": "Festbetragsfinanzierung"}]}]
+    werte = [{"feld": "financingType", "wert": "share"}]
+    bausteine = [{"nummer": "5.2", "text": "Finanzierungsart: Anteilfinanzierung, "
+                                           "Fehlbedarfsfinanzierung, Festbetragsfinanzierung."}]
+
+    def test_verworfene_option_aus_dem_rahmen_wird_gemeldet(self):
+        text = "Der Zuschuss beträgt für Vorhaben nach YY XX Euro je Einheit (Festbetragsfinanzierung)."
+        befunde = richtlinie.pruefe_verworfene_optionen(
+            text, self.felder, self.werte, self.bausteine)
+        assert len(befunde) == 1
+        assert "Festbetragsfinanzierung" in befunde[0]
+        assert "Anteilfinanzierung" in befunde[0]
+
+    def test_gewaehlte_option_bleibt_unauffaellig(self):
+        text = "Die Zuwendung wird als Anteilfinanzierung gewährt."
+        assert richtlinie.pruefe_verworfene_optionen(
+            text, self.felder, self.werte, self.bausteine) == []
+
+
+class TestNachbesserung:
+    """Ein Befund soll behoben werden, nicht nur gemeldet.
+
+    Durchlauf vom 22.09.2026: die Wächter fanden alles Richtige — ein Abschnitt ohne den
+    bestätigten Fördergegenstand, ein Festbetragssatz trotz Anteilfinanzierung — und der
+    fehlerhafte Text blieb trotzdem stehen. Ein Befund, den nur ein Mensch beheben kann,
+    verschiebt die Arbeit, statt sie abzunehmen.
+
+    Geprüft wird hier die Mechanik, nicht die Formulierung: wie oft gefragt wird, was
+    zurückgeht und welcher Versuch gewinnt.
+    """
+
+    felder = [{"id": "goal", "label": "Förderziel"}]
+    entw = {"sections": {"1": {"fields": {
+        "goal": {"value": "Verbesserung des Tierschutzes", "confirmedByUser": True}}}},
+        "vermerk": [], "validation": {"issues": []}}
+
+    def _lauf(self, monkeypatch, antworten):
+        """Lässt `chat` die vorgegebenen Antworten liefern und merkt sich die Aufrufe."""
+        aufrufe = []
+
+        def falsches_chat(verlauf, **_):
+            aufrufe.append(verlauf)
+            return antworten[len(aufrufe) - 1], "testmodell"
+
+        monkeypatch.setattr(richtlinie, "chat", falsches_chat)
+        monkeypatch.setattr(richtlinie.vorschlag, "rahmen", lambda *a, **k: [])
+        text, nachweis = richtlinie.abschnitt_bauen(
+            self.entw, 1, "Förderziel", felder=self.felder)
+        return text, nachweis, aufrufe
+
+    def test_sauberer_text_wird_nicht_nachgefragt(self, monkeypatch):
+        gut = '{"text": "Ziel ist die Verbesserung des Tierschutzes.", ' \
+              '"verwendete_bausteine": [], "offene_platzhalter": []}'
+        text, nachweis, aufrufe = self._lauf(monkeypatch, [gut])
+        assert nachweis["befunde"] == []
+        assert len(aufrufe) == 1                      # kein zweiter Aufruf
+        assert "Verbesserung des Tierschutzes" in text
+
+    def test_befund_loest_einen_zweiten_versuch_aus(self, monkeypatch):
+        schlecht = '{"text": "Dieser Abschnitt regelt Verschiedenes zu dem Vorhaben und ' \
+                   'seinen Zielen.", "verwendete_bausteine": [], "offene_platzhalter": []}'
+        gut = '{"text": "Ziel ist die Verbesserung des Tierschutzes.", ' \
+              '"verwendete_bausteine": [], "offene_platzhalter": []}'
+        text, nachweis, aufrufe = self._lauf(monkeypatch, [schlecht, gut])
+        assert len(aufrufe) == 2
+        assert nachweis["befunde"] == []
+        assert "Verbesserung des Tierschutzes" in text
+
+    def test_die_beanstandung_geht_mit_zurueck(self, monkeypatch):
+        schlecht = '{"text": "Dieser Abschnitt regelt Verschiedenes zu dem Vorhaben und ' \
+                   'seinen Zielen.", "verwendete_bausteine": [], "offene_platzhalter": []}'
+        _, _, aufrufe = self._lauf(monkeypatch, [schlecht, schlecht])
+        nachfrage = aufrufe[1][-1]["content"]
+        assert "beanstandet" in nachfrage
+        assert "Förderziel" in nachfrage                 # der konkrete Befund
+        assert "Erfinde nichts hinzu" in nachfrage       # und die Schranke dazu
+
+    def test_hoechstens_ein_zweiter_versuch(self, monkeypatch):
+        schlecht = '{"text": "Dieser Abschnitt regelt Verschiedenes zu dem Vorhaben und ' \
+                   'seinen Zielen.", "verwendete_bausteine": [], "offene_platzhalter": []}'
+        _, nachweis, aufrufe = self._lauf(monkeypatch, [schlecht, schlecht])
+        assert len(aufrufe) == richtlinie.NACHBESSERUNG_VERSUCHE + 1
+        assert nachweis["befunde"]                        # bleibt sichtbar, wenn es bleibt
+
+    def test_der_bessere_versuch_gewinnt(self, monkeypatch):
+        """Nachbessern darf nie verschlechtern."""
+        gut = '{"text": "Ziel ist die Verbesserung des Tierschutzes.", ' \
+              '"verwendete_bausteine": [], "offene_platzhalter": []}'
+        schlechter = '{"text": "Die Förderung dient dem Erhalt historischer Stadtkerne ' \
+                     'und ihrer baulichen Substanz.", "verwendete_bausteine": [], ' \
+                     '"offene_platzhalter": []}'
+        # Erster Versuch mit einem Befund, zweiter mit mehr — der erste muss gewinnen.
+        text, nachweis, aufrufe = self._lauf(monkeypatch, [gut, schlechter])
+        assert "Verbesserung des Tierschutzes" in text
+
+    def test_kaputtes_json_im_zweiten_versuch_behaelt_den_ersten(self, monkeypatch):
+        schlecht = '{"text": "Dieser Abschnitt regelt Verschiedenes zu dem Vorhaben und ' \
+                   'seinen Zielen.", "verwendete_bausteine": [], "offene_platzhalter": []}'
+        text, nachweis, _ = self._lauf(monkeypatch, [schlecht, "kein JSON"])
+        assert "Verschiedenes" in text
+        assert "fehler" not in nachweis
