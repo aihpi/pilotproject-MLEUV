@@ -81,6 +81,76 @@ def normalisieren(wert):
     return unicodedata.normalize("NFKC", str(wert or "")).translate(_ZWILLINGE).strip()
 
 
+# Ab dieser Länge ist ein wortgleicher Wert in zwei Feldern kein Zufall mehr.
+#
+# Kurze Werte teilen sich Felder durchaus zu Recht — zwei Datumsangaben, zweimal „ja", zweimal
+# derselbe Ort. Ein ganzer Satz dagegen kann nicht gleichzeitig Förderziel UND Zuwendungszweck
+# sein: das eine ist der Zustand, den die Förderung erreichen soll, das andere das, was
+# gefördert wird.
+DOPPELT_MINDESTLAENGE = 60
+
+
+def _doppelte_werte_verwerfen(vorschlaege):
+    """Zwei Felder mit demselben Satz — das zweite wird verworfen.
+
+    Bei einer langen Eingabe, die mehrere Bausteine auf einmal deckt, füllte das Modell
+    Förderziel und Zuwendungszweck mit demselben Rohsatz der Eingabe, beide mit Konfidenz
+    0,99 (Durchlauf vom 22.09.2026). Bei kurzen Eingaben waren dieselben Felder sauber
+    getrennt und in Verwaltungssprache gebracht — es ist also keine Frage des Könnens,
+    sondern der Sorgfalt unter Last.
+
+    Deshalb hier und nicht im Prompt: ob zwei Werte gleich sind, ist ein Zeichenvergleich
+    und hängt nicht daran, wie gut eine Formulierung befolgt wird.
+
+    Verworfen wird das SPÄTERE Feld, nicht das frühere. Die Felder stehen in der Reihenfolge
+    der Abschnittsdefinition, und die folgt der Musterrichtlinie — das erste Feld ist das,
+    für das der Satz am ehesten gemeint war. Ein verworfener Wert wird `[Unklar]`: die
+    Bearbeiterin trägt ihn im Formular nach, statt eine Dopplung zu bestätigen.
+    """
+    befunde, gesehen = [], {}
+    for v in vorschlaege:
+        wert = v.get("wert")
+        if not isinstance(wert, str) or len(wert.strip()) < DOPPELT_MINDESTLAENGE:
+            continue
+        schluessel = normalisieren(wert).lower()
+        if schluessel in gesehen:
+            befunde.append(
+                f"{v['feld']}: wortgleich mit {gesehen[schluessel]} — verworfen, zwei Felder "
+                f"können nicht denselben Satz regeln")
+            v["wert"] = UNKLAR
+            v["status"] = "unklar"
+            v["konfidenz"] = 0.0
+            v["deckung"] = None
+        else:
+            gesehen[schluessel] = v["feld"]
+    return befunde
+
+
+def _als_liste(wert):
+    """Eine Mehrfachauswahl in eine Liste bringen, wie das Modell sie auch schreibt.
+
+    Verlangt ist eine JSON-Liste, geliefert wird oft eine JSON-Liste ALS ZEICHENKETTE:
+    `'["municipal","private"]'`. Ungeprüft wurde daraus ein einziger Eintrag, der zu keiner
+    Option passte — die ganze Auswahl fiel als ungültig durch, und der Empfängerkreis blieb
+    dreimal in Folge leer, obwohl das Modell die richtige Antwort gegeben hatte.
+
+    Das ist kein Sonderwunsch an ein bestimmtes Modell: JSON in JSON ist der häufigste Weg,
+    auf dem eine Liste durch eine Textschnittstelle rutscht. Auch die Aufzählung in einer
+    Zeile („Kommunen, Vereine") kommt vor und wird hier aufgetrennt.
+    """
+    if isinstance(wert, list):
+        return wert
+    text = str(wert or "").strip()
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            geparst = json.loads(text)
+            if isinstance(geparst, list):
+                return geparst
+        except json.JSONDecodeError:
+            pass
+    return re.split(r"\s*[,;]\s*|\s+und\s+", text) if text else []
+
+
 def rahmen(abschnitt_nr, nur_landesrecht=True):
     """Musterbausteine des Abschnitts als Satzrahmen. Leer, wenn die Vorlage fehlt."""
     aus = musterbausteine.laden().get(abschnitt_nr, [])
@@ -107,8 +177,25 @@ def _felder_text(felder):
     for f in felder:
         zeile = f"- {f['id']}: {f.get('label') or f['id']}"
         if f.get("options"):
-            werte = ", ".join(o["value"] for o in f["options"])
-            zeile += f"\n    Auswahlfeld, genau einer dieser Werte: {werte}"
+            # Die BESCHRIFTUNG mit der Kennung zeigen, nicht nur die Kennung. Das Formular
+            # führt Werte wie „municipal" — die Bearbeiterin schreibt „Kommunen". Ohne die
+            # Beschriftung muss das Modell die Übersetzung erraten, und es erriet sie mal so,
+            # mal gar nicht: derselbe Empfängerkreis kam einmal als `municipal` zurück und
+            # einmal überhaupt nicht.
+            werte = ", ".join(
+                f"{o['value']} ({o['label']})" if o.get("label") else o["value"]
+                for o in f["options"]
+            )
+            # Mehrfachauswahl war bisher als Einfachauswahl beschrieben. Das Feld
+            # „Zuwendungsempfänger" nimmt mehrere Gruppen, und an einer davon — Kommunen —
+            # hängt der kommunale Höchstsatz.
+            if f.get("kind") == "checkbox":
+                zeile += (
+                    f"\n    Mehrfachauswahl, eine JSON-Liste dieser Kennungen: {werte}"
+                    "\n    Alle zutreffenden nennen, nicht nur die erste."
+                )
+            else:
+                zeile += f"\n    Auswahlfeld, genau eine dieser Kennungen: {werte}"
         elif f.get("kind") in ("number", "date"):
             zeile += f"\n    Typ: {f['kind']}"
         if f.get("help"):
@@ -318,17 +405,47 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
 
     if feld.get("options"):
         erlaubt = {normalisieren(o["value"]): o["value"] for o in feld["options"]}
-        treffer = erlaubt.get(normalisieren(wert_roh))
-        if treffer is None:
-            v["status"] = "invalid"
-            befunde.append(f"{feld['id']}: {wert_roh!r} gehört nicht zur Auswahl")
-        else:
-            if treffer != str(wert_roh).strip():
+        # Auch die Beschriftung zulassen: das Modell antwortet gelegentlich mit dem, was es
+        # der Bearbeiterin vorlesen würde („Kommunen und kommunale Einrichtungen") statt mit
+        # der Kennung. Das ist der richtige Wert, nur in der falschen Schreibweise — ihn als
+        # „gehört nicht zur Auswahl" zu verwerfen, wäre Buchhaltung gegen die Sache.
+        for o in feld["options"]:
+            if o.get("label"):
+                erlaubt.setdefault(normalisieren(o["label"]), o["value"])
+
+        # Mehrfachauswahl: das Feld hält eine Liste, und jeder Eintrag wird einzeln geprüft.
+        # Ein unbekannter Eintrag verwirft nicht die ganze Auswahl — die übrigen sind
+        # deswegen nicht falsch.
+        if feld.get("kind") == "checkbox":
+            roh = _als_liste(wert_roh)
+            gewaehlt, unbekannt = [], []
+            for teil in roh:
+                treffer = erlaubt.get(normalisieren(teil))
+                if treffer is None:
+                    unbekannt.append(str(teil))
+                elif treffer not in gewaehlt:
+                    gewaehlt.append(treffer)
+            if unbekannt:
                 befunde.append(
-                    f"{feld['id']}: Wert erst nach Normalisierung lesbar "
-                    f"({str(wert_roh).strip()!r} -> {treffer!r})")
-            v["wert"] = treffer
-            v["status"] = "suggested"
+                    f"{feld['id']}: {', '.join(repr(u) for u in unbekannt)} "
+                    "gehört nicht zur Auswahl")
+            if gewaehlt:
+                v["wert"] = gewaehlt
+                v["status"] = "suggested"
+            else:
+                v["status"] = "invalid"
+        else:
+            treffer = erlaubt.get(normalisieren(wert_roh))
+            if treffer is None:
+                v["status"] = "invalid"
+                befunde.append(f"{feld['id']}: {wert_roh!r} gehört nicht zur Auswahl")
+            else:
+                if treffer != str(wert_roh).strip():
+                    befunde.append(
+                        f"{feld['id']}: Wert erst nach Normalisierung lesbar "
+                        f"({str(wert_roh).strip()!r} -> {treffer!r})")
+                v["wert"] = treffer
+                v["status"] = "suggested"
     else:
         v["status"] = "suggested"
 
@@ -350,7 +467,13 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
         v["konfidenz"] = min(float(v.get("konfidenz") or 1.0), KONFIDENZ_ABGELEITET)
         befunde.append(f"{feld['id']}: nach dem Vorbild eines früheren Verfahrens "
                        f"vorgeschlagen, nicht durch die Angabe gedeckt")
-    elif feld.get("options") and ungedeckt:
+    elif ungedeckt:
+        # Gilt für JEDES Feld, nicht nur für Auswahlfelder. Im Durchlauf vom 22.09.2026 stand
+        # in der beihilferechtlichen Rechtsgrundlage — einem Freitextfeld — der Satz „Die
+        # Förderung stellt Beihilfen im Sinne von Artikel 107 Absatz 1 AEUV dar", mit 0,9
+        # Konfidenz und ohne eine Silbe dazu in der Eingabe. Gerade im Freitext ist die
+        # Selbstauskunft des Modells wertlos: dort kann es formulieren, was es für üblich
+        # hält, und klingt dabei ebenso sicher wie bei einem abgeschriebenen Wert.
         v["konfidenz"] = min(float(v.get("konfidenz") or 1.0), KONFIDENZ_ABGELEITET)
         befunde.append(f"{feld['id']}: aus dem Regelfall abgeleitet, die Angabe deckt ihn nicht")
 
@@ -517,6 +640,8 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
             "begruendung": v.get("begruendung"),
             "konfidenz": v.get("konfidenz"),
         })
+
+    befunde += _doppelte_werte_verwerfen(vorschlaege)
 
     fehlend = [f["id"] for f in felder if f["id"] not in {v["feld"] for v in vorschlaege}]
     if fehlend:

@@ -180,3 +180,196 @@ class TestNachpruefung:
         assert v["belegzitat"] is None
         assert v["beleg_geprueft"] is False
         assert any("nicht in den Fundstellen" in b for b in befunde)
+
+
+FELD_MEHRFACH = {
+    "id": "recipients", "label": "Zuwendungsempfänger", "kind": "checkbox",
+    "options": [
+        {"value": "natural", "label": "Natürliche Personen"},
+        {"value": "private", "label": "Juristische Personen des privaten Rechts"},
+        {"value": "municipal", "label": "Kommunen und kommunale Einrichtungen"},
+    ],
+}
+
+
+class TestMehrfachauswahl:
+    """Der Empfängerkreis, an dem der kommunale Höchstsatz hängt.
+
+    Im Durchlauf vom 22.09.2026 blieb das Feld dreimal leer, obwohl die Bearbeiterin die
+    Gruppen wörtlich genannt hatte — einmal kam `municipal` zurück, zweimal nichts. Das
+    Gespräch kam dadurch nicht weiter, und die 80-Prozent-Regel hatte nie ihre Eingangsgröße.
+
+    Zwei Ursachen, beide hier abgedeckt: das Feld war dem Modell als Einfachauswahl
+    beschrieben, und es sah nur die Kennungen, nicht die Beschriftungen.
+    """
+
+    def test_liste_bleibt_liste(self):
+        v = {"feld": "recipients", "wert": ["municipal", "private"],
+             "quelle": "eingabe", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal", "private"]
+        assert v["status"] == "suggested"
+
+    def test_einzelwert_wird_zur_liste(self):
+        v = {"feld": "recipients", "wert": "municipal", "quelle": "eingabe", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal"]
+
+    def test_beschriftung_statt_kennung_wird_verstanden(self):
+        """Das Modell antwortet mitunter mit dem, was es vorlesen würde."""
+        v = {"feld": "recipients", "wert": ["Kommunen und kommunale Einrichtungen"],
+             "quelle": "eingabe", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal"]
+
+    def test_ein_unbekannter_eintrag_verwirft_nicht_die_uebrigen(self):
+        v = {"feld": "recipients", "wert": ["municipal", "Vereine"],
+             "quelle": "eingabe", "konfidenz": 0.9}
+        befunde = vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal"]
+        assert v["status"] == "suggested"
+        assert any("gehört nicht zur Auswahl" in b for b in befunde)
+
+    def test_nur_unbekanntes_ist_ungueltig(self):
+        v = {"feld": "recipients", "wert": ["Vereine"], "quelle": "eingabe", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["status"] == "invalid"
+
+    def test_doppelte_nennung_zaehlt_einmal(self):
+        v = {"feld": "recipients",
+             "wert": ["municipal", "Kommunen und kommunale Einrichtungen"],
+             "quelle": "eingabe", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal"]
+
+
+class TestFelderText:
+    def test_mehrfachauswahl_wird_als_liste_angekuendigt(self):
+        text = vorschlag._felder_text([FELD_MEHRFACH])
+        assert "Mehrfachauswahl" in text
+        assert "genau eine" not in text
+
+    def test_einfachauswahl_bleibt_einfach(self):
+        text = vorschlag._felder_text([FELD_AUSWAHL])
+        assert "genau eine" in text
+        assert "Mehrfachauswahl" not in text
+
+    def test_beschriftungen_stehen_im_prompt(self):
+        """Ohne sie muss das Modell „Kommunen" auf `municipal` raten."""
+        text = vorschlag._felder_text([FELD_MEHRFACH])
+        assert "Kommunen und kommunale Einrichtungen" in text
+        assert "municipal" in text
+
+
+class TestKonfidenzOhneDeckung:
+    """Die Selbstauskunft des Modells trägt nicht, wo die Eingabe schweigt.
+
+    Durchlauf vom 22.09.2026: im Freitextfeld „Beihilferechtliche Rechtsgrundlage" stand
+    „Die Förderung stellt Beihilfen im Sinne von Artikel 107 Absatz 1 AEUV dar" — mit 0,9
+    Konfidenz, ohne ein Wort dazu in der Eingabe. Gekappt wurden bis dahin nur Auswahlfelder.
+    """
+
+    def test_freitext_ohne_deckung_wird_gekappt(self):
+        v = {"feld": "stateAidBasis", "wert": "Die Förderung stellt eine Beihilfe dar.",
+             "quelle": "musterbaustein", "konfidenz": 0.9}
+        befunde = vorschlag._pruefen(
+            v, {"id": "stateAidBasis", "label": "Beihilferechtliche Rechtsgrundlage",
+                "kind": "textarea"},
+            [], eingabe="Wir wollen Tierheime fördern.")
+        assert v["konfidenz"] <= vorschlag.KONFIDENZ_ABGELEITET
+        assert any("aus dem Regelfall abgeleitet" in b for b in befunde)
+
+    def test_gedeckter_freitext_behaelt_die_konfidenz(self):
+        eingabe = "Wir wollen den Tierschutz im Land Brandenburg verbessern."
+        v = {"feld": "goal", "wert": "Verbesserung des Tierschutzes im Land Brandenburg",
+             "quelle": "eingabe", "konfidenz": 0.95,
+             "deckung": "Wir wollen den Tierschutz im Land Brandenburg verbessern."}
+        vorschlag._pruefen(v, FELD_TEXT, [], eingabe=eingabe)
+        assert v["konfidenz"] == 0.95
+
+
+class TestListeAusModellantwort:
+    """JSON in JSON — der Weg, auf dem die Mehrfachauswahl dreimal verlorenging.
+
+    Verlangt war eine JSON-Liste, geliefert wurde sie als Zeichenkette:
+    '["municipal","private"]'. Daraus wurde ein einziger Eintrag, der zu keiner Option
+    passte, und der ganze Empfängerkreis fiel als ungültig durch — obwohl das Modell die
+    richtige Antwort gegeben hatte.
+    """
+
+    def test_json_liste_als_zeichenkette(self):
+        assert vorschlag._als_liste('["municipal","private"]') == ["municipal", "private"]
+
+    def test_echte_liste_bleibt(self):
+        assert vorschlag._als_liste(["a", "b"]) == ["a", "b"]
+
+    def test_aufzaehlung_in_einer_zeile(self):
+        assert vorschlag._als_liste("municipal, private") == ["municipal", "private"]
+        assert vorschlag._als_liste("municipal und private") == ["municipal", "private"]
+
+    def test_einzelwert(self):
+        assert vorschlag._als_liste("municipal") == ["municipal"]
+
+    def test_nichts_ergibt_nichts(self):
+        assert vorschlag._als_liste(None) == []
+        assert vorschlag._als_liste("") == []
+
+    def test_kaputtes_json_faellt_auf_die_trennung_zurueck(self):
+        assert vorschlag._als_liste('["municipal", private]') == ['["municipal"', 'private]']
+
+    def test_der_ganze_weg_bis_zum_feldwert(self):
+        """Was am 22.09.2026 wirklich vom Dienst kam."""
+        v = {"feld": "recipients", "wert": '["municipal","private"]',
+             "quelle": "eingabe", "konfidenz": 0.99}
+        vorschlag._pruefen(v, FELD_MEHRFACH, [])
+        assert v["wert"] == ["municipal", "private"]
+        assert v["status"] == "suggested"
+
+
+class TestDoppelteWerte:
+    """Zwei Felder, ein Satz — im Durchlauf vom 22.09.2026 Förderziel und Zuwendungszweck.
+
+    Bei einer langen Eingabe, die mehrere Bausteine auf einmal deckt, kopierte das Modell
+    denselben Rohsatz in beide Felder, jeweils mit Konfidenz 0,99. Bei kurzen Eingaben waren
+    dieselben Felder sauber getrennt — es ist eine Frage der Sorgfalt unter Last, und ein
+    Zeichenvergleich fängt sie unabhängig davon ab.
+    """
+
+    satz = ("Wir wollen erreichen, dass es weniger freilebende Katzen im Land Brandenburg "
+            "gibt und diese Tiere nicht länger unter Krankheiten und Unterernährung leiden.")
+
+    def test_das_spaetere_feld_wird_verworfen(self):
+        v = [{"feld": "goal", "wert": self.satz, "konfidenz": 0.99},
+             {"feld": "purpose", "wert": self.satz, "konfidenz": 0.99}]
+        befunde = vorschlag._doppelte_werte_verwerfen(v)
+        assert v[0]["wert"] == self.satz                 # das erste bleibt
+        assert v[1]["wert"] == vorschlag.UNKLAR          # das zweite nicht
+        assert v[1]["status"] == "unklar"
+        assert v[1]["konfidenz"] == 0.0
+        assert any("wortgleich" in b and "goal" in b for b in befunde)
+
+    def test_unterschiedliche_werte_bleiben(self):
+        v = [{"feld": "goal", "wert": self.satz},
+             {"feld": "purpose", "wert": "Gefördert wird die Kastration freilebender Katzen "
+                                          "durch Tierärztinnen und Tierärzte im Land."}]
+        assert vorschlag._doppelte_werte_verwerfen(v) == []
+        assert v[1]["wert"] != vorschlag.UNKLAR
+
+    def test_kurze_werte_duerfen_sich_wiederholen(self):
+        """Zwei Datumsangaben, zweimal „ja", zweimal derselbe Ort — alles zulässig."""
+        v = [{"feld": "validFrom", "wert": "2027-01-01"},
+             {"feld": "validUntil", "wert": "2027-01-01"}]
+        assert vorschlag._doppelte_werte_verwerfen(v) == []
+        assert v[1]["wert"] == "2027-01-01"
+
+    def test_listen_und_zahlen_bleiben_unberuehrt(self):
+        v = [{"feld": "recipients", "wert": ["municipal"]},
+             {"feld": "auditRights", "wert": ["municipal"]},
+             {"feld": "fundingRate", "wert": 90},
+             {"feld": "maximum", "wert": 90}]
+        assert vorschlag._doppelte_werte_verwerfen(v) == []
+
+    def test_unterschiedliche_schreibweise_zaehlt_als_gleich(self):
+        v = [{"feld": "goal", "wert": self.satz},
+             {"feld": "purpose", "wert": "  " + self.satz.upper() + " "}]
+        assert len(vorschlag._doppelte_werte_verwerfen(v)) == 1
