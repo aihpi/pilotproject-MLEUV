@@ -102,9 +102,14 @@ def pruefe_feld(erwartung, v, bloecke_text):
 
 def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
     felder = [felder_def[i] for i in fall["felder"]]
+    # Nachbarfelder wie im Betrieb: ein Abschnitt wird dort in zwei Anfragen gefüllt, und das
+    # Modell muss wissen, was die andere Anfrage aufnimmt. Ohne sie schrieb ein Freitextfeld
+    # hin, was ein Auswahlfeld daneben schon regelt — und der Fall hier träfe diesen Fehler
+    # nie, weil er ihn gar nicht herstellt.
+    nachbarn = [felder_def[i] for i in fall.get("nachbarn", [])]
     vorschlaege, nachweis = vorschlag.vorschlagen(
         fall["abschnitt_nr"], fall["eingabe"].strip(), felder, konsens=konsens,
-        mit_belegen=mit_belegen)
+        mit_belegen=mit_belegen, nachbarfelder=nachbarn or None)
     nach_feld = {v["feld"]: v for v in vorschlaege}
     # Derselbe Belegtext, den das Modell gesehen hat — aus dem Nachweis, nicht neu geholt.
     bloecke_text = nachweis.get("belegtext", "")

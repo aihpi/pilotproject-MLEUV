@@ -32,6 +32,7 @@ from pathlib import Path
 from bmds_prompt_loader import PromptLoader
 from bmds_prompt_security import sanitize_and_wrap
 
+import protokoll
 import satzfilter
 import musterbausteine
 from anfrage import suche
@@ -507,7 +508,8 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
 
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
-                konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None):
+                konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None,
+                nachbarfelder=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
@@ -569,6 +571,17 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         belege_rolle=_ROLLE_VORBILD if abfrageart == "vorschlagen" else _ROLLE_NACHWEIS,
         belege_ueberschrift=_UEBERSCHRIFT.get(abfrageart, _UEBERSCHRIFT[None]),
         felder=_felder_text(felder),
+        # Die übrigen Felder desselben Abschnitts, nur mit Beschriftung.
+        #
+        # Ein Abschnitt wird in ZWEI Anfragen gefüllt, getrennt nach Abfrageart — das Modell
+        # sieht hier also nicht alle seine Felder. Ohne diese Liste schrieb „Weitere
+        # fachliche Nebenbestimmungen" die Prüfungsberechtigten als Fließtext hin, während
+        # sie im selben Abschnitt längst als Auswahl standen.
+        nachbarfelder=(
+            "WIRD AN ANDERER STELLE DIESES ABSCHNITTS ERFASST (nicht hier wiederholen):\n"
+            + "\n".join(f"- {f.get('label') or f['id']}" for f in nachbarfelder)
+            if nachbarfelder else ""
+        ),
     )
     nachricht = [{"role": "system", "content": prompt.system},
                  {"role": "user", "content": prompt.user}]
@@ -671,6 +684,25 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
                    [f"{prompt.meta.id}|{prompt.meta.content_hash[:16]}"],
         "befunde": befunde,
     }
+    # Mitschreiben, und zwar HIER statt in der HTTP-Naht.
+    #
+    # In `api.py` erfasste das Protokoll nur, was über den Dienst lief — die Eval-Läufe rufen
+    # `vorschlagen` direkt auf und blieben damit unsichtbar. Ausgerechnet dort, wo man nach
+    # einem Fehlschlag nachlesen will, stand nichts. An dieser Stelle gehen beide Wege durch.
+    protokoll.schreibe(
+        "vorschlag",
+        abschnitt=abschnitt_nr,
+        abfrageart=abfrageart,
+        eingabe=eingabe,
+        felder=[f["id"] for f in felder],
+        werte=[{"feld": v["feld"], "wert": v["wert"], "status": v["status"],
+                "gedeckt": bool(v.get("deckung")), "konfidenz": v.get("konfidenz")}
+               for v in vorschlaege],
+        befunde=befunde,
+        dauer_s=uhr,
+        modelle=modelle,
+    )
+
     return vorschlaege, nachweis
 
 

@@ -69,6 +69,11 @@ class Anfrage(BaseModel):
                     "Ausschlüssen und Zuwendungsbestimmungen dreimal wörtlich vor. Ohne "
                     "Angabe wird der ganze Korpus gesehen.")
     top_k: int = Field(default=TOP_K, ge=1, le=20)
+    nachbarfelder: list[FeldDefinition] | None = Field(
+        default=None,
+        description="Die übrigen Felder desselben Abschnitts, die in einer ANDEREN Anfrage "
+                    "gefüllt werden. Nur die Beschriftung geht in den Prompt — damit ein "
+                    "Freitextfeld nicht wiederholt, was ein Nachbarfeld schon aufnimmt.")
 
 
 class Vorschlag(BaseModel):
@@ -275,26 +280,13 @@ def vorschlag_erzeugen(anfrage: Anfrage):
         vorschlaege, nachweis = vorschlag.vorschlagen(
             anfrage.abschnitt_nr, anfrage.eingabe.strip(), felder,
             top_k=anfrage.top_k, konsens=anfrage.konsens,
-            abfrageart=anfrage.abfrageart)
+            abfrageart=anfrage.abfrageart,
+            nachbarfelder=[f.model_dump(exclude_none=True)
+                           for f in anfrage.nachbarfelder or []] or None)
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.
         raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
-
-    protokoll.schreibe(
-        "vorschlag",
-        abschnitt=anfrage.abschnitt_nr,
-        abfrageart=anfrage.abfrageart,
-        eingabe=anfrage.eingabe.strip(),
-        felder=[f["id"] for f in felder],
-        # Je Vorschlag nur das Entscheidende: was kam heraus, woher, wie sicher.
-        werte=[{"feld": v["feld"], "wert": v["wert"], "status": v["status"],
-                "gedeckt": bool(v.get("deckung")), "konfidenz": v.get("konfidenz")}
-               for v in vorschlaege],
-        befunde=nachweis.get("befunde"),
-        dauer_s=nachweis.get("dauer_s"),
-        modelle=nachweis.get("modelle"),
-    )
 
     if nachweis.get("fehler"):
         raise HTTPException(status_code=502, detail=nachweis["fehler"])

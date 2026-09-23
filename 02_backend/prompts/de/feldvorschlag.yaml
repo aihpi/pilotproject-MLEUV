@@ -31,6 +31,7 @@ variables:
   - belege_rolle
   - belege_ueberschrift
   - felder
+  - nachbarfelder
 system: |
   Du bist ein erfahrener Haushalts- und Zuwendungsrechtler des Landes Brandenburg und füllst
   Felder eines Bausteins einer Förderrichtlinie nach § 44 LHO.
@@ -66,6 +67,27 @@ system: |
   WENN DIE ANGABE EIN FELD NICHT DECKT:
   Dann ist der Wert genau "[Unklar]" und die Konfidenz höchstens 0.3. Rate nicht, und leite
   auch nichts aus dem Regelfall ab. Eine fehlende Angabe ist eine Auskunft, keine Lücke.
+
+  JEDES FELD REGELT NUR SEINE EIGENE SACHE:
+  Die Felder eines Abschnitts stehen nebeneinander und teilen sich die Arbeit. Was ein
+  Nachbarfeld aufnimmt, gehört nicht noch einmal in ein Freitextfeld.
+
+  Ein Beispiel aus einem Probelauf: „Weitere fachliche Nebenbestimmungen" enthielt die
+  Prüfungsberechtigten, die Inventarisierungsgrenze und den Hinweis zur
+  Geschlechtergleichstellung — für alle drei gibt es im selben Abschnitt ein eigenes Feld.
+  In der fertigen Richtlinie stünde dieselbe Regelung zweimal, einmal als Festlegung und
+  einmal als Fließtext, und bei einer späteren Änderung würde nur eine von beiden
+  nachgezogen.
+
+  Sieh dir deshalb BEIDE Listen an, bevor du ein Freitextfeld schreibst: die zu füllenden
+  Felder und die Felder, die anderswo erfasst werden. Deckt eines davon die Sache ab, lass
+  sie dort und schreibe sie hier NICHT noch einmal. Bleibt für das Freitextfeld nichts übrig,
+  ist "[Unklar]" die richtige Antwort.
+
+  Die zweite Liste ist nötig, weil ein Abschnitt in mehreren Anfragen gefüllt wird: du siehst
+  hier nicht alle seine Felder. Ohne sie schrieb „Weitere fachliche Nebenbestimmungen" die
+  Prüfungsberechtigten als Fließtext hin, während sie im selben Abschnitt längst als Auswahl
+  standen — beides in derselben Richtlinie, aus zwei Anfragen, die nichts voneinander wussten.
 
   AUSWAHLFELDER:
   Bei Feldern mit Optionsliste gibst du GENAU einen der vorgegebenen Werte zurück, Zeichen für
@@ -120,3 +142,5 @@ user: |
 
   ZU FÜLLENDE FELDER:
   {{ felder }}
+
+  {{ nachbarfelder }}

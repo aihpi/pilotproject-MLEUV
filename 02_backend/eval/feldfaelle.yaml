@@ -108,6 +108,35 @@ felder:
     label: Bagatellgrenze in Euro
     kind: number
 
+  # --- Baustein 6, Sonstige Zuwendungsbestimmungen ---
+  # Der erste Abschnitt, in dem überwiegend der Regelfall gilt — und der erste, der über den
+  # Formular-Knopf statt über den Chat gefüllt wird.
+  ancillary:
+    id: ancillary
+    label: Allgemeine Nebenbestimmungen
+    kind: radio
+    options:
+      - {value: anbest-p, label: ANBest-P}
+      - {value: anbest-g, label: ANBest-G}
+      - {value: anbest-p-g, label: ANBest-P und ANBest-G}
+  auditRights:
+    id: auditRights
+    label: Prüfberechtigte Stellen
+    kind: checkbox
+    options:
+      - {value: lrh, label: Landesrechnungshof Brandenburg}
+      - {value: ministry, label: Zuständiges Ministerium}
+      - {value: brh, label: Bundesrechnungshof}
+      - {value: bwb, label: Bundesbeauftragte für Wirtschaftlichkeit in der Verwaltung}
+  purposeBindingYears:
+    id: purposeBindingYears
+    label: Zweckbindungsfrist in Jahren
+    kind: number
+  otherConditions:
+    id: otherConditions
+    label: Weitere fachliche Nebenbestimmungen
+    kind: textarea
+
 faelle:
 
   - id: F-01-vollstaendig
@@ -306,3 +335,60 @@ faelle:
     felder: [subject]
     erwartet:
       subject: {enthaelt: [zusammenschl], eigenstaendig: true, gedeckt: true}
+
+  - id: F-14-pruefrechte-land
+    notiz: >-
+      Reine Landesförderung. Prüfberechtigt sind der Landesrechnungshof und das zuständige
+      Ministerium — der Bundesrechnungshof NICHT, denn er prüft, wo Bundesmittel fließen.
+      Im Durchlauf vom 23.09.2026 kam er trotzdem mit.
+    abschnitt_nr: 6
+    eingabe: >-
+      Die Förderung erfolgt aus reinen Landesmitteln. Es gelten die üblichen
+      Nebenbestimmungen.
+    felder: [ancillary, auditRights]
+    erwartet:
+      auditRights: {enthaelt: [lrh, ministry], nicht: [brh, bwb]}
+
+  - id: F-15-nebenbestimmungen-kommunal
+    notiz: >-
+      Kommunen und Private zugleich: dann sind beide Nebenbestimmungen einschlägig,
+      ANBest-P und ANBest-G. Prüft, ob das Modell den gemischten Fall erkennt, statt eine
+      der beiden zu wählen.
+    abschnitt_nr: 6
+    eingabe: >-
+      Zuwendungsempfänger sind Kommunen und kommunale Einrichtungen sowie juristische
+      Personen des privaten Rechts.
+    felder: [ancillary]
+    erwartet:
+      ancillary: {wert: anbest-p-g}
+
+  - id: F-16-keine-zweckbindung-genannt
+    notiz: >-
+      Zur Zweckbindungsfrist sagt die Eingabe nichts, und die Musterrichtlinie nennt keinen
+      festen Wert. Es MUSS [Unklar] kommen — eine geratene Jahreszahl in einer Richtlinie
+      bindet Zuwendungsempfänger über Jahre.
+    abschnitt_nr: 6
+    eingabe: Gefördert wird die Kastration freilebender Katzen aus Landesmitteln.
+    felder: [purposeBindingYears]
+    erwartet:
+      purposeBindingYears: {unklar: true}
+
+  - id: F-17-freitext-wiederholt-nachbarn-nicht
+    notiz: >-
+      Der Fehler, den der Formular-Knopf zutage gefördert hat: „Weitere fachliche
+      Nebenbestimmungen" schrieb die Prüfungsberechtigten, die Inventarisierungsgrenze und
+      die Geschlechtergleichstellung als Fließtext hin — für alle drei gibt es im selben
+      Abschnitt ein eigenes Feld. Ursache war, dass der Abschnitt in ZWEI Anfragen gefüllt
+      wird und das Modell die Nachbarfelder nicht sah.
+    abschnitt_nr: 6
+    eingabe: >-
+      Die Kastration ist durch eine tierärztliche Bescheinigung nachzuweisen, und die
+      Chipnummer ist der Bewilligungsbehörde mitzuteilen.
+    felder: [otherConditions]
+    # Genau wie im Betrieb: diese drei werden in der anderen Anfrage gefüllt.
+    nachbarn: [auditRights, purposeBindingYears, ancillary]
+    erwartet:
+      otherConditions:
+        enthaelt: [chipnummer]
+        nicht: [Landesrechnungshof, inventarisier, Geschlechtergleichstellung]
+        gedeckt: true
