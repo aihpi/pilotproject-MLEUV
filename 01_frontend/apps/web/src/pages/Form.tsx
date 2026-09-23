@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  feldLeer,
   fieldVisible,
   sections,
+  validateDraft,
   type FieldDefinition,
+  type FieldProposal,
   type FieldValue,
   type RichtlinieDraft,
   type SectionData,
@@ -23,7 +26,7 @@ function sectionStatus(d: RichtlinieDraft, id: string) {
   const visible = section.fields.filter((f) => fieldVisible(f, d.profile, werte));
   const required = visible.filter((f) => f.required);
   if (!Object.keys(vals).length) return "empty";
-  if (required.some((f) => !vals[f.id]?.value)) return "invalid";
+  if (required.some((f) => feldLeer(vals[f.id]?.value ?? null))) return "invalid";
   // Ein Regelverstoß macht den Abschnitt nicht vollständig.
   //
   // Gezählt wurden bis zum 22.09.2026 nur die Pflichtfelder. Baustein 8 stand deshalb auf
@@ -236,10 +239,100 @@ export function SectionPage() {
         ),
       );
   }, [d, sectionId]);
-  const errors = useMemo(
-    () => d?.validation.issues.filter((i) => i.sectionId === sectionId) ?? [],
-    [d, sectionId],
-  );
+  /**
+   * Beanstandungen an den GERADE EINGETIPPTEN Werten, nicht am zuletzt gespeicherten Stand.
+   *
+   * Vorher kam die Rückmeldung erst nach dem Speichern und dem Zurückkehren in den
+   * Abschnitt. Wer ein Außerkrafttreten vor das Inkrafttreten setzte, sah das erst zwei
+   * Klicks später — und in der Zwischenzeit sah alles in Ordnung aus.
+   *
+   * Möglich, weil die Prüfungen reine Funktionen über dem Entwurf sind: kein Modellaufruf,
+   * kein Netzzugriff, kein Zustand. Sie laufen hier über eine Kopie mit den Eingabewerten.
+   */
+  const errors = useMemo(() => {
+    if (!d) return [];
+    const probe: RichtlinieDraft = {
+      ...d,
+      sections: {
+        ...d.sections,
+        [sectionId]: {
+          ...d.sections[sectionId],
+          fields: Object.fromEntries(
+            Object.entries(values).map(([k, wert]) => [
+              k,
+              {
+                ...(d.sections[sectionId]?.fields[k] ?? {
+                  status: "suggested" as const,
+                  source: "user-form" as const,
+                }),
+                value: wert as FieldValue["value"],
+              } as FieldValue,
+            ]),
+          ),
+        },
+      },
+    };
+    return validateDraft(probe).issues.filter((i) => i.sectionId === sectionId);
+  }, [d, sectionId, values]);
+  /**
+   * Vorschläge für diesen Abschnitt holen — derselbe Dienst wie im Chat.
+   *
+   * Die Werte landen NUR im Formular, nicht im Entwurf: bestätigt wird erst beim Speichern,
+   * wie bei allem anderen hier auch. Ein Knopf, der still etwas festschreibt, wäre das
+   * Gegenteil dessen, wofür der Bestätigungsschritt da ist.
+   *
+   * Überschrieben wird nur, was leer ist. Wer schon etwas eingetippt hat, soll es nicht
+   * durch einen Klick verlieren.
+   */
+  const [vorschlagHinweis, setVorschlagHinweis] = useState("");
+  /**
+   * Die Vorschläge des letzten Laufs, nach Feld — bis zum Speichern am Feld ausgewiesen.
+   *
+   * Nicht nur die Kennungen: die Bearbeiterin muss auch hier sehen, woher ein Wert kommt.
+   * Im Chat steht das unter jedem Vorschlag, im Formular fehlte es — derselbe Wert sah
+   * dort aus, als hätte sie ihn selbst eingetragen.
+   */
+  const [vorausgefuellt, setVorausgefuellt] = useState<Record<string, FieldProposal>>({});
+  // Der Zustand aus der letzten Darstellung, für Code der IHN LESEN muss, statt ihn zu
+  // ändern. Im Rückruf des Vorschlags stünde sonst der Stand vom Klick — und der ist nach
+  // ein bis zwei Minuten Wartezeit womöglich überholt.
+  const werteRef = useRef(values);
+  useEffect(() => {
+    werteRef.current = values;
+  }, [values]);
+  const vorschlag = useMutation({
+    mutationFn: () => api.abschnittsvorschlag(id, sectionId),
+    onSuccess: (r) => {
+      // Erst rechnen, dann ändern. Vorher lief der Zähler INNERHALB der Zustandsänderung
+      // mit — die führt React aber später aus, und die Meldung las ihn, solange er noch auf
+      // null stand. Ergebnis: „nichts geändert" über zwei frisch gesetzten Häkchen.
+      const aktuell = werteRef.current;
+      const neueFelder = r.proposals.filter((p) =>
+        feldLeer((aktuell[p.fieldId] ?? null) as FieldValue["value"]),
+      );
+      setValues((v) => ({
+        ...v,
+        ...Object.fromEntries(neueFelder.map((p) => [p.fieldId, p.value])),
+      }));
+      setVorausgefuellt(Object.fromEntries(neueFelder.map((p) => [p.fieldId, p])));
+      const uebersprungen = r.proposals.length - neueFelder.length;
+      setVorschlagHinweis(
+        neueFelder.length
+          ? `${neueFelder.length} Feld${neueFelder.length === 1 ? "" : "er"} vorausgefüllt ` +
+            `(${neueFelder.map((p) => p.label).join(", ")}). Bitte prüfen — die Werte sind ` +
+            "noch nicht gespeichert. " +
+            (uebersprungen
+              ? `${uebersprungen} Feld${uebersprungen === 1 ? "" : "er"} hatte schon einen Wert und blieb unverändert. `
+              : "") +
+            r.hinweis
+          : r.proposals.length
+            ? "Alle vorgeschlagenen Felder hatten schon einen Wert — nichts geändert. " + r.hinweis
+            : r.hinweis || "Zu diesem Abschnitt konnte nichts vorgeschlagen werden.",
+      );
+    },
+    onError: (e) => setVorschlagHinweis(e instanceof Error ? e.message : String(e)),
+  });
+
   const save = useMutation({
     mutationFn: async () => {
       if (!d || !def) throw new Error("Entwurf fehlt");
@@ -304,6 +397,33 @@ export function SectionPage() {
           </ul>
         </Alert>
       )}
+      <div className="actions">
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={vorschlag.isPending}
+          onClick={() => {
+            setVorschlagHinweis("");
+            vorschlag.mutate();
+          }}
+        >
+          {vorschlag.isPending ? "Wird gesucht …" : "Vorschlag holen"}
+        </button>
+      </div>
+      {vorschlag.isPending && (
+        <p role="status">
+          Der Dienst sucht im Regelwerk und in früheren Verfahren. Das dauert ein bis zwei
+          Minuten.
+        </p>
+      )}
+      {vorschlagHinweis && (
+        <Alert
+          kind={vorschlag.isError ? "error" : "info"}
+          title="Vorschlag"
+        >
+          <p>{vorschlagHinweis}</p>
+        </Alert>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -314,6 +434,26 @@ export function SectionPage() {
           .filter((f) => fieldVisible(f, d.profile, values))
           .map((field) => {
             const error = errors.find((e) => e.fieldId === field.id)?.message;
+            /*
+              Woher der Wert in diesem Feld kommt, muss am Feld stehen — nicht nur in einer
+              Meldung darüber. Nach dem Vorschlag sahen sechs Felder gleich aus, und welche
+              zwei davon gerade vom Werkzeug gefüllt worden waren, stand als Satz weiter
+              oben. Wer nach unten scrollt, hat ihn nicht mehr.
+
+              Die Marke steht UNTER der Beschriftung, nicht darüber: oben sah sie aus, als
+              gehörte sie zum vorigen Feld.
+            */
+            const p = vorausgefuellt[field.id];
+            const marke = p ? (
+              <p className="feld-marke">
+                <strong>Vorschlag — noch nicht gespeichert.</strong>{" "}
+                {p.deckung
+                  ? `Gedeckt durch Ihre Angabe: „${p.deckung}"`
+                  : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
+                {p.musterbaustein && ` Satzrahmen: Musterbaustein ${p.musterbaustein}.`}
+                {p.fundstelle && ` Vorbild: ${p.fundstelle}.`}
+              </p>
+            ) : null;
             if (field.kind === "radio" || field.kind === "checkbox")
               return (
                 <div className="field" key={field.id}>
@@ -323,6 +463,7 @@ export function SectionPage() {
                     onChange={(v) => setValues({ ...values, [field.id]: v })}
                     error={error}
                   />
+                  {marke}
                   {field.help && (
                     <p id={`${field.id}-help`} className="help">
                       {field.help}
@@ -341,6 +482,7 @@ export function SectionPage() {
                   {field.label}
                   {field.required && <span aria-hidden="true"> *</span>}
                 </label>
+                {marke}
                 {field.help && (
                   <p id={`${field.id}-help`} className="help">
                     {field.help}

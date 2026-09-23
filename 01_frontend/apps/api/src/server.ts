@@ -7,8 +7,11 @@ import { Document, Packer, Paragraph, HeadingLevel } from "docx";
 import {
   abfrageartFuer,
   draftSchema,
+  bestaetigteWerte,
   emptySections,
+  feldLeer,
   chatStages,
+  fieldVisible,
   feldwertAusVorschlag,
   naechsteFrage,
   nextChatStage,
@@ -23,6 +26,7 @@ import {
   VORSCHLAGSFELDER,
   type ChatReply,
   type FieldDefinition,
+  type SectionId,
   type FieldProposal,
   type RichtlinienAbschnitt,
   type RichtlinieDraft,
@@ -263,6 +267,10 @@ async function holeVorschlaege(
   sectionId: string,
   eingabe: string,
   felder: { id: string; label: string; kind: string; options?: { value: string; label: string }[] }[],
+  // Die übrigen Felder desselben Abschnitts, die in der ANDEREN Anfrage gefüllt werden.
+  // Ohne sie schrieb ein Freitextfeld hin, was ein Auswahlfeld daneben schon aufnimmt —
+  // die beiden Anfragen wussten nichts voneinander.
+  nachbarfelder: { id: string; label: string }[] = [],
 ): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean }> {
   // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
   // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
@@ -274,7 +282,10 @@ async function holeVorschlaege(
   const res = await fetch(`${VORSCHLAG_URL}/vorschlag`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart }),
+    body: JSON.stringify({
+      abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart,
+      nachbarfelder: nachbarfelder.length ? nachbarfelder : undefined,
+    }),
     signal: abbruch,
   });
   if (!res.ok) throw new Error(`Vorschlagsdienst: HTTP ${res.status}`);
@@ -400,6 +411,155 @@ app.post(
   },
 );
 
+/**
+ * Feldvorschläge für einen Abschnitt holen — die gemeinsame Naht von Chat und Formular.
+ *
+ * Herausgelöst, weil es zwei Eingänge in dieselbe Sache gibt: das Gespräch und der Knopf
+ * „Vorschlag holen" im Formular. Zweimal gepflegt liefen die beiden auseinander, und die
+ * Bearbeiterin bekäme je nach Weg verschiedene Werte für dieselbe Frage.
+ */
+async function vorschlaegeFuer(
+  sectionId: SectionId,
+  eingabe: string,
+  targets: FieldDefinition[],
+): Promise<{ proposals: FieldProposal[]; geliefert: DienstVorschlag[] }> {
+  let proposals: FieldProposal[] = [];
+    // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
+    // beim ÜBERNEHMEN ist eine Fundstelle ein Nachweis, beim VORSCHLAGEN ein Vorbild aus
+    // einem früheren Verfahren. In einer gemeinsamen Anfrage bekäme die ganze Antwort die
+    // Sorte des ersten passenden Feldes, und ein aus der Eingabe übernommener Fördersatz
+    // sähe aus wie eine Empfehlung. Sie laufen nebeneinander, die Wartezeit bleibt gleich.
+    const [uebernahme, vorschlag] = await Promise.all(
+      (
+        [
+          targets.filter((f) => !VORSCHLAGSFELDER.includes(f.id)),
+          targets.filter((f) => VORSCHLAGSFELDER.includes(f.id)),
+        ] as FieldDefinition[][]
+      ).map((gruppe, i, alle) =>
+        gruppe.length
+          ? holeVorschlaege(
+              sectionId,
+              eingabe,
+              gruppe.map((f) => ({
+                id: f.id, label: f.label, kind: f.kind,
+                options: f.options?.map((o) => ({ value: o.value, label: o.label })),
+              })),
+              // Die jeweils andere Gruppe als Nachbarschaft.
+              (alle[1 - i] ?? []).map((f) => ({ id: f.id, label: f.label })),
+            )
+          : Promise.resolve({ vorschlaege: [], vorbild: false }),
+      ),
+    );
+    const geliefert = [...uebernahme!.vorschlaege, ...vorschlag!.vorschlaege];
+    const istVorbild = new Set(vorschlag!.vorschlaege.map((v) => v.feld));
+
+    // „[Unklar]" ist eine Auskunft, kein Vorschlag: der Dienst sagt damit, dass die Angabe
+    // das Feld nicht deckt. Ein solcher Wert gehört nicht in den Bestätigen-Dialog.
+    proposals = geliefert
+      .filter((v) => v.wert && v.status !== "unklar" && v.status !== "invalid")
+      .map((v) => {
+        // Eine Fundstelle nur dort, wo sie etwas bedeutet. Beim ÜBERNEHMEN kommt der Wert
+        // aus der Eingabe der Bearbeiterin — der Korpus hat dazu nichts beizutragen, und was
+        // die Suche trotzdem findet, ist bestenfalls themenverwandt. Im Probelauf waren das
+        // ein Satzfragment, ein für zwei Felder wortgleicher Rechtsgrundlagensatz und eine
+        // Gliederungsüberschrift. Alle drei standen unter „kein Nachweis" und verwirrten
+        // trotzdem, weil dort überhaupt etwas stand.
+        const beleg = istVorbild.has(v.feld) && istBelegSatz(v.belegzitat);
+        const kind = targets.find((f) => f.id === v.feld)?.kind ?? "text";
+        return {
+          sectionId: sectionId,
+          fieldId: v.feld,
+          label: v.label,
+          value: feldwertAusVorschlag(v.wert, kind),
+          confidence: v.konfidenz ?? 0,
+          evidence: v.begruendung ?? "",
+          // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
+          // Oberfläche muss Deckung (aus der Eingabe) und Beleg (aus dem Regelwerk)
+          // auseinanderhalten können, sonst sieht beides gleich aus.
+          ...(v.deckung ? { deckung: v.deckung } : {}),
+          ...(beleg && v.belegzitat ? { belegzitat: v.belegzitat } : {}),
+          ...(beleg && v.fundstelle ? { fundstelle: v.fundstelle } : {}),
+          // Datei und Seite machen die Fundstelle anklickbar; ohne sie bleibt sie Text.
+          ...(beleg && v.belegdatei ? { belegdatei: v.belegdatei } : {}),
+          ...(beleg && v.belegseite ? { belegseite: v.belegseite } : {}),
+          ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
+          // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
+          ...(beleg && v.fundstelle ? { vorbild: true } : {}),
+        };
+      });
+  return { proposals, geliefert };
+}
+
+/**
+ * Vorschläge für einen Abschnitt, aus dem Formular heraus.
+ *
+ * Das Formular deckt alle elf Bausteine ab, das Gespräch nur die ersten sechs — und ab
+ * Baustein 6 stand die Bearbeiterin bis hierher ohne jede Unterstützung da: keine
+ * Vorschläge, keine Fundstellen, keine Herkunft. Ein gewöhnliches Verwaltungsformular.
+ *
+ * Ein Knopf statt einer Frage, weil er nicht wartet, wenn ihn niemand drückt. Für zwei
+ * Datumsangaben eine Minute auf ein Modell zu warten wäre Unfug; sie sich vorschlagen zu
+ * LASSEN, wenn man unsicher ist, ist es nicht.
+ *
+ * Als Eingabe dient, was im Chat schon gesagt wurde. Ist dort nichts, bleibt der Regelfall
+ * aus den Musterbausteinen — und der wird als solcher ausgewiesen, nicht als Deckung.
+ */
+app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
+  const { id, nr } = req.params as { id: string; nr: string };
+  const d = get(id);
+  const def = sections.find((s) => s.id === nr);
+  if (!def)
+    throw Object.assign(new Error("Abschnitt nicht gefunden"), { statusCode: 404 });
+
+  // Dieselbe Auswahl wie im Gespräch: sichtbar im gegenwärtigen Pfad, noch nicht bestätigt.
+  // Was ein Mensch entschieden hat, schlägt das Werkzeug nicht erneut vor.
+  const werte = bestaetigteWerte(d);
+  const targets = def.fields.filter(
+    (f) =>
+      fieldVisible(f, d.profile, werte) &&
+      // Bestätigt UND gefüllt. Ein Feld, das jemand geleert und gespeichert hat, trägt die
+      // Bestätigung von vorher — angeboten werden muss es trotzdem wieder.
+      !(
+        d.sections[nr]?.fields[f.id]?.confirmedByUser &&
+        !feldLeer(d.sections[nr]?.fields[f.id]?.value ?? null)
+      ),
+  );
+  if (!targets.length) return { proposals: [], hinweis: "In diesem Abschnitt ist alles bestätigt." };
+
+  try {
+    const { proposals, geliefert } = await vorschlaegeFuer(
+      def.id,
+      (d.chatVerlauf ?? []).join("\n\n"),
+      targets,
+    );
+    const offen = geliefert
+      .filter((v) => v.status === "unklar")
+      .map((v) => v.label);
+    // Dieselbe Sperre wie im Gespräch: nichts vorschlagen, was ein anderer Abschnitt schon
+    // regelt. Sie fehlte hier, und prompt holte sich „Weitere Nebenbestimmungen" wieder den
+    // Empfängerkreis und die Voraussetzungen aus den Bausteinen 3 und 4.
+    const wiederholt = proposals.filter((p) => istWiederholung(p.value, d, p.sectionId));
+    return {
+      proposals: proposals.filter((p) => !wiederholt.includes(p)),
+      hinweis:
+        (offen.length ? `Ohne Vorschlag geblieben: ${offen.join(", ")}. ` : "") +
+        (wiederholt.length
+          ? `Weggelassen, weil schon in einem anderen Abschnitt geregelt: ${wiederholt
+              .map((p) => p.label)
+              .join(", ")}.`
+          : ""),
+    };
+  } catch (e) {
+    throw Object.assign(
+      new Error(
+        "Die fachliche Zuarbeit ist derzeit nicht erreichbar. Sie können die Angaben " +
+          `selbst eintragen. (${e instanceof Error ? e.message : String(e)})`,
+      ),
+      { statusCode: 502 },
+    );
+  }
+});
+
 app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const d = get((req.params as { id: string }).id);
   const { message } = req.body as { message?: string };
@@ -429,68 +589,11 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
 
   let proposals: FieldProposal[] = [];
   let hinweis = "";
+  let ausRegelfall = false;
   try {
-    // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
-    // beim ÜBERNEHMEN ist eine Fundstelle ein Nachweis, beim VORSCHLAGEN ein Vorbild aus
-    // einem früheren Verfahren. In einer gemeinsamen Anfrage bekäme die ganze Antwort die
-    // Sorte des ersten passenden Feldes, und ein aus der Eingabe übernommener Fördersatz
-    // sähe aus wie eine Empfehlung. Sie laufen nebeneinander, die Wartezeit bleibt gleich.
-    const [uebernahme, vorschlag] = await Promise.all(
-      (
-        [
-          targets.filter((f) => !VORSCHLAGSFELDER.includes(f.id)),
-          targets.filter((f) => VORSCHLAGSFELDER.includes(f.id)),
-        ] as FieldDefinition[][]
-      ).map((gruppe) =>
-        gruppe.length
-          ? holeVorschlaege(
-              stage.sectionId,
-              eingabe,
-              gruppe.map((f) => ({
-                id: f.id, label: f.label, kind: f.kind,
-                options: f.options?.map((o) => ({ value: o.value, label: o.label })),
-              })),
-            )
-          : Promise.resolve({ vorschlaege: [], vorbild: false }),
-      ),
-    );
-    const geliefert = [...uebernahme!.vorschlaege, ...vorschlag!.vorschlaege];
-    const istVorbild = new Set(vorschlag!.vorschlaege.map((v) => v.feld));
-
-    // „[Unklar]" ist eine Auskunft, kein Vorschlag: der Dienst sagt damit, dass die Angabe
-    // das Feld nicht deckt. Ein solcher Wert gehört nicht in den Bestätigen-Dialog.
-    proposals = geliefert
-      .filter((v) => v.wert && v.status !== "unklar" && v.status !== "invalid")
-      .map((v) => {
-        // Eine Fundstelle nur dort, wo sie etwas bedeutet. Beim ÜBERNEHMEN kommt der Wert
-        // aus der Eingabe der Bearbeiterin — der Korpus hat dazu nichts beizutragen, und was
-        // die Suche trotzdem findet, ist bestenfalls themenverwandt. Im Probelauf waren das
-        // ein Satzfragment, ein für zwei Felder wortgleicher Rechtsgrundlagensatz und eine
-        // Gliederungsüberschrift. Alle drei standen unter „kein Nachweis" und verwirrten
-        // trotzdem, weil dort überhaupt etwas stand.
-        const beleg = istVorbild.has(v.feld) && istBelegSatz(v.belegzitat);
-        const kind = targets.find((f) => f.id === v.feld)?.kind ?? "text";
-        return {
-          sectionId: stage.sectionId,
-          fieldId: v.feld,
-          label: v.label,
-          value: feldwertAusVorschlag(v.wert, kind),
-          confidence: v.konfidenz ?? 0,
-          evidence: v.begruendung ?? "",
-          // Die Herkunft einzeln durchreichen statt in `evidence` zusammenzupressen: die
-          // Oberfläche muss Deckung (aus der Eingabe) und Beleg (aus dem Regelwerk)
-          // auseinanderhalten können, sonst sieht beides gleich aus.
-          ...(v.deckung ? { deckung: v.deckung } : {}),
-          ...(beleg && v.belegzitat ? { belegzitat: v.belegzitat } : {}),
-          ...(beleg && v.fundstelle ? { fundstelle: v.fundstelle } : {}),
-          // Datei und Seite machen die Fundstelle anklickbar; ohne sie bleibt sie Text.
-          ...(beleg && v.belegdatei ? { belegdatei: v.belegdatei } : {}),
-          ...(beleg && v.belegseite ? { belegseite: v.belegseite } : {}),
-          ...(v.musterbaustein ? { musterbaustein: v.musterbaustein } : {}),
-          // Nur wenn es auch eine Fundstelle gibt: ohne sie gibt es nichts zu kennzeichnen.
-          ...(beleg && v.fundstelle ? { vorbild: true } : {}),
-        };
-      });
+    const ergebnis = await vorschlaegeFuer(stage.sectionId, eingabe, targets);
+    proposals = ergebnis.proposals;
+    const geliefert = ergebnis.geliefert;
     // Beim Blick in den Verlauf zählt nur, was dort auch steht.
     //
     // Ein Wert ohne Deckung ist aus dem Regelfall abgeleitet — eine Vermutung, die ihre
@@ -499,7 +602,18 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
     // Werkzeug, in den bisherigen Angaben stehe etwas, das dort nicht steht. Nach dem
     // Bestätigen des Titels kamen so Vorschläge für Rechtsgrundlage und Zuwendungszweck,
     // obwohl im Verlauf nur der Titel stand.
-    if (!neu) proposals = proposals.filter((p) => p.deckung);
+    // Beim Blick in den Verlauf wird auch der REGELFALL vorgelegt — aber nur, wenn die
+    // Stufe ohnehin an der Reihe ist und die Bearbeiterin nichts Eigenes dazu gesagt hat.
+    //
+    // Die Unterscheidung ist wichtig, weil beides schon schiefging: anfangs kamen nach dem
+    // Bestätigen des Titels Vorschläge für Rechtsgrundlage und Zuwendungszweck, obwohl im
+    // Verlauf nur der Titel stand — das Werkzeug behauptete, dort stehe etwas. Filterte man
+    // dagegen alles Ungedeckte weg, konnte es für die Bausteine 6 bis 8 nie etwas anbieten,
+    // obwohl die Musterrichtlinie dort meist eine Antwort hat.
+    //
+    // Maßstab ist deshalb nicht die Deckung, sondern die WORTWAHL: ein abgeleiteter Wert
+    // wird als „aus dem Regelfall abgeleitet" ausgewiesen und die Nachricht sagt es auch.
+    ausRegelfall = !neu && proposals.every((p) => !p.deckung);
     // Und nichts vorschlagen, was ein anderer Abschnitt schon regelt — siehe
     // `istWiederholung`. Der Befund gehört in die Antwort, nicht ins Schweigen: die
     // Bearbeiterin soll sehen, dass hier etwas weggelassen wurde und warum.
@@ -551,7 +665,9 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
       (proposals.length
         ? neu
           ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
-          : `Zu „${def.title}“ steht in Ihren bisherigen Angaben schon etwas. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+          : ausRegelfall
+            ? `Zu „${def.title}“ schlage ich den Regelfall der Musterrichtlinie vor. Er ist nicht durch Ihre Angaben gedeckt — bitte besonders prüfen.`
+            : `Zu „${def.title}“ steht in Ihren bisherigen Angaben schon etwas. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
         : // Ohne Vorschlag sagt der Hinweis bereits, was fehlt. Beides zusammen wäre
           // dieselbe Auskunft zweimal, einmal auf Abschnitts- und einmal auf Feldebene.
           hinweis

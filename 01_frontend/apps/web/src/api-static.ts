@@ -372,6 +372,12 @@ export const staticApi = {
     store(draft);
     return e;
   },
+  // Die Attrappe schlägt nichts vor: ein erfundener Vorschlag sähe aus wie ein echter, und
+  // genau diese Verwechslung hat die Redaktionsansicht schon einmal erzeugt.
+  abschnittsvorschlag: async () => ({
+    proposals: [],
+    hinweis: "Ohne laufenden Vorschlagsdienst gibt es keine Vorschläge.",
+  }),
   loeschen: async (id: string) => {
     save(load().filter((d) => d.id !== id));
   },

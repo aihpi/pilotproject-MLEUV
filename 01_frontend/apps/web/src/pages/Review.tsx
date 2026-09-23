@@ -150,12 +150,23 @@ export function ReviewPage() {
         <Link className="button button--secondary" to={`/entwurf/${id}`}>
           Zur Aufgabenliste
         </Link>
-        <Link className="button button--primary" to={`/entwurf/${id}/redaktion`}>
-          {errors.length
-            ? "RL-Entwurf als Arbeitsstand öffnen"
-            : "RL-Entwurf erzeugen und öffnen"}
+        {/*
+          Der auffälligste Knopf dieser Seite führte bis zum 22.09.2026 in die Redaktions-
+          ansicht — ein Mockup mit erfundenen Fundstellen („Redaktionsleitfaden für
+          Förderrichtlinien, 94 % Treffer"). Wer dem naheliegenden Weg folgte, landete bei
+          erfundenen Belegen statt beim echten Text und konnte den Unterschied nicht sehen.
+          Der Weg zum Richtlinientext gehört hierher; das Mockup bleibt erreichbar, aber
+          nachgeordnet und beschriftet.
+        */}
+        <Link className="button button--primary" to={`/entwurf/${id}/richtlinie`}>
+          Richtlinientext erzeugen
         </Link>
       </div>
+      <p className="mockup-hinweis">
+        <Link to={`/entwurf/${id}/redaktion`}>Redaktionsansicht (Stufe 2)</Link> — ein
+        Entwurf der künftigen Oberfläche. Die dort gezeigten Dokumente, Trefferwerte und
+        Textauszüge sind <strong>erfundene Beispieldaten</strong>.
+      </p>
     </>
   );
 }

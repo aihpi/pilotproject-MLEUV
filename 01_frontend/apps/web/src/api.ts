@@ -20,8 +20,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       : { ...init?.headers },
   });
   if (!res.ok) {
-    const b = await res.json().catch(() => ({ message: "Unbekannter Fehler" }));
-    throw new Error(b.message);
+    // Ein Fehler ohne Ursache ist keiner. „Unbekannter Fehler" stand hier für alles, was
+    // nicht als JSON zurückkam — eine abgebrochene Weiterleitung sah damit aus wie ein
+    // Fehler im Dienst, und die Suche ging an der falschen Stelle los.
+    const b = await res.json().catch(() => null);
+    throw new Error(
+      b?.message ??
+        `Der Dienst hat nicht wie erwartet geantwortet (HTTP ${res.status} ${res.statusText}). ` +
+          "Bei langen Aufrufen kann die Verbindung abgebrochen sein.",
+    );
   }
   return res.json();
 }
@@ -74,6 +81,12 @@ const serverApi = {
   reject: (id: string, extractionId: string) =>
     request<{ ok: boolean; nextQuestion?: string }>(
       `/api/drafts/${id}/extractions/${extractionId}/reject`,
+      { method: "POST" },
+    ),
+  // Vorschläge für einen Abschnitt, aus dem Formular heraus — derselbe Dienst wie im Chat.
+  abschnittsvorschlag: (id: string, nr: string) =>
+    request<{ proposals: FieldProposal[]; hinweis: string }>(
+      `/api/drafts/${id}/abschnitt/${nr}/vorschlag`,
       { method: "POST" },
     ),
   loeschen: (id: string) =>
