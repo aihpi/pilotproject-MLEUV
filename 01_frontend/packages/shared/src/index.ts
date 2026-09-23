@@ -876,6 +876,17 @@ export const chatStages: ChatStage[] = [
     question:
       "Welche Ausgaben oder Kosten sollen förderfähig sein, wie sollen sie bemessen werden — als Spitzabrechnung der tatsächlichen Kosten oder über feste Beträge —, und wie hoch soll die Förderung sein (Fördersatz, Finanzierungsart, Finanzierungsform)?",
   },
+  // Hier endet das Gespräch, und das ist eine Entscheidung.
+  //
+  // Die Bausteine 0 bis 5 sind Entscheidungen, die man erzählt: Titel, Ziel, Gegenstand,
+  // Empfängerkreis, Voraussetzungen, Höhe. Für die Bemessungsgrundlage nennt das
+  // Prozessmodell die Chat-Eingabe sogar ausdrücklich.
+  //
+  // Ab Baustein 6 gilt überwiegend der Regelfall: eine Auswahl aus drei Nebenbestimmungen,
+  // ein paar Haken, zwei Datumsangaben. Dafür eine Frage zu stellen und ein bis zwei Minuten
+  // auf ein Modell zu warten, kostet mehr Zeit, als das Ausfüllen spart — kurz erprobt und
+  // wieder entfernt. Die Unterstützung dort gehört ins Formular („Vorschlag holen"), nicht
+  // ins Gespräch: ein Knopf wartet nicht, wenn niemand ihn drückt.
 ];
 
 /**
@@ -1209,6 +1220,23 @@ export function abfrageartFuer(fieldIds: string[]): "vorschlagen" | undefined {
   return fieldIds.some((id) => VORSCHLAGSFELDER.includes(id)) ? "vorschlagen" : undefined;
 }
 
+/**
+ * Ist dieser Feldwert leer?
+ *
+ * Gibt es, weil `!wert` die falsche Antwort gibt: eine leere Liste ist in JavaScript WAHR.
+ * Wer bei „Prüfberechtigte Stellen" alle Haken entfernte und speicherte, hatte damit
+ * weiterhin einen Wert — der Abschnitt blieb auf „Vollständig", und der Vorschlagsknopf
+ * hielt das Feld für bestätigt und bot nichts an. Zwei verschiedene Symptome, eine Ursache.
+ *
+ * Die Zahl 0 und `false` sind dagegen KEINE Leere: ein Fördersatz von 0 Prozent und ein
+ * abgewähltes Ja/Nein sind Festlegungen.
+ */
+export function feldLeer(wert: FieldValue["value"]): boolean {
+  if (wert === null || wert === undefined) return true;
+  if (Array.isArray(wert)) return wert.length === 0;
+  return wert === "";
+}
+
 export function fieldVisible(
   field: FieldDefinition,
   profile: FundingProfile,
@@ -1272,8 +1300,11 @@ export function validateDraft(draft: RichtlinieDraft): ValidationResult {
       );
       if (!fieldVisible(field, draft.profile, values)) continue;
       const value = draft.sections[section.id]?.fields[field.id]?.value;
-      const leer =
-        value == null || value === "" || (Array.isArray(value) && !value.length);
+      // Dieselbe Definition wie überall sonst, siehe `feldLeer`. Sie stand hier als Kopie,
+      // und die Kopie war die einzige RICHTIGE: Statusanzeige und Vorschlagsknopf hielten
+      // eine leere Liste für einen Wert, diese Stelle nicht. Die Meldungen widersprachen
+      // sich deshalb — der Abschnitt galt als vollständig und mahnte gleichzeitig ein Feld an.
+      const leer = feldLeer(value ?? null);
       if (field.required && leer)
         issues.push({
           sectionId: section.id,
@@ -1584,21 +1615,54 @@ export function pruefeBaustein6(draft: RichtlinieDraft): Pruefergebnis[] {
   const stellen = draft.sections["6"]?.fields["auditRights"]?.value;
   if (!Array.isArray(stellen) || !stellen.length) return [];
 
-  const fehlend = PRUEFORGANE_LAND.filter((s) => !stellen.includes(s));
-  if (!fehlend.length) return [];
+  const raus: Pruefergebnis[] = [];
 
-  const namen = fehlend
-    .map((s) => (s === "lrh" ? "der Landesrechnungshof" : "das zuständige Ministerium"))
-    .join(" und ");
-  return [{
-    befund: {
-      sectionId: "6", fieldId: "auditRights", severity: "warning",
-      regel: "pruefrechte_unvollstaendig",
-      message:
-        `Im Landesrecht sind der Landesrechnungshof und das zuständige Ministerium ` +
-        `prüfberechtigt. Nicht angegeben ist ${namen}.`,
-    },
-  }];
+  const fehlend = PRUEFORGANE_LAND.filter((s) => !stellen.includes(s));
+  if (fehlend.length) {
+    const namen = fehlend
+      .map((s) => (s === "lrh" ? "der Landesrechnungshof" : "das zuständige Ministerium"))
+      .join(" und ");
+    raus.push({
+      befund: {
+        sectionId: "6", fieldId: "auditRights", severity: "warning",
+        regel: "pruefrechte_unvollstaendig",
+        message:
+          `Im Landesrecht sind der Landesrechnungshof und das zuständige Ministerium ` +
+          `prüfberechtigt. Nicht angegeben ist ${namen}.`,
+      },
+    });
+  }
+
+  // Die Gegenrichtung, und sie fehlte.
+  //
+  // Geprüft wurde nur, ob eines der beiden Landesprüforgane FEHLT. Ein Vorschlag setzte
+  // daraufhin auch den Bundesrechnungshof — bei einer reinen Landesförderung hat der kein
+  // Prüfrecht, und niemand meldete es. Eine Regel, die nur in eine Richtung schaut, deckt
+  // den halben Fehlerraum ab.
+  //
+  // Nur bei reiner Landesfinanzierung: sobald Bundesmittel im Spiel sind (GAK), sind die
+  // Bundesorgane zu Recht dabei.
+  const bundesorgane = stellen.filter((s) => s === "brh" || s === "bwb");
+  if (!draft.profile.gak && bundesorgane.length) {
+    const namen = bundesorgane
+      .map((s) =>
+        s === "brh"
+          ? "der Bundesrechnungshof"
+          : "die Bundesbeauftragte für Wirtschaftlichkeit in der Verwaltung",
+      )
+      .join(" und ");
+    raus.push({
+      befund: {
+        sectionId: "6", fieldId: "auditRights", severity: "warning",
+        regel: "pruefrechte_bund_ohne_bundesmittel",
+        message:
+          `${namen} ist bei reiner Landesfinanzierung nicht prüfberechtigt. ` +
+          `Prüfen Sie, ob Bundesmittel beteiligt sind.`,
+      },
+    });
+  }
+
+  return raus;
 }
 
 // ---------------------------------------------------------------------------------------

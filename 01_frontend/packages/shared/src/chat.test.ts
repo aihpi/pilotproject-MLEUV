@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatStages,
   emptySections,
+  feldLeer,
   feldwertAusVorschlag,
   istBelegSatz,
   istWiederholung,
@@ -360,5 +361,35 @@ describe("istBelegSatz", () => {
   it("nimmt nichts, wo nichts ist", () => {
     expect(istBelegSatz(null)).toBe(false);
     expect(istBelegSatz("")).toBe(false);
+  });
+});
+
+describe("feldLeer", () => {
+  // `!wert` gab hier die falsche Antwort: eine leere Liste ist in JavaScript wahr. Wer bei
+  // „Prüfberechtigte Stellen" alle Haken entfernte, hatte für die Statusanzeige weiterhin
+  // einen Wert — der Abschnitt blieb auf „Vollständig" und mahnte gleichzeitig ein offenes
+  // Feld an. Zwei widersprüchliche Meldungen aus derselben Ursache.
+  it("die leere Liste ist leer", () => {
+    expect(feldLeer([])).toBe(true);
+    // Das Missverständnis dahinter: `[]` ist wahrheitswertig, `![]` also falsch.
+  });
+
+  it("nichts ist leer", () => {
+    expect(feldLeer(null)).toBe(true);
+    expect(feldLeer("")).toBe(true);
+  });
+
+  it("die Null ist eine Festlegung, keine Leere", () => {
+    expect(feldLeer(0)).toBe(false);
+  });
+
+  it("ein abgewähltes Ja/Nein ist eine Festlegung", () => {
+    expect(feldLeer(false)).toBe(false);
+  });
+
+  it("gefüllte Werte sind nicht leer", () => {
+    expect(feldLeer("Text")).toBe(false);
+    expect(feldLeer(["municipal"])).toBe(false);
+    expect(feldLeer(90)).toBe(false);
   });
 });

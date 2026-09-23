@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptySections,
   fieldVisible,
+  pruefeBaustein6,
   pruefeBaustein7,
   sections,
   validateDraft,
@@ -129,5 +130,61 @@ describe("Baustein 7, Antragsfrist", () => {
     expect(
       validateDraft(d).issues.filter((i) => i.sectionId === "7"),
     ).toHaveLength(0);
+  });
+});
+
+describe("Baustein 6, Prüfberechtigte Stellen", () => {
+  /**
+   * Die Regel schaute nur in eine Richtung.
+   *
+   * Geprüft wurde, ob eines der beiden Landesprüforgane FEHLT. Im Durchlauf vom 23.09.2026
+   * setzte ein Vorschlag zusätzlich den Bundesrechnungshof — bei reiner Landesförderung hat
+   * der kein Prüfrecht, und kein Befund kam. Eine halbe Regel deckt den halben Fehlerraum ab.
+   */
+  const mit = (stellen: string[], gak = false): RichtlinieDraft => {
+    const d = entwurf({});
+    d.profile = { ...d.profile, gak };
+    d.sections["6"] = {
+      fields: {
+        auditRights: {
+          value: stellen,
+          status: "confirmed",
+          source: "user-form",
+          confirmedByUser: true,
+        },
+      },
+    };
+    return d;
+  };
+  const regeln = (d: RichtlinieDraft) =>
+    pruefeBaustein6(d).map((e) => e.befund.regel);
+
+  it("beide Landesorgane sind unauffällig", () => {
+    expect(regeln(mit(["lrh", "ministry"]))).toEqual([]);
+  });
+
+  it("ein fehlendes Landesorgan wird gemeldet", () => {
+    expect(regeln(mit(["lrh"]))).toContain("pruefrechte_unvollstaendig");
+  });
+
+  it("der Bundesrechnungshof ohne Bundesmittel wird gemeldet", () => {
+    expect(regeln(mit(["lrh", "ministry", "brh"]))).toContain(
+      "pruefrechte_bund_ohne_bundesmittel",
+    );
+  });
+
+  it("bei GAK ist er zu Recht dabei", () => {
+    expect(regeln(mit(["lrh", "ministry", "brh"], true))).toEqual([]);
+  });
+
+  it("beide Richtungen können zugleich zutreffen", () => {
+    expect(regeln(mit(["brh"]))).toEqual([
+      "pruefrechte_unvollstaendig",
+      "pruefrechte_bund_ohne_bundesmittel",
+    ]);
+  });
+
+  it("ohne Angabe wird nichts gemeldet", () => {
+    expect(regeln(mit([]))).toEqual([]);
   });
 });

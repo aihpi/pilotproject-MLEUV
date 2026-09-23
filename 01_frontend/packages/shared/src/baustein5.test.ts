@@ -532,8 +532,16 @@ describe("Baustein 6, Prüfberechtigte", () => {
     expect(pruefeBaustein6(mitStellen(["lrh", "ministry"]))).toHaveLength(0);
   });
 
-  it("zusätzliche Stellen stören nicht", () => {
-    expect(pruefeBaustein6(mitStellen(["lrh", "ministry", "brh"]))).toHaveLength(0);
+  // Hier stand bis zum 23.09.2026 „zusätzliche Stellen stören nicht" — eine ungeprüfte
+  // Annahme aus dem Bauen, die der erste Durchlauf über Baustein 6 widerlegt hat: ein
+  // Vorschlag setzte bei reiner Landesförderung den Bundesrechnungshof, und kein Befund kam.
+  //
+  // Der Bundesrechnungshof prüft, wo Bundesmittel fließen. Bei reiner Landesfinanzierung tut
+  // er das nicht, und ihn in der Richtlinie zu nennen wäre eine falsche Angabe. Die Regel
+  // schaut deshalb in beide Richtungen: was fehlt UND was zu viel ist.
+  it("der Bundesrechnungshof ohne Bundesmittel ist ein Befund", () => {
+    const [e] = pruefeBaustein6(mitStellen(["lrh", "ministry", "brh"]));
+    expect(e!.befund.regel).toBe("pruefrechte_bund_ohne_bundesmittel");
   });
 
   it("nur der Rechnungshof: das Ministerium wird benannt", () => {
