@@ -97,16 +97,22 @@ def abschnitte_finden(text):
     sie aber alle gleich. Der Titel wird trotzdem mitgeführt — er ist die Antwort auf die
     Frage, ob der Abschnitt das enthält, was er soll.
 
-    Aufsteigend: eine zweite „1" weiter hinten ist eine Aufzählung, keine Überschrift.
+    Aufsteigend, aber mit Lücken: eine zweite „1" weiter hinten ist eine Aufzählung, keine
+    Überschrift — eine fehlende 2 dagegen ist genau das, was der Prüf-Modus finden soll.
+
+    Bis zum 24.09.2026 wurde LÜCKENLOSE Folge verlangt. Die erste Messung zeigte, was das
+    anrichtet: nimmt man einem Entwurf den Baustein 2, passt die 3 nicht mehr zur Erwartung,
+    und alles danach fällt heraus. Gemeldet wurden dann 2 bis 8 als fehlend — aus einem
+    fehlenden Abschnitt wurde ein fast leerer Entwurf, und der Befund war wertlos.
     """
     treffer = []
-    erwartet = 1
+    zuletzt = 0
     for m in _UEBERSCHRIFT.finditer(text):
         nr = int(m.group(1))
-        if nr != erwartet:
+        if nr <= zuletzt:
             continue
         treffer.append((nr, m.group(2).strip(), m.start(), m.end()))
-        erwartet += 1
+        zuletzt = nr
 
     raus = {}
     for i, (nr, titel, _, ende) in enumerate(treffer):

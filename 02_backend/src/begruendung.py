@@ -1,25 +1,31 @@
-"""Wie haben frühere Richtlinien dieselbe Abweichung begründet?
+"""Wie ist dieselbe Abweichung in anderen Richtlinien geregelt?
 
-Das Prozessmodell führt dafür die Aufgabe „Vorformulierte Begründung abfragen". Gemeint ist
-nicht, dass das Werkzeug die Begründung schreibt — die Unterschrift unter einem Anschreiben
-ans MdFE leistet ein Mensch. Gemeint ist, dass es zeigt, wie andere es gemacht haben.
+Das Prozessmodell führt dafür „Vorformulierte Begründung abfragen". Beim ersten Durchlauf am
+24.09.2026 zeigte sich, dass dieser Name mehr verspricht, als der Korpus hergibt:
 
-Der Unterschied ist der ganze Zweck dieses Moduls. Eine erzeugte Begründung liest sich fertig
-und wird durchgewunken; eine fremde Begründung mit Fundstelle daneben liest sich als Vorbild
-und lädt zum Vergleichen ein. Deshalb kommt hier KEIN Modell zum Einsatz: gesucht wird, und
-was gefunden wird, geht unverändert und mit Quellenangabe zurück. Was nicht formuliert wird,
-kann auch nicht danebenformuliert werden.
+**Richtlinien enthalten keine Begründungen.** Sie enthalten Regelungen. Die Begründung einer
+Abweichung steht im Anschreiben ans MdFE, und solche Anschreiben liegen nicht im Korpus —
+möglicherweise in den nicht indexierten Ordnern 05 und 06, das ist mit dem MLEUV zu klären.
 
-Die Suchanfrage entsteht aus dem Vermerkseintrag: der Rechtsstelle, der Regel und dem Wert,
-der die Regel ausgelöst hat. Eine Bagatellgrenze von 1.000 Euro sucht also nach Stellen, an
-denen eine Richtlinie eine Bagatellgrenze unterhalb der Regelgrenze begründet — nicht nach
-„Bagatellgrenze" allgemein.
+Was dieses Modul deshalb liefert, ist etwas anderes und trotzdem brauchbar: **den
+Präzedenzfall**. Auf die Frage nach 90 Prozent für Kommunen kam „bis zu 90 Prozent für
+finanzschwache Gemeinden, definiert über das Haushaltssicherungskonzept, bestätigt durch die
+Kommunalaufsicht" — keine fertige Begründung, aber ein anerkanntes Muster, an dem sich eine
+eigene ausrichten lässt.
+
+Deshalb kommt hier KEIN Modell zum Einsatz: gesucht wird, gekürzt wird nach Wortüberschneidung,
+und was gefunden wird, geht unverändert mit Quellenangabe zurück. Was nicht formuliert wird,
+kann auch nicht danebenformuliert werden — und eine erzeugte Begründung läse sich fertig und
+würde durchgewunken.
 
     from begruendung import vorbilder
     vorbilder("bagatellgrenze", "Ziff. 1.5 VV zu § 44 LHO", "1000")
 """
+import re
+
 from anfrage import suche
 from rag_query import bloecke_bilden
+from satzfilter import saetze_teilen, zusammensetzen
 from config import HOLDOUT_DATEIEN
 
 # Wie viele Vorbilder zurückgehen.
@@ -28,6 +34,13 @@ from config import HOLDOUT_DATEIEN
 # nicht Vollständigkeit, sondern ein Anhaltspunkt für einen Text, den ohnehin ein Mensch
 # schreibt.
 VORBILDER = 3
+
+# Wie viele Sätze je Fundstelle stehen bleiben.
+#
+# Drei. Ein Block ist ein ganzer Gliederungspunkt und kann eine Seite lang sein — im ersten
+# Versuch stand unter „So haben andere das geregelt" eine vollständige Seite
+# Flurbereinigungsrichtlinie samt De-minimis-Belehrung. Wer das liest, liest es nicht.
+SAETZE_JE_FUND = 3
 
 # Worum es je Regel geht, in der Sprache der Richtlinien.
 #
@@ -62,6 +75,58 @@ def anfrage_bilden(regel, rechtsstelle=None, wert=None):
     return " ".join(t for t in teile if t).strip()
 
 
+# Wie dicht Tabellenzellen stehen dürfen, bevor ein Block als Artefakt gilt.
+#
+# Ein Block aus der Tabellenextraktion sieht so aus: „5.4.3.1, 1 = Nummer 2.1.1:. 5.4.3.1,
+# 2 = . , 1 = bis zu 70 Prozent …" — rohe Zellen, jede doppelt, Gliederungsnummer davor.
+# Lesbar ist das nicht, und kein Kürzen macht es lesbar. Drei solcher Muster in einem Block
+# sind kein Zufall; ein Rechtstext enthält Gleichheitszeichen praktisch nie.
+TABELLENRESTE = 3
+
+_ZELLE = re.compile(r"(?:^|\s)[\d.]*,\s*\d\s*=")
+
+
+def _tabellenrest(text):
+    """Ist dieser Block ein Rest aus der Tabellenextraktion statt Fließtext?"""
+    return len(_ZELLE.findall(text or "")) >= TABELLENRESTE
+
+
+def _teilen(text):
+    """In Sätze UND Aufzählungspunkte trennen.
+
+    `saetze_teilen` trennt bei .!? — in den Richtlinien stehen die Regelungen aber als
+    Aufzählung („- D.4.1 bis zu 75 Prozent …"). Eine ganze Liste zählte damit als ein Satz,
+    und die Kürzung ließ die Seite stehen, die sie kürzen sollte.
+    """
+    teile = []
+    for satz in saetze_teilen(text):
+        # Vor „- " trennen, den Strich aber behalten: er trägt die Gliederungsnummer.
+        stuecke = re.split(r"\s+(?=-\s+[A-Za-zÄÖÜ0-9])", satz)
+        teile.extend(s.strip() for s in stuecke if s.strip())
+    return teile
+
+
+def _kuerzen(text, anfrage, hoechstens=SAETZE_JE_FUND):
+    """Den Block auf die Sätze kürzen, die die Suchbegriffe tragen. Ohne Modell.
+
+    Der Satzfilter in `satzfilter.py` könnte das besser, kostet aber einen Modellaufruf — und
+    der ist hier ausdrücklich nicht gewollt: was unverändert aus der Quelle kommt, kann nicht
+    danebenformuliert werden. Gewichtet wird deshalb nach Wortüberschneidung, in der
+    ursprünglichen Reihenfolge, Lücken mit `(...)` gekennzeichnet wie überall im Werkzeug.
+    """
+    saetze = _teilen(text)
+    if len(saetze) <= hoechstens:
+        return text.strip()
+    gesucht = {w.lower() for w in re.findall(r"\w{5,}", anfrage)}
+    if not gesucht:
+        return zusammensetzen(saetze, list(range(hoechstens)))
+    bewertet = sorted(
+        range(len(saetze)),
+        key=lambda i: -len(gesucht & {w.lower() for w in re.findall(r"\w{5,}", saetze[i])}),
+    )
+    return zusammensetzen(saetze, sorted(bewertet[:hoechstens]))
+
+
 def vorbilder(regel, rechtsstelle=None, wert=None, top_k=VORBILDER, ohne_dateien=None):
     """Bis zu `top_k` Textstellen mit Fundstelle. Ohne Modell, ohne Umformulierung.
 
@@ -75,15 +140,26 @@ def vorbilder(regel, rechtsstelle=None, wert=None, top_k=VORBILDER, ohne_dateien
     # Nur frühere Richtlinien und Rahmenpläne: die VV sagt, was zulässig ist, aber nicht, wie
     # man eine Abweichung begründet. Dieselbe Einschränkung wie bei der Abfragesorte
     # „vorschlagen" im Prozessmodell.
-    treffer = suche(text, top_k=top_k * 3,
+    # OHNE Reranking, und das ist der Punkt: es ist der einzige Modellaufruf in dieser
+    # Kette. Mit ihm dauerte der Knopf zehn Sekunden und das Versprechen „kein Modell" war
+    # falsch. Für einen Präzedenzfall genügt die Trefferliste der Suche — es geht nicht um
+    # die beste Stelle, sondern um drei zum Vergleichen.
+    treffer = suche(text, top_k=top_k * 3, rerank=False,
                     nur_arten=("richtlinie", "rahmenplan"),
                     ohne_dateien=HOLDOUT_DATEIEN if ohne_dateien is None else ohne_dateien)
     raus = []
-    for b in bloecke_bilden(treffer)[:top_k]:
+    for b in bloecke_bilden(treffer):
+        if len(raus) >= top_k:
+            break
+        # Unlesbares gar nicht erst anbieten. Die Ursache liegt in der Aufbereitung und
+        # gehört dort behoben — bis dahin ist ein Block weniger besser als ein Block, den
+        # niemand lesen kann.
+        if _tabellenrest(b["roh"] or ""):
+            continue
         payload = b["punkt"].payload
         raus.append({
             "fundstelle": b["fundstelle"],
-            "text": (b["roh"] or "").strip(),
+            "text": _kuerzen(b["roh"] or "", text),
             "datei": payload.get("quelle"),
             "seite": (payload.get("seiten") or [None])[0],
         })

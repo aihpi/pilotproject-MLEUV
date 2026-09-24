@@ -141,7 +141,7 @@ function Eintrag({
             >
               {suchen.isPending
                 ? "Wird gesucht …"
-                : "Wie haben das andere begründet?"}
+                : "Wie ist das anderswo geregelt?"}
             </button>
             <button
               type="button"
@@ -156,10 +156,18 @@ function Eintrag({
             <div className="vorbilder">
               {vorbilder.length ? (
                 <>
+                  {/*
+                    Beschriftung nach dem ersten Durchlauf korrigiert. Vorher stand hier „So
+                    haben andere Richtlinien das begründet" — gefunden werden aber
+                    REGELUNGEN, keine Begründungen. Die stehen im Anschreiben ans MdFE, und
+                    das liegt nicht im Korpus. Ein Versprechen, das der Inhalt nicht hält,
+                    ist schlimmer als gar keines.
+                  */}
                   <p className="vorbilder__kopf">
-                    <strong>So haben andere Richtlinien das begründet.</strong> Kein
-                    Vorschlag für Ihren Fall — die Begründung schreiben Sie, und unter dem
-                    Anschreiben ans MdFE steht Ihre Unterschrift.
+                    <strong>So ist das in anderen Richtlinien geregelt.</strong> Keine
+                    Begründung und kein Vorschlag für Ihren Fall, sondern ein Präzedenzfall
+                    zum Vergleichen. Die Begründung schreiben Sie — unter dem Anschreiben ans
+                    MdFE steht Ihre Unterschrift.
                   </p>
                   <ul>
                     {vorbilder.map((v, i) => (
@@ -203,7 +211,8 @@ function Eintrag({
                 </>
               ) : (
                 <p>
-                  Zu dieser Abweichung findet sich in früheren Richtlinien keine Begründung.
+                  Zu dieser Abweichung findet sich in früheren Richtlinien nichts
+                  Vergleichbares.
                 </p>
               )}
             </div>

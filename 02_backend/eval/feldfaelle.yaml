@@ -563,3 +563,77 @@ faelle:
     erwartet:
       validFrom: {unklar: true}
       validUntil: {unklar: true}
+
+  # ---------------------------------------------------------------------------
+  # Teilweise ausgefüllte Abschnitte — der Normalfall.
+  #
+  # Die Bearbeiterin füllt selten einen Abschnitt am Stück. Bis zum 24.09.2026 sah das Modell
+  # die schon bestätigten Felder nicht und riet jedes für sich: „Antragsverfahren: mit Frist"
+  # stand im Entwurf, und die Antragsfrist kam trotzdem als [Unklar].
+  #
+  # `bestaetigt:` gibt vor, was schon entschieden ist. `regelfall: true` steht für den Knopf
+  # „Vorschlag holen" im Formular, wo ein ungedecktes Feld aus dem Regelfall abgeleitet
+  # werden darf — im Gespräch ist das verboten.
+  # ---------------------------------------------------------------------------
+
+  - id: F-24-frist-folgt-aus-verfahren
+    notiz: >-
+      „Schriftlich, mit Antragsfrist" ist bestätigt. Dann MUSS die Antragsfrist ein Datum
+      bekommen — ein Verfahren mit Frist ohne Frist ist in sich widersprüchlich.
+    abschnitt_nr: 7
+    eingabe: Anträge sind bis zum 31. März 2027 einzureichen.
+    bestaetigt:
+      applicationProcedure: Schriftlich, mit Antragsfrist
+    felder: [applicationDeadline]
+    erwartet:
+      applicationDeadline: {enthaelt: ["2027-03-31"], gedeckt: true}
+
+  - id: F-25-festbetrag-statt-satz
+    notiz: >-
+      Festbetragsfinanzierung ist bestätigt. Dann gehört der Betrag gefüllt und der
+      Fördersatz nicht — bei einem Festbetrag gibt es keinen Prozentsatz.
+    abschnitt_nr: 5
+    eingabe: Je Mitglied und Jahr werden 12 Euro gewährt.
+    bestaetigt:
+      financingType: Festbetragsfinanzierung
+    felder: [fixedAmount, fundingRate]
+    erwartet:
+      fixedAmount: {wert: 12, gedeckt: true}
+      fundingRate: {unklar: true}
+
+  - id: F-26-regelfall-im-formular
+    notiz: >-
+      Der Knopf „Vorschlag holen" bei leerem Verlauf. Hier IST der Regelfall das Gewünschte —
+      die Musterrichtlinie hat zu Baustein 7 zehn Musterbausteine. Ohne diesen Schalter kam
+      ein Feld von sechs zurück.
+    abschnitt_nr: 7
+    regelfall: true
+    eingabe: Gefördert wird die Kastration freilebender Katzen aus Landesmitteln.
+    felder: [payment, applicationType]
+    erwartet:
+      payment: {unklar: false}
+      applicationType: {unklar: false}
+
+  - id: F-27-ohne-regelfall-schweigt-der-chat
+    notiz: >-
+      Dieselbe Eingabe, aber als Gespräch. Dort ist Schweigen eine Auskunft: die Bearbeiterin
+      wurde gefragt und hat nichts gesagt. Ein abgeleiteter Wert wäre eine Unterstellung.
+    abschnitt_nr: 7
+    eingabe: Gefördert wird die Kastration freilebender Katzen aus Landesmitteln.
+    felder: [payment, applicationType]
+    erwartet:
+      payment: {unklar: true}
+      applicationType: {unklar: true}
+
+  - id: F-28-bestaetigtes-nicht-widersprechen
+    notiz: >-
+      Der Empfängerkreis ist bestätigt. Die Konkretisierung darf ihn ausfüllen, aber ihm
+      nicht widersprechen — ein Vorschlag, der eine menschliche Entscheidung überschreibt,
+      ist der teuerste Fehler dieser Naht.
+    abschnitt_nr: 3
+    eingabe: Gefördert werden amtlich anerkannte Tierschutzvereine.
+    bestaetigt:
+      recipients: Juristische Personen des privaten Rechts
+    felder: [recipientDetails]
+    erwartet:
+      recipientDetails: {enthaelt: [tierschutzverein], nicht: [kommun], gedeckt: true}

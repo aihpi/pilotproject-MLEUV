@@ -115,9 +115,20 @@ def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
     # hin, was ein Auswahlfeld daneben schon regelt — und der Fall hier träfe diesen Fehler
     # nie, weil er ihn gar nicht herstellt.
     nachbarn = [felder_def[i] for i in fall.get("nachbarn", [])]
+    # Schon bestätigte Felder desselben Abschnitts, wie im Betrieb: die Bearbeiterin füllt
+    # selten einen Abschnitt am Stück. Ein Fall ohne sie prüft den leeren Abschnitt, und das
+    # ist nicht der Normalfall — die Felder hängen zusammen, und genau das soll messbar sein.
+    bestaetigt = [
+        {"label": felder_def[i].get("label") or i, "wert": w}
+        for i, w in (fall.get("bestaetigt") or {}).items()
+    ]
     vorschlaege, nachweis = vorschlag.vorschlagen(
         fall["abschnitt_nr"], fall["eingabe"].strip(), felder, konsens=konsens,
-        mit_belegen=mit_belegen, nachbarfelder=nachbarn or None)
+        mit_belegen=mit_belegen, nachbarfelder=nachbarn or None,
+        entschieden=bestaetigt or None,
+        # Der Knopf im Formular darf den Regelfall ableiten, das Gespräch nicht. Je Fall
+        # angeben, welcher der beiden Wege gemeint ist.
+        regelfall=bool(fall.get("regelfall")))
     nach_feld = {v["feld"]: v for v in vorschlaege}
     # Derselbe Belegtext, den das Modell gesehen hat — aus dem Nachweis, nicht neu geholt.
     bloecke_text = nachweis.get("belegtext", "")
