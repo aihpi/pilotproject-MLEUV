@@ -25,6 +25,9 @@ Ihre Entwürfe mit Zeitstempel, Finanzierungsquelle und einem Balken „Vollstä
 Ein Klick auf den Titel öffnet die Abschnittsliste. „Neue Richtlinie erstellen" beginnt einen
 neuen Vorgang.
 
+**„Löschen"** entfernt einen Entwurf endgültig, nach einer Rückfrage. Es gibt keinen
+Papierkorb.
+
 ## Neue Richtlinie
 
 Eine Frage: **Bund/Land (GAK)** oder **Land**. Die Antwort steuert, welche Mustersätze und
@@ -36,7 +39,8 @@ Der Beihilfebezug wird unabhängig davon im Ablauf geprüft. „Chat-Erhebung st
 Der Assistent stellt eine Frage je Stufe, Sie antworten frei in ganzen Sätzen — je konkreter,
 desto belastbarer der Vorschlag. **Enter sendet, Umschalt + Enter macht einen Absatz.**
 
-Die Antwort dauert **ein bis zwei Minuten**; das Feld bleibt so lange gesperrt. Danach erscheint
+Die Antwort dauert **meist etwa 40 Sekunden, höchstens zwei Minuten**; das Feld bleibt so
+lange gesperrt. Danach erscheint
 der Kasten **„Das habe ich verstanden"** mit einem Wert je Feld:
 
 | Knopf | Wirkung |
@@ -74,6 +78,11 @@ manche Felder erscheinen erst, wenn eine vorherige Auswahl sie nötig macht. Bla
 sagen, welche Mustersätze später **automatisch** ergänzt werden — die müssen Sie nicht tippen.
 „Speichern und zurück" schreibt die Angaben und setzt sie auf bestätigt.
 
+**„Vorschlag holen"** füllt den Abschnitt aus dem Regelwerk und früheren Verfahren, ohne den
+Umweg über den Chat. Dauert ein bis zwei Minuten. Gefüllte Felder tragen darunter die Marke
+**„Vorschlag — noch nicht gespeichert"** mit der Herkunft; erst „Speichern und zurück"
+übernimmt sie. Was Sie schon eingetragen haben, wird nicht überschrieben.
+
 ## Gesamtprüfung
 
 Listet fehlende Pflichtangaben und fachliche Prüfhinweise. Jeder Eintrag ist ein Link, der
@@ -91,6 +100,11 @@ Zwei getrennte Schritte, mit Absicht:
 1. **„Begründung speichern"** — das Fachreferat schreibt auf, warum abgewichen wird.
 2. **„Begründung bestätigen"** — jemand anderes liest gegen und gibt frei. Ohne gespeicherte
    Begründung ist der Knopf gesperrt.
+
+**„Wie ist das anderswo geregelt?"** sucht dazu Stellen aus früheren Richtlinien. Achtung auf
+den Unterschied: gefunden werden **Regelungen**, keine Begründungen — ein Präzedenzfall zum
+Vergleichen. Die Begründung schreiben Sie selbst; unter dem Anschreiben ans MdFE steht Ihre
+Unterschrift.
 
 Ändern Sie später den auslösenden Wert, wird der Eintrag **gegenstandslos**: er bleibt als
 Nachweis stehen, wird aber nicht mehr bearbeitet. Solange etwas offen oder unbestätigt ist,

@@ -7,15 +7,25 @@ ein Nutzer, ohne Anmeldung. Bedienung: [handbuch.md](handbuch.md).
 
 **Vier Leitplanken erklären fast jede Entscheidung in diesem Dokument:**
 
-1. **Assistenz, keine Entscheidung.** Jede Ausgabe wird angenommen, geändert oder verworfen —
-   deshalb der Bestätigungsschritt vor jeder Übernahme und die Regel, dass das Modell sortiert,
-   aber nicht auswählt.
-2. **Alles im Haus.** Die Quelldokumente sind teils vertraulich — deshalb lokale Container,
+1. **Assistenz, keine Entscheidung** — deshalb der Bestätigungsschritt vor jeder Übernahme,
+   und deshalb sortiert das Modell, ohne auszuwählen.
+2. **Alles im Haus** — die Quelldokumente sind teils vertraulich, deshalb lokale Container,
    `127.0.0.1` und ein Korpusordner außerhalb von git.
-3. **Keine Aussage ohne Fundstelle.** Unsicheres wird `[Unklar]` genannt statt geraten —
-   deshalb der Satzfilter mit Zeichenvergleich und der Verzicht auf Ersatzvorschläge bei Ausfall.
-4. **Einzelnutzer ist ein Zwischenstand.** Das Ziel ist Mehrpersonenbetrieb; deshalb liegen
+3. **Keine Aussage ohne Fundstelle** — Unsicheres heißt `[Unklar]` statt geraten; deshalb der
+   Satzfilter mit Zeichenvergleich und kein Ersatzvorschlag bei Ausfall.
+4. **Einzelnutzer ist ein Zwischenstand** — Ziel ist Mehrpersonenbetrieb, deshalb liegen
    Schema und Regeln an einer Stelle und der Zustand in Dateien, die eine Datenbank ersetzen kann.
+
+## Auf einen Blick
+
+| Schicht | Womit gebaut | Port | Start | Zustand |
+|---|---|---|---|---|
+| **Oberfläche** | React 19, Vite, React Router, TanStack Query, KERN UX | 5173 | `npm run dev` in `01_frontend` | keiner |
+| **Vorgangsverwaltung** | Node 20, Fastify, zod, `docx` | 4317 | dito (läuft mit) | `apps/api/data/drafts.json` |
+| **Wissensdienst** | Python, FastAPI, LiteLLM, docling, fastembed | 8000 | `uvicorn api:app` in `02_backend` | zustandslos |
+| **Suchindex** | Qdrant im Container | 6333 | `docker compose up -d` in `02_backend` | `02_backend/.data/qdrant` |
+| **Sprachmodell** | LiteLLM-Endpunkt am HPI-Cluster, Ausweichkette | — | extern | — |
+| **docling-serve** | Container, läuft mit, **derzeit ungenutzt** | 5001 | dito | — |
 
 ## Der Weg einer Anfrage
 
@@ -30,175 +40,226 @@ Node     :4317   Fastify  ── Entwurf, Chat-Stufen, Felddefinitionen, Word-Ex
 Python   :8000   FastAPI  ── Korpus, Musterbausteine, Modellaufrufe
    │
    ├──► Qdrant   :6333   Vektor- und BM25-Index, lokaler Container
-   ├──► docling          PDF → Chunks (Bibliothek; docling-serve :5001 läuft mit, ungenutzt)
-   └──► LiteLLM         api.aisc.hpi.de, HPI-Cluster, Ausweichkette über mehrere Modelle
+   ├──► docling          PDF → Chunks (Bibliothek direkt)
+   └──► LiteLLM          api.aisc.hpi.de, Ausweichkette über mehrere Modelle
 ```
+
+**Die Naht zwischen Node und Python:** Node kennt Entwurf, Chat-Stufe und Felddefinitionen
+und schickt sie mit; Python kennt Korpus, Musterbausteine und Modell und antwortet mit Wert,
+Beleg und Konfidenz. Felddefinitionen werden **nicht** doppelt gepflegt — einzige Quelle ist
+`packages/shared`. Fällt Python aus, gibt es **keinen** Ersatzvorschlag.
 
 ## Ein Satz auf seinem Weg
 
-Das Beispiel aus dem Demo-Leitfaden. Die Bearbeiterin tippt in den Chat:
+Die Bearbeiterin tippt in den Chat:
 
 > „Wir wollen Tierheime im Land Brandenburg fördern, damit der Tierschutz verbessert wird.
 > Reine Landesmittel, Zuwendung als Zuschuss."
 
-1. **Node** weiß, dass gerade Baustein 1 an der Reihe ist und welche Felder dazu gehören
-   (Ziel der Förderung, Zuwendungszweck). Beides schickt es mit dem Satz an den Python-Dienst.
-2. **Suchanfrage bilden** — nicht der Satz selbst geht in die Suche, sondern eine daraus
-   gebaute Anfrage mit dem Abschnittsbezug. Der Rohtext allein findet deutlich schlechter.
-3. **Suchen** — Qdrant liefert Kandidaten aus zwei Richtungen gleichzeitig: nach Bedeutung
-   (Vektoren) und nach Wortlaut (BM25), zusammengeführt zu einer Liste.
-4. **Ordnen oder abstimmen** — das Modell bringt die Kandidaten in eine Reihenfolge; auf
-   Wunsch stattdessen drei Läufe mit Mehrheitsentscheid.
-5. **Kürzen und belegen** — aus jedem Treffer bleiben die tragenden Sätze. Ihr Wortlaut wird
-   zeichenweise gegen das Quelldokument gehalten, ohne weiteren Modellaufruf.
-6. **Vorschlagen** — je Feld ein Wert, im Satzrahmen des passenden Musterbausteins, dazu
-   Beleg, Fundstelle und Konfidenz. Deckt die Eingabe ein Feld nicht, kommt `[Unklar]` statt
-   einer Erfindung.
-7. **Zurück in der Oberfläche** steht der Vorschlag mit seiner Herkunft. Erst „Vorschlag
-   übernehmen" schreibt ihn in den Entwurf; die Prüfregeln laufen an, und eine
-   begründungspflichtige Abweichung landet im Prüfvermerk.
-8. **Am Ende** formuliert der Dienst je Abschnitt einen Text aus den bestätigten Angaben —
-   und gibt zwei Word-Dateien aus: Richtlinie und Prüfvermerk, getrennt.
+1. **Node** weiß, dass Baustein 1 an der Reihe ist und welche Felder dazu gehören, und
+   schickt beides mit dem Satz an den Python-Dienst.
+2. **Suchanfrage bilden** — nicht der Satz geht in die Suche, sondern eine daraus gebaute
+   Anfrage mit Abschnittsbezug.
+3. **Suchen** — Qdrant liefert Kandidaten nach Bedeutung (Vektoren) und Wortlaut (BM25).
+4. **Ordnen oder abstimmen** — das Modell bringt sie in eine Reihenfolge, auf Wunsch drei
+   Läufe mit Mehrheitsentscheid.
+5. **Kürzen und belegen** — nur die tragenden Sätze bleiben, zeichenweise gegen die Quelle
+   geprüft, ohne weiteren Modellaufruf.
+6. **Vorschlagen** — je Feld ein Wert im Satzrahmen des Musterbausteins, mit Beleg,
+   Fundstelle und Konfidenz; sonst `[Unklar]`.
+7. **Bestätigen** — erst „Vorschlag übernehmen" schreibt in den Entwurf, die Prüfregeln
+   laufen an, eine begründungspflichtige Abweichung landet im Prüfvermerk.
+8. **Am Ende** wird je Abschnitt Text formuliert; heraus kommen zwei Word-Dateien.
 
-Schritt 1 bis 7 dauern zusammen rund 40 Sekunden bis zwei Minuten, Schritt 8 mehrere Minuten.
+Schritt 1–7 zusammen 40 Sekunden bis zwei Minuten, Schritt 8 mehrere Minuten.
 
 ## Ordner
 
 | Ordner | Inhalt |
 |---|---|
 | `01_frontend` | npm-Workspace: `apps/web` (Oberfläche), `apps/api` (Node-Dienst), `packages/shared` (Schema, Abschnitte, Prüfregeln) |
-| `02_backend` | Python-Dienst: Ingestion, Retrieval, Vorschlag, Richtlinientext, Eval |
+| `02_backend` | Python-Dienst: Aufbereitung, Suche, Vorschlag, Richtlinientext, Messung |
 | `03_notebooks` | Notebook-Vorlage |
 | `00_aisc` | Logos, Vorlagen |
 
-Die Planungsunterlagen (Meilensteine, Befunde, Vereinbarung) liegen unter
-`04_planung_pilotprojekt` und sind von git ausgenommen.
+Die Planungsunterlagen liegen unter `04_planung_pilotprojekt` und sind von git ausgenommen.
 
-## Dienste
+# Frontend — `01_frontend`
 
-| Dienst | Port | Start | Zustand liegt in |
-|---|---|---|---|
-| Web + Node-API | 5173 / 4317 | `cd 01_frontend && npm run dev` | `apps/api/data/drafts.json` |
-| Vorschlagsdienst | 8000 | `cd 02_backend && uvicorn api:app --port 8000 --app-dir src` | zustandslos |
-| Qdrant | 6333 | `cd 02_backend && docker compose up -d` | `02_backend/.data/qdrant` |
-| docling-serve | 5001 | dito | – |
+## Oberfläche · `apps/web/src`
 
-## Bestandteile
+[main.tsx](01_frontend/apps/web/src/main.tsx) startet,
+[App.tsx](01_frontend/apps/web/src/App.tsx) ist die Routentabelle — zwei Zeilen, das
+Inhaltsverzeichnis der Anwendung. [api.ts](01_frontend/apps/web/src/api.ts) bündelt jeden
+Aufruf ans Backend, [api-static.ts](01_frontend/apps/web/src/api-static.ts) dasselbe ohne
+Server für die Offline-Demo, [components.tsx](01_frontend/apps/web/src/components.tsx) trägt
+Rahmen, Warnkasten, Fortschritt und Statusabzeichen.
 
-Vier Teile: eine Oberfläche, eine Vorgangsverwaltung, ein Wissensdienst und die
-Wissensbestände, aus denen er schöpft.
-
-### 1 Oberfläche — `01_frontend/apps/web`
-
-React + Vite, Bedienelemente nach KERN UX. Elf Seiten, eine Route je Arbeitsschritt.
-Bedienung: [handbuch.md](handbuch.md).
-
-| Route | Seite | Aufgabe |
+| Route | Datei | Aufgabe |
 |---|---|---|
-| `/` · `/neu` | Übersicht, Neue Richtlinie | Entwürfe auflisten, Finanzierungsquelle wählen |
-| `/pruefen` | Entwurf prüfen | fertigen Entwurf hochladen, gegen die Musterstruktur halten; hängt an keinem Vorgang |
-| `/entwurf/:id/chat` | Geführte Erhebung | Freitext → Vorschlag je Feld, Herkunft, Beleg im Seitenbereich |
-| `/entwurf/:id` · `/abschnitt/:nr` | Abschnittsliste, Formular | elf Bausteine mit Status, Felder erfassen |
-| `/entwurf/:id/pruefen` | Gesamtprüfung | fehlende Pflichtangaben, Prüfhinweise |
-| `/entwurf/:id/vermerk` | Prüfvermerk | begründen, bestätigen |
-| `/entwurf/:id/richtlinie` | Richtlinientext | erzeugen, Befunde, Herkunft, Word-Export |
-| `/entwurf/:id/redaktion` · `/vorschau` | Stufe 2 | **Mockup** mit Demo-Daten |
+| `/` · `/neu` | [Dashboard.tsx](01_frontend/apps/web/src/pages/Dashboard.tsx) | Entwürfe auflisten, Finanzierungsquelle wählen |
+| `/pruefen` | [Pruefen.tsx](01_frontend/apps/web/src/pages/Pruefen.tsx) | fertigen Entwurf hochladen und gegen die Musterstruktur halten; hängt an keinem Vorgang |
+| `/entwurf/:id/chat` | [Chat.tsx](01_frontend/apps/web/src/pages/Chat.tsx) | geführte Erhebung; darin `Herkunft`, die Deckung von Beleg trennt |
+| `/entwurf/:id` · `/abschnitt/:nr` | [Form.tsx](01_frontend/apps/web/src/pages/Form.tsx) | Abschnittsliste und Formular je Baustein |
+| `/entwurf/:id/pruefen` | [Review.tsx](01_frontend/apps/web/src/pages/Review.tsx) | Gesamtprüfung: fehlende Pflichtangaben, Prüfhinweise |
+| `/entwurf/:id/vermerk` | [Vermerk.tsx](01_frontend/apps/web/src/pages/Vermerk.tsx) | begründen, bestätigen |
+| `/entwurf/:id/richtlinie` | [Richtlinie.tsx](01_frontend/apps/web/src/pages/Richtlinie.tsx) | Text erzeugen, Herkunft je Angabe, Word-Export |
+| `/entwurf/:id/redaktion` · `/vorschau` | [Review.tsx](01_frontend/apps/web/src/pages/Review.tsx) | **Stufe-2-Mockup** mit erfundenen Fundstellen |
 
-### 2 Vorgangsverwaltung — `apps/api` (Fastify) + `packages/shared`
+## Vorgangsverwaltung · `apps/api` + `packages/shared`
 
-Der Node-Dienst hält den Vorgang; `packages/shared` ist die einzige Quelle für alles, was
-den Aufbau einer Richtlinie beschreibt — Schema, Abschnitte, Stufen, Regeln.
+[server.ts](01_frontend/apps/api/src/server.ts) hält alle Endpunkte an einem Ort und liest
+sich wie eine Inhaltsangabe des Ablaufs. Der Zustand ist eine JSON-Datei, kein
+Datenbankserver.
+
+[index.ts](01_frontend/packages/shared/src/index.ts) ist das Herz der Anwendung — die einzige
+Quelle für alles, was eine Richtlinie ausmacht:
 
 | Bestandteil | Inhalt |
 |---|---|
-| Entwurfsschema (zod) | Felder mit Wert, Status, Herkunft, Konfidenz und Bestätigungsmarke; Version für die Konfliktprüfung |
-| Abschnittsdefinitionen | elf Bausteine (0–10) mit Feldern, Typ, Pflicht, Hilfetext und Sichtbarkeitsregeln |
-| Chat-Stufen | Reihenfolge der Fragen, je Stufe Zielfelder; Übersprünge nach dem Prozessmodell |
-| Prüfregeln | deterministisch, ohne Modell: Bagatellgrenze 2.500 € (gemeindlich 5.000 €), kommunaler Höchstsatz 80 %, Prüforgane, Geltungsdauer 3 Jahre, Vollfinanzierung, Zuwendungsform |
-| Vermerkserzeugung | jede greifende Regel schreibt einen Eintrag fort — offen, beantwortet, bestätigt oder gegenstandslos |
-| Ausgabe | zwei Word-Dateien: Richtlinie und Prüfvermerk, getrennt |
+| Entwurfsschema (zod) | Wert, Status, Herkunft, Konfidenz, Bestätigungsmarke je Feld; Version für die Konfliktprüfung |
+| Abschnittsdefinitionen | elf Bausteine (0–10) mit Feldern, Typ, Pflicht, Hilfetext, Sichtbarkeitsregeln |
+| Chat-Stufen | Reihenfolge der Fragen, Zielfelder je Stufe, Übersprünge nach dem Prozessmodell |
+| Prüfregeln | **ohne Modell**, rein gerechnet: Bagatellgrenze 2.500 € (gemeindlich 5.000 €), kommunaler Höchstsatz 80 %, Prüforgane, Geltungsdauer 3 Jahre, Vollfinanzierung, Zuwendungsform |
+| Vermerkserzeugung | jede greifende Regel schreibt einen Eintrag fort — offen, beantwortet, bestätigt, gegenstandslos |
+| Ausgabe | zwei Word-Dateien, getrennt: Richtlinie und Prüfvermerk |
 
-### 3 Wissensdienst — `02_backend/src` (FastAPI)
+# Backend — `02_backend`
 
-| Gruppe | Module | Aufgabe |
-|---|---|---|
-| Aufbereitung, offline | `ingest` · `adressierung` · `verweise` · `gak_hierarchie` · `musterbausteine` · `regeln` | Dokumente einlesen und chunken; jedem Chunk sagen, wo er steht; Verweise auflösbar machen; GAK-Überschriften eindeutig machen; Musterbausteine und Regeltexte ziehen |
-| Abfrage, je Anfrage | `anfrage` · `retrieval` · `sparse` · `satzfilter` · `vorschlag` · `richtlinie` · `pruefmodus` · `rag_query` | Suchanfrage bilden, hybrid suchen, Kandidaten ordnen, auf tragende Sätze kürzen, Feldwerte vorschlagen, Abschnitte ausformulieren, hochgeladene Entwürfe zerlegen |
-| Betrieb | `llm` · `config` · `api` | Modellaufruf mit Ausweichkette und Zeitlimit, Konfiguration, HTTP-Naht |
-| Messung | `eval` · `eval_feld` · `judge_antwort` | Retrieval, Feldtreffer und Antwortqualität getrennt messen |
+## Die 25 Module, vier Sorten
 
-### 4 Wissensbestände — `02_backend`
+**Läuft bei jeder Anfrage (7)**
 
-Erzeugt, nicht von Hand gepflegt. Was Wortlaut aus den vertraulichen Ordnern trägt, liegt als
-`*_lokal.yaml` außerhalb von git und wird beim Laden über die öffentliche Datei gelegt.
+| Modul | Aufgabe |
+|---|---|
+| [anfrage.py](02_backend/src/anfrage.py) | baut aus Abschnitt und Eingabe die Suchanfrage |
+| [retrieval.py](02_backend/src/retrieval.py) | hybride Suche, Rerang oder Mehrheitsentscheid |
+| [sparse.py](02_backend/src/sparse.py) | BM25-Vektoren dazu, 24 Zeilen |
+| [satzfilter.py](02_backend/src/satzfilter.py) | kürzt auf tragende Sätze, prüft den Beleg zeichengenau |
+| [vorschlag.py](02_backend/src/vorschlag.py) | Wert je Formularfeld — die eigentliche Leistung |
+| [richtlinie.py](02_backend/src/richtlinie.py) | formuliert einen Abschnitt aus bestätigten Angaben |
+| [begruendung.py](02_backend/src/begruendung.py) | wie frühere Richtlinien dieselbe Abweichung begründet haben |
+
+**Läuft offline, einmal (8)**
+
+| Modul | Aufgabe |
+|---|---|
+| [ingest.py](02_backend/src/ingest.py) | PDFs → docling → Chunks → Qdrant |
+| [adressierung.py](02_backend/src/adressierung.py) + [adressen_schreiben.py](02_backend/src/adressen_schreiben.py) | jedem Textstück sagen, wo es steht (`ANBest-G, Nummer 8.1`) |
+| [verweise.py](02_backend/src/verweise.py) + [verweise_schreiben.py](02_backend/src/verweise_schreiben.py) | Verweise auflösbar machen, Nachschlagetabelle bauen |
+| [gak_hierarchie.py](02_backend/src/gak_hierarchie.py) | mehrdeutige GAK-Überschriften eindeutig machen |
+| [musterbausteine.py](02_backend/src/musterbausteine.py) | Satzrahmen aus der Musterrichtlinie ziehen |
+| [regeln.py](02_backend/src/regeln.py) | Prüflogik aus dem Prozessmodell ziehen |
+
+Die Paare `*_schreiben.py` sind die Startskripte zu ihrer Bibliothek: `adressierung.py` kann
+rechnen, `adressen_schreiben.py` schreibt das Ergebnis in den Index.
+
+**Betrieb (5)**
+
+| Modul | Aufgabe |
+|---|---|
+| [api.py](02_backend/src/api.py) | die Endpunkte `/vorschlag`, `/richtlinie`, `/dokument/{datei}`, `/gesundheit` |
+| [llm.py](02_backend/src/llm.py) | jeder Modellaufruf, mit Ausweichkette und Zeitlimit |
+| [config.py](02_backend/src/config.py) | alle Schalter an einer Stelle — die beste Übersicht über das Stellbare |
+| [protokoll.py](02_backend/src/protokoll.py) | schreibt mit, was ein Lauf tatsächlich getan hat |
+| [pruefmodus.py](02_backend/src/pruefmodus.py) | hochgeladenen Entwurf zerlegen und gegenhalten — ohne Modell |
+
+**Messen und Werkzeug (5)**
+
+| Modul | Aufgabe |
+|---|---|
+| [eval.py](02_backend/src/eval.py) | Retrieval gegen Gold-Anker, deterministisch |
+| [eval_feld.py](02_backend/src/eval_feld.py) | landet der richtige Wert im richtigen Feld? |
+| [judge_antwort.py](02_backend/src/judge_antwort.py) | Antwortqualität; bewertendes Modell ≠ antwortendes |
+| [rag_query.py](02_backend/src/rag_query.py) | freie Frage von der Kommandozeile |
+| [test_llm.py](02_backend/src/test_llm.py) | 17 Zeilen: antwortet der Cluster, welche Dimension? |
+
+## Wissensbestände
+
+Erzeugt, nicht von Hand gepflegt. Was Wortlaut aus den vertraulichen Ordnern trägt, heißt
+`*_lokal.yaml`, liegt außerhalb von git und wird beim Laden über die öffentliche Datei gelegt.
 
 | Bestand | Was darin steht | Wofür |
 |---|---|---|
-| `korpus_register.yaml` (+ lokal) | Brücke Kurzname ↔ Dateiname, je Dokument Rechtsebene und Rang | Verweise finden ihr Ziel; zugleich die Liste der Dokumente, über die Auskunft gegeben wird |
+| `korpus_register.yaml` (+ lokal) | Brücke Kurzname ↔ Dateiname, Rechtsebene, Rang | Verweise finden ihr Ziel; zugleich die Liste der Dokumente, über die Auskunft gegeben wird |
 | `korpus_status.yaml` | gültig oder abgelöst je Dokument | verhindert Zitate aus überholtem Recht — das größte Rechtsrisiko |
-| `musterbausteine_lokal.yaml` | Textbausteine der Musterrichtlinie je Baustein | Satzrahmen für Vorschlag und Text; macht Abwesenheit feststellbar („hier fehlt die Kumulierungsregel") |
-| `regeln_roh_lokal.yaml` | Regeldokumentationen aus dem Prozessmodell | Quelle der Prüflogik: Rechtsstelle, Schwellenwert, Folge |
+| `musterbausteine_lokal.yaml` | Textbausteine der Musterrichtlinie je Baustein | Satzrahmen; macht Abwesenheit feststellbar („hier fehlt die Kumulierungsregel") |
+| `regeln_roh_lokal.yaml` | Regeldokumentationen aus dem Prozessmodell | Rechtsstelle, Schwellenwert, Folge |
 | `data/verweise.json` | Adresse → Chunks, auch rückwärts | „Wer verweist auf Nummer 6 der ANBest-P?" |
-| `prompts/de/*.yaml` | je Aufgabe ein versionierter Prompt mit Prüfsumme | nachvollziehbar, welcher Wortlaut eine Ausgabe erzeugt hat |
-| `eval/` | 102 Validierungs- und 36 Holdout-Fälle, Feldfälle, Fragenkatalog | Messung gegen Gold-Anker |
+| `prompts/de/*.yaml` | je Aufgabe ein Prompt mit Prüfsumme | nachvollziehbar, welcher Wortlaut eine Ausgabe erzeugt hat |
+| `eval/` | 102 Validierungs-, 36 Holdout-Fälle, Feldfälle, Fragenkatalog | Messung gegen Gold-Anker |
 
-### Arbeitsteilung
+# RAG im Einzelnen
 
-- **Node** kennt Entwurf, Chat-Stufe und Felddefinitionen und schickt sie mit.
-- **Python** kennt Korpus, Musterbausteine und Modell und antwortet mit Wert, Beleg und Konfidenz.
-- Felddefinitionen werden **nicht** doppelt gepflegt: einzige Quelle ist `packages/shared`.
-- Fällt der Python-Dienst aus, gibt es **keinen** Ersatzvorschlag — lieber keine Zuarbeit als eine erfundene.
+Der Abruf aus dem Korpus und der Aufbau des Kontexts — das Verfahren, das den Unterschied zu
+einem beliebigen Textgenerator ausmacht.
 
-### Prüfen und Messen
+## Die Kette, Schritt für Schritt
 
-```bash
-cd 02_backend && pytest -q        # tests/rag (Adressierung, Anfrage, Satzfilter, Holdout)
-                                  # tests/tool (Vorschlag, Musterbausteine, Prüfmodus, Richtlinie)
-                                  # läuft ohne Netz, Modell und Qdrant
-python src/eval.py                # Retrieval gegen Gold-Anker, deterministisch
-python src/eval_feld.py           # landet der richtige Wert im richtigen Feld?
-python src/judge_antwort.py       # Antwortqualität, bewertendes Modell ≠ antwortendes
+| # | Schritt | Datei | Stellschraube |
+|---|---|---|---|
+| 1 | Anfrage bilden: Abschnitt und Eingabe werden zur Suchanfrage. Der Rohtext allein findet deutlich schlechter | `anfrage.py` | — |
+| 2 | Hybride Suche: dense (Vektoren) **und** BM25, in Qdrant nativ per RRF zusammengeführt | `retrieval.py`, `sparse.py` | `TOP_K=5` |
+| 3 | Nachbehandlung: `rang` — ein Lauf, das Modell ordnet. `konsens` — drei Läufe, behalten wird, was zwei wählen. `aus` — deterministisch | `retrieval.py` | `--rerank`, `KONSENS_LAEUFE=3`, `KONSENS_SCHWELLE=2` |
+| 4 | Satzfilter: tragende Sätze je Block, Wortlaut und Satznummer bleiben erhalten; `beleg_pruefen` hält sie per Zeichenvergleich gegen die Quelle | `satzfilter.py` | `SATZFILTER=false` schaltet ab |
+| 5 | Vorschlag: je Feld ein Wert im Satzrahmen des Musterbausteins, mit Beleg und Konfidenz | `vorschlag.py` | `abfrageart` |
+| — | Korpusfilter, wirken über alles | `config.py` | `NUR_AKTUELL`, `HOLDOUT_DATEIEN`, `CORPUS_PREFIXES` |
 
-cd 01_frontend && npm test && npm run typecheck   # Schema, Prüfregeln, Oberfläche
-```
+**Was in den Index kommt** (`ingest.py`, einmalig): PDF → docling → Sub-Chunks an
+Überschriften, Payload trägt den größeren Eltern-Chunk → Adressierung, Verweise,
+GAK-Hierarchie → dense + BM25 → Qdrant. Gesucht wird über das kleine Stück, ans Modell geht
+das große.
 
-**Stand der Messung.** Mit Fundstellen im Prompt arbeitet das Werkzeug zu 88 Prozent
-regeltreu, ohne zu 76 (17.09.2026). Der Satzfilter liefert Belege, die zeichengleich zur
-Quelle sind — 562 Sätze aus 60 Korpusblöcken geprüft. Gemessen wird gegen 102
-Validierungs- und 36 Holdout-Fälle.
+**Abfragesorten** (`vorschlag.py`, aus dem Prozessmodell): `vorschlagen` schränkt auf frühere
+Richtlinien und Rahmenpläne ein — dort ist die fremde Richtlinie das **Vorbild**, nicht der
+Beleg. Die Oberfläche kennzeichnet das getrennt, weil eine Anlehnung sonst für eine
+Rechtsgrundlage gehalten wird.
 
-**Was nicht gemessen ist:** ob eine Aussage inhaltlich durch ihre Fundstelle gedeckt ist
-(nicht nur wörtlich zitiert), die Trefferquote je Formularfeld über den ganzen Katalog, und
-der Prüfmodus. Wer eine Zahl braucht, prüft zuerst, ob sie diese Schicht überhaupt misst.
+## Prompts · `prompts/de`
 
-## Zwei Ketten
+Sechs Dateien, fünf sind angeschlossen. Wer eine Ausgabe ändern will, ändert hier, nicht im Code.
 
-**Ingestion** (`src/ingest.py`, einmalig): PDF → docling → Sub-Chunks mit Elternkontext →
-Adressierung, Verweise, GAK-Hierarchie → dense + BM25 → Qdrant.
+| Datei | Geladen in |
+|---|---|
+| `satzfilter.yaml` | `satzfilter.py` — tragende Sätze auswählen |
+| `feldvorschlag.yaml` | `vorschlag.py` — Wert je Formularfeld |
+| `richtlinie_abschnitt.yaml` | `richtlinie.py` — Abschnitt ausformulieren |
+| `verweise.yaml` | `verweise.py` — Querverweise ziehen |
+| `rag_system.yaml` | `rag_query.py`, `judge_antwort.py` — freie Frage, Antwort-Eval |
+| `rag_gak_struktur.yaml` | **nirgends.** Versuchsvariante zur Frage, ob es reicht, dem Modell die GAK-Gliederung zu erklären. Bewusst behalten, damit die Messung zuordenbar bleibt |
 
-**Abfrage** (je Vorschlag, drei Modellrunden, 40 s bis 2 min): Suchanfrage aus Abschnitt und
-Eingabe → Hybridsuche mit RRF → Rerang oder Mehrheitsentscheid → Satzfilter mit
-zeichengenauer Belegprüfung → Vorschlag je Feld mit Musterbaustein-Rahmen.
+## Wo RAG nicht drin ist
+
+Die Hälfte des Werkzeugs arbeitet ohne Suche und ohne Modell — das ist Absicht, denn
+Gerechnetes streut nicht:
+
+- **Prüfregeln** in `packages/shared` — Schwellenwerte, gerechnet.
+- **Richtlinientext** in `richtlinie.py` — baut aus bestätigten Angaben und Musterbausteinen,
+  sucht nichts dazu.
+- **Prüfmodus** in `pruefmodus.py` — vergleicht Text gegen Musterstruktur, kein Modellaufruf.
+- **Belegprüfung** in `satzfilter.py` — Zeichenvergleich, kein Modellaufruf.
+
+# Betrieb
 
 ## Was aus Spark stammt
 
 Übernommen sind Prompts, Schemata und Prüfverfahren, **nicht** die Laufzeitumgebung: Spark
 bearbeitet Genehmigungsverfahren mehrerer Mandanten über Temporal, der Pilot einen
-Schreibvorgang einer Bearbeiterin in einem Prozess. Lizenz EUPL-1.2, Nachnutzung mit
-Namensnennung.
+Schreibvorgang einer Bearbeiterin in einem Prozess. Rund 6.000 von 55.000 Zeilen.
+Lizenz EUPL-1.2, Nachnutzung mit Namensnennung.
 
 | Spark-Teil | Was es dort tut | Wofür wir es nutzen |
 |---|---|---|
-| `modul-suche-und-zuordnung`, Stufe 2 | Ordnet Voraussetzungen ihren Belegstellen zu und kürzt jede Stelle satzweise auf das Tragende | **Nur die Sätze behalten, um die es geht.** Aus jeder gefundenen Passage bleiben die Sätze stehen, die etwas zur Sache sagen; der Rest fällt weg. Wir merken uns zusätzlich, der wievielte Satz es war — Spark wirft das weg. Dadurch können wir Wort für Wort gegen das Originaldokument abgleichen, dass das Zitat wirklich so dasteht, ohne dafür noch einmal ein Modell zu fragen → `src/satzfilter.py`, `prompts/de/satzfilter.yaml` |
-| `modul-suche-und-zuordnung`, `consensus_vote` | Mehrere Modellläufe, Mehrheitsentscheid über die Auswahl | **Dreimal fragen, abstimmen lassen.** Dieselbe Frage geht dreimal ans Modell; übrig bleibt, was mindestens zwei Läufe für passend halten. Anders als bei Spark darf am Ende auch weniger übrig bleiben als gesucht — wenn sich die Läufe nicht einig sind, ist das Verwerfen die richtige Antwort → `src/retrieval.py` |
-| `risikohinweis-service` | Bewertet Normkollisionen und gibt eine nach Konfidenz geordnete Liste statt eines Urteils | **Das Modell sortiert, es entscheidet nicht.** Die Suche liefert eine Handvoll Treffer, das Modell bringt sie in eine Reihenfolge nach Passgenauigkeit. Es wirft nichts weg und urteilt über nichts — die Auswahl trifft am Ende die Bearbeiterin → `src/retrieval.py`, `--rerank rang` (Vorgabe) |
-| `rechtsquellenvorbereitung`, `cross_ref_extraction.yaml` | Zieht Querverweise aus Rechtstexten, auch interne und nackte | **Verweise zu Adressen machen.** In den Dokumenten stehen rund 10.600 Sätze wie „in den Fällen der Nummer 7.8" — ohne Angabe, wovon. Wir schreiben aus jedem Verweis heraus, wohin er zeigt, und legen ein Verzeichnis an. Das lässt sich auch umdrehen: „Wer verweist eigentlich auf Nummer 6 der ANBest-P?" → `src/verweise.py`, `prompts/de/verweise.yaml` |
-| `prompt-loader`, `prompt-security` (Pakete `bmds-*`) | Lädt Prompts als YAML mit sha256-Prüfsumme; kapselt Fremdtext in CDATA und entfernt Auszeichnungen | **Nachhalten, womit gefragt wurde — und fremden Text einpacken.** Jede Anweisung ans Modell steht in einer eigenen Datei und bekommt einen Fingerabdruck; später ist damit belegbar, welcher Wortlaut zu welchem Ergebnis geführt hat. Text aus den Dokumenten wird davor abgetrennt, damit ein Satz aus einer Richtlinie nicht als Anweisung gelesen wird → alle Aufrufe, `prompts/de/*.yaml` |
-| docling-Aufsatz aus Sparks Ingestion | `HybridChunker` an Überschriften mit Token-Obergrenze, OCR-Konfiguration, `model_max_length`-Kniff | **Dokumente in handliche Stücke schneiden.** Getrennt wird an den Überschriften, damit ein Stück inhaltlich zusammenbleibt und nicht mitten im Satz endet; zu lange Stücke werden weiter geteilt. Gescannte Seiten werden vorher in Text umgewandelt. Unverändert übernommen → `src/ingest.py` |
+| `modul-suche-und-zuordnung`, Stufe 2 | Ordnet Voraussetzungen ihren Belegstellen zu und kürzt satzweise auf das Tragende | **Nur die Sätze behalten, um die es geht.** Der Rest fällt weg. Wir merken uns zusätzlich, der wievielte Satz es war — Spark wirft das weg. Dadurch lässt sich Wort für Wort gegen das Originaldokument abgleichen, ob das Zitat wirklich so dasteht, ohne noch einmal ein Modell zu fragen → `satzfilter.py` |
+| `modul-suche-und-zuordnung`, `consensus_vote` | Mehrere Läufe, Mehrheitsentscheid über die Auswahl | **Dreimal fragen, abstimmen lassen.** Übrig bleibt, was mindestens zwei Läufe für passend halten. Anders als bei Spark darf weniger übrig bleiben als gesucht — Uneinigkeit ist ein Grund zu verwerfen → `retrieval.py` |
+| `risikohinweis-service` | Bewertet Normkollisionen, liefert eine geordnete Liste statt eines Urteils | **Das Modell sortiert, es entscheidet nicht.** Es bringt die Treffer in eine Reihenfolge, wirft nichts weg und urteilt über nichts → `retrieval.py` |
+| `rechtsquellenvorbereitung`, `cross_ref_extraction.yaml` | Zieht Querverweise aus Rechtstexten | **Verweise zu Adressen machen.** Rund 10.600 Sätze wie „in den Fällen der Nummer 7.8" — ohne Angabe, wovon. Daraus wird ein Verzeichnis, auch rückwärts lesbar → `verweise.py` |
+| `prompt-loader`, `prompt-security` | Prompts als YAML mit sha256-Prüfsumme, Fremdtext gekapselt | **Nachhalten, womit gefragt wurde.** Jede Anweisung bekommt einen Fingerabdruck; Text aus den Dokumenten wird abgetrennt, damit ein Satz aus einer Richtlinie nicht als Anweisung gelesen wird → alle Aufrufe |
+| docling-Aufsatz aus Sparks Ingestion | `HybridChunker`, OCR-Konfiguration, `model_max_length`-Kniff | **Dokumente in handliche Stücke schneiden**, getrennt an den Überschriften. Unverändert übernommen → `ingest.py` |
 
-**Geprüft, vorgesehen, noch nicht im Code:** Normzerlegung (`tatbestandsmerkmalsextraction`),
+**Vorgesehen, noch nicht im Code:** Normzerlegung (`tatbestandsmerkmalsextraction`),
 Prüfinstanz mit acht Fehlerklassen (`modul-bewertung`), Zitatextraktion (`norm-matching`),
-Risikostufen (`modul-risikohinweiser`), Entwurfsprüfung (`modul-formale-pruefung`,
+Befundform (`modul-risikohinweiser`), Entwurfsprüfung (`modul-formale-pruefung`,
 `modul-plausibilitaet-pruefung`), Auftragsverwaltung. **Zurückgestellt:** der Rechts-Graph
 (`graph-api`, Neo4j). **Entfällt:** Temporal — keines der übernommenen Module nutzt eine
 Temporal-Fähigkeit. Die Begründung je Teil steht in den Planungsunterlagen.
@@ -216,30 +277,21 @@ Temporal-Fähigkeit. Die Begründung je Teil steht in den Planungsunterlagen.
 
 ## Korpus und Datenschutz
 
-Der Korpus ist die Sammlung der Rechts- und Vergleichsdokumente, aus denen das Werkzeug
-zitiert: derzeit **64 Dokumente, 4.889 Textstücke** im Index. Er wird vom MLEUV
-bereitgestellt, nicht beschafft.
+Der Korpus ist die Sammlung der Rechts- und Vergleichsdokumente, aus denen zitiert wird:
+derzeit **64 Dokumente, 4.889 Textstücke**. Er wird vom MLEUV bereitgestellt, nicht beschafft.
+Ein Teil davon ist vertraulich; die Regel gilt ohne Ausnahme:
 
-Ein Teil davon ist vertraulich. Die Regel dafür gilt ohne Ausnahme:
-
-- **Die Dokumente selbst** liegen unter `02_backend/data` und sind vollständig von git
-  ausgenommen. Sie werden referenziert, nie kopiert.
-- **Titel und Inhalte** der Dokumente aus den vertraulichen Ordnern stehen **in keiner Datei
-  dieses Repos**. Was Wortlaut daraus trägt, heißt `*_lokal.yaml` und bleibt lokal; die
-  öffentliche Datei daneben trägt nur die Struktur.
+- **Die Dokumente** liegen unter `02_backend/data`, von git ausgenommen, referenziert statt kopiert.
+- **Titel und Inhalte** aus den vertraulichen Ordnern stehen **in keiner Datei dieses Repos**.
+  Was Wortlaut trägt, heißt `*_lokal.yaml` und bleibt lokal.
 - **`CORPUS_DIR`** zeigt auf den Datenordner, **`CORPUS_PREFIXES`** schränkt auf die
   freigegebenen Unterordner ein.
-- **`/dokument/{datei}`** liefert Quelldateien an die Oberfläche aus — zwei Schranken: nur was
-  im Dokumentregister steht, und nur was unterhalb von `CORPUS_DIR` liegt. Solange alles an
-  `127.0.0.1` hängt, ist das die Festplatte der Bearbeiterin; vor jedem Netzbetrieb braucht
+- **`/dokument/{datei}`** liefert Quelldateien an die Oberfläche — zwei Schranken: nur was im
+  Dokumentregister steht, und nur unterhalb von `CORPUS_DIR`. Vor jedem Netzbetrieb braucht
   dieser Endpunkt als Erstes eine Rechteprüfung.
-- **`korpus_status.yaml`** hält fest, welche Fassung gilt. Ohne das läge veraltetes Recht
-  gleichrangig im Index — das größte Rechtsrisiko des Werkzeugs.
+- **`korpus_status.yaml`** hält fest, welche Fassung gilt.
 
 ## Start
-
-Die `docker-compose.yml` im Wurzelverzeichnis ist **Fremd-Boilerplate** und zeigt auf Ordner,
-die es nicht gibt. Maßgeblich ist `02_backend/docker-compose.yml`.
 
 ```bash
 # 1 Qdrant und docling-serve
@@ -265,36 +317,57 @@ curl -s http://127.0.0.1:8000/gesundheit     # erwartet: "vorlage_eingelesen": t
 Steht dort `false`, fehlt `musterbausteine_lokal.yaml`; dann einmal
 `python src/musterbausteine.py --pdf "<Pfad zur Musterrichtlinie>"` laufen lassen.
 
+## Prüfen und Messen
+
+```bash
+cd 02_backend && pytest -q        # tests/rag (Adressierung, Anfrage, Satzfilter, Holdout)
+                                  # tests/tool (Vorschlag, Musterbausteine, Prüfmodus, Richtlinie)
+                                  # läuft ohne Netz, Modell und Qdrant
+python src/eval.py                # Retrieval gegen Gold-Anker
+python src/eval_feld.py           # landet der richtige Wert im richtigen Feld?
+python src/judge_antwort.py       # Antwortqualität
+
+cd 01_frontend && npm test && npm run typecheck   # Schema, Prüfregeln, Oberfläche
+```
+
+**Stand der Messung.** Mit Fundstellen im Prompt arbeitet das Werkzeug zu 88 Prozent
+regeltreu, ohne zu 76 (17.09.2026). Der Satzfilter liefert Belege, die zeichengleich zur
+Quelle sind — 562 Sätze aus 60 Korpusblöcken geprüft.
+
+**Nicht gemessen:** ob eine Aussage inhaltlich durch ihre Fundstelle gedeckt ist (nicht nur
+wörtlich zitiert), die Trefferquote je Formularfeld über den ganzen Katalog, und der
+Prüfmodus. Wer eine Zahl braucht, prüft zuerst, ob sie diese Schicht überhaupt misst.
+
 ## Grenzen
 
-- **Keine Anmeldung, keine Rechte.** Alles läuft auf `127.0.0.1`; der Endpunkt `/dokument/{datei}`
-  liefert Quelldateien aus und braucht vor jedem Netzbetrieb als Erstes eine Rechteprüfung.
-- **Ein Nutzer, eine Datei.** Gleichzeitiges Arbeiten ist nicht vorgesehen; Konflikte fängt nur
-  die Versionsprüfung beim Speichern ab.
-- **Laufzeiten.** Ein Feldvorschlag dauert 40 Sekunden bis zwei Minuten, der ganze
-  Richtlinientext mehrere. Ohne Fortschrittsanzeige.
-- **Stufe 2 (`/redaktion`, `/vorschau`) ist ein Mockup** mit fest verdrahteten Demo-Fundstellen.
-  Der echte Textweg ist `/richtlinie`.
-- **Messung.** `HOLDOUT_DATEIEN` blendet Dokumente aus dem Index aus; wer das übersieht, misst
-  gegen einen Torso. `/gesundheit` zeigt die Liste.
+- **Keine Anmeldung, keine Rechte.** Alles läuft auf `127.0.0.1`.
+- **Ein Nutzer, eine Datei.** Konflikte fängt nur die Versionsprüfung beim Speichern ab.
+- **Laufzeiten.** Feldvorschlag 40 s bis 2 min, Richtlinientext mehrere Minuten, ohne
+  Fortschrittsanzeige.
+- **Stufe 2 (`/redaktion`, `/vorschau`) ist ein Mockup** mit fest verdrahteten
+  Demo-Fundstellen ab [Review.tsx:216](01_frontend/apps/web/src/pages/Review.tsx#L216). Der
+  echte Textweg ist `/richtlinie`.
+- **Messung.** `HOLDOUT_DATEIEN` blendet Dokumente aus; wer das übersieht, misst gegen einen
+  Torso. `/gesundheit` zeigt die Liste.
 
 ## Wortschatz
 
 | Begriff | Bedeutung |
 |---|---|
-| **Baustein** | einer der elf Abschnitte der Musterstruktur, von 0 (Titel) bis 10 (Schlussformel). Im Code `section`. |
+| **Baustein** | einer der elf Abschnitte der Musterstruktur, 0 (Titel) bis 10 (Schlussformel). Im Code `section`. |
 | **Musterrichtlinie** | die verbindliche Vorlage des Landes für den Aufbau einer Förderrichtlinie |
 | **Musterbaustein** | ein Textbaustein daraus: der Satzrahmen, in den ein Vorschlag eingesetzt wird |
 | **Fundstelle** | Dokument und Seite, aus der ein Zitat stammt |
-| **Deckung** | die Stelle **der Eingabe**, die einen Wert trägt. Fehlt sie, ist der Wert aus dem Regelfall abgeleitet — zwei verschiedene Dinge, in der Oberfläche getrennt dargestellt. |
-| **Beleg** | ein wörtliches Zitat aus dem Korpus, zeichengenau gegen die Quelle geprüft. Verankert den Vorschlag, **beweist** den Wert aber nicht. |
-| **Prüfvermerk** | das zweite Arbeitsergebnis: die begründungspflichtigen Abweichungen, Anschreiben an das MdFE |
-| **Chunk, Textstück** | ein Ausschnitt eines Dokuments, wie er in den Index geht — geschnitten an Überschriften |
-| **Holdout** | Dokumente, die absichtlich nicht im Index liegen, damit eine Messung nicht das prüft, was sie kennt |
-| **Korpus** | die Sammlung der Dokumente, aus denen zitiert wird |
+| **Deckung** | die Stelle **der Eingabe**, die einen Wert trägt. Fehlt sie, ist der Wert aus dem Regelfall abgeleitet. |
+| **Beleg** | wörtliches Zitat aus dem Korpus, zeichengenau geprüft. Verankert den Vorschlag, **beweist** den Wert nicht. |
+| **Vorbild** | eine frühere Richtlinie, an die angelehnt wird: bisherige Praxis, keine Rechtsgrundlage |
+| **Prüfvermerk** | das zweite Arbeitsergebnis: die begründungspflichtigen Abweichungen, Anschreiben ans MdFE |
+| **Chunk, Textstück** | Ausschnitt eines Dokuments, wie er in den Index geht — geschnitten an Überschriften |
+| **Holdout** | Dokumente, die absichtlich nicht im Index liegen, damit eine Messung nicht prüft, was sie kennt |
+| **RRF** | Verfahren, das zwei Trefferlisten (Bedeutung und Wortlaut) zu einer zusammenführt |
 | **MdFE** | Ministerium der Finanzen und für Europa Brandenburg — Empfänger des Prüfvermerks |
 | **MLEUV** | Ministerium für Landwirtschaft, Umwelt und Verbraucherschutz Brandenburg — der Auftraggeber |
-| **GAK** | Gemeinschaftsaufgabe „Verbesserung der Agrarstruktur und des Küstenschutzes", Bund-Länder-Förderung mit eigenem Rahmenplan |
+| **GAK** | Gemeinschaftsaufgabe „Verbesserung der Agrarstruktur und des Küstenschutzes" |
 | **§ 44 LHO** | Landeshaushaltsordnung, die Vorschrift, nach der Zuwendungen gewährt werden |
 | **ANBest-P** | Allgemeine Nebenbestimmungen für Zuwendungen zur Projektförderung |
 | **KERN UX** | Gestaltungsstandard der öffentlichen Verwaltung, Grundlage der Oberfläche |

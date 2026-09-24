@@ -24,6 +24,9 @@ entscheidet nichts: jeder Vorschlag wird bestätigt, geändert oder verworfen.
 - **Lokaler Betrieb.** Suchindex und Dokumente bleiben im Haus; das Sprachmodell läuft auf
   dem Cluster des AI Service Centre.
 
+Bedienung Schritt für Schritt: **[handbuch.md](handbuch.md)**. Aufbau, Dienste und
+Datenflüsse: **[infrastruktur.md](infrastruktur.md)**.
+
 ## Setup and Installation
 
 ### Prerequisites
@@ -34,45 +37,38 @@ entscheidet nichts: jeder Vorschlag wird bestätigt, geändert oder verworfen.
 
 ### Quick Start
 
+Quelldokumente und alles, was ihren Wortlaut trägt, sind von git ausgenommen — zwei Schritte
+unten müssen deshalb von Hand ergänzt werden.
+
 ```bash
-# 1 Suchindex
+# 1 Einrichten
 cd 02_backend && docker compose up -d
 python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-cp .env.example .env        # Schlüssel und Modelle eintragen
-python src/ingest.py        # Dokumente in den Index
+cp .env.example .env
+```
 
-# 2 Vorschlagsdienst
+**Jetzt von Hand:** in `.env` Endpunkt, Schlüssel und Modelle eintragen, und die
+Quelldokumente des MLEUV nach `02_backend/data` legen. Ohne sie hat der Index nichts zu lesen.
+
+```bash
+# 2 Einmalige Läufe
+python src/ingest.py                                       # Dokumente in den Index;
+                                                           # beim ersten Mal lädt docling Modelle
+python src/musterbausteine.py --pdf "<Musterrichtlinie>"   # Satzrahmen aus der Vorlage
+
+# 3 Vorschlagsdienst
 LITELLM_LOCAL_MODEL_COST_MAP=True .venv/bin/uvicorn api:app --port 8000 --app-dir src
 
-# 3 Oberfläche, eigene Shell
+# 4 Oberfläche, eigene Shell
 cd 01_frontend && npm install && npm run dev
 ```
 
 - Frontend: <http://localhost:5173>
 - Node-API: <http://localhost:4317> · Vorschlagsdienst: <http://localhost:8000>
 
-Die `docker-compose.yml` im Wurzelverzeichnis ist eine ungenutzte Vorlage; maßgeblich ist
-`02_backend/docker-compose.yml`.
-
-**Aufbau, Dienste und Datenflüsse:** [infrastruktur.md](infrastruktur.md).
-
-## User Guide
-
-Bedienung aller Funktionen der Oberfläche: **[handbuch.md](handbuch.md)**.
-
-Kurz: Entwurf anlegen, im Chat die Eckpunkte erheben, die elf Bausteine im Formular prüfen
-und ergänzen, offene Begründungen im Prüfvermerk beantworten, Richtlinientext erzeugen, beide
-Word-Dateien ausgeben.
-
-### Recommendations
-
-- Vor der ersten Benutzung `curl -s http://127.0.0.1:8000/gesundheit` aufrufen. Steht dort
-  `"vorlage_eingelesen": false`, fehlen die Satzrahmen und die Vorschläge werden schlechter,
-  ohne dass es auffällt.
-- Eine Chat-Antwort dauert 40 Sekunden bis zwei Minuten, der vollständige Richtlinientext
-  mehrere Minuten. Das ist keine Störung.
-- Herkunftsangaben lesen, bevor ein Vorschlag übernommen wird: „Dazu gefunden" belegt das
-  Thema, nicht den Wert; „Vorbild" ist bisherige Praxis, keine Rechtsgrundlage.
+Fehlt Schritt 2b, läuft alles weiter — die Vorschläge verlieren nur ihren Satzrahmen und
+werden schlechter, ohne sichtbaren Hinweis. `curl -s http://127.0.0.1:8000/gesundheit` meldet
+das als `"vorlage_eingelesen": false`.
 
 ## Limitations
 
@@ -82,8 +78,8 @@ Word-Dateien ausgeben.
   Arbeiten mehrerer Personen ist nicht vorgesehen.
 - **Die Redaktionsansicht (Stufe 2) ist ein Mockup** mit Demo-Daten. Der echte Textweg ist die
   Seite „Richtlinientext".
-- **Nicht gemessen** sind die inhaltliche Deckung einer Aussage durch ihre Fundstelle und die
-  Trefferquote je Formularfeld über den ganzen Katalog.
+- **Nicht für alle Bausteine gemessen**, und nicht gemessen ist die inhaltliche Deckung einer
+  Aussage durch ihre Fundstelle.
 - **Vertrauliche Dokumente** verlassen das Haus nicht; ihre Titel und Inhalte stehen in keiner
   Datei dieses Repositoriums.
 
