@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 import pruefmodus
 import richtlinie
+import begruendung
 import protokoll
 import vorschlag
 from adressierung import register
@@ -267,6 +268,36 @@ def dokument(datei: str):
     # inline, nicht als Download: der Zweck ist das Aufschlagen an der richtigen Seite.
     return FileResponse(pfad, media_type=art,
                         headers={"Content-Disposition": f'inline; filename="{datei}"'})
+
+
+class BegruendungAnfrage(BaseModel):
+    """Woraus die Suche nach Vorbildern entsteht: der Vermerkseintrag selbst."""
+    regel: str = Field(min_length=1, description="Kennung der Prüfregel, etwa bagatellgrenze")
+    rechtsstelle: str | None = None
+    wert: str | None = Field(default=None, description="Der Wert, der die Regel ausgelöst hat")
+    top_k: int = Field(default=3, ge=1, le=10)
+
+
+class Vorbild(BaseModel):
+    fundstelle: str
+    text: str
+    datei: str | None = None
+    seite: int | None = None
+
+
+@app.post("/begruendung", response_model=list[Vorbild])
+def begruendung_vorbilder(anfrage: BegruendungAnfrage):
+    """Wie frühere Richtlinien dieselbe Abweichung begründet haben.
+
+    Kein Modellaufruf: gesucht wird, und was gefunden wird, geht unverändert mit
+    Quellenangabe zurück. Eine erzeugte Begründung läse sich fertig und würde
+    durchgewunken — die Unterschrift unter einem Anschreiben ans MdFE leistet ein Mensch.
+    """
+    try:
+        return begruendung.vorbilder(
+            anfrage.regel, anfrage.rechtsstelle, anfrage.wert, top_k=anfrage.top_k)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
 
 
 @app.post("/vorschlag", response_model=Antwort)
