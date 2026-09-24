@@ -381,6 +381,16 @@ export const staticApi = {
   // Ohne laufenden Dienst gibt es keine Vorbilder — erfundene wären das Gegenteil dessen,
   // wofür sie da sind.
   vorbilder: async () => ({ vorbilder: [] }),
+  freigeben: async (id: string, person: string) => {
+    const draft = get(id);
+    draft.freigabe = { person, am: new Date().toISOString(), version: draft.version };
+    return store(draft);
+  },
+  freigabeZuruecknehmen: async (id: string) => {
+    const draft = get(id);
+    delete draft.freigabe;
+    return store(draft);
+  },
   loeschen: async (id: string) => {
     save(load().filter((d) => d.id !== id));
   },

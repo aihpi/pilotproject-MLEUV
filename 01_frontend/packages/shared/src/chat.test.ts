@@ -4,6 +4,7 @@ import {
   emptySections,
   feldLeer,
   feldwertAusVorschlag,
+  freigabeGueltig,
   istBelegSatz,
   istWiederholung,
   naechsteFrage,
@@ -440,5 +441,35 @@ describe("schlussformel", () => {
   it("ohne erkennbares Ministerium lieber nichts", () => {
     // Die Unterschriftszeile einer Richtlinie ist der letzte Ort für eine Vermutung.
     expect(schlussformel(mit("Richtlinie zur Förderung von Tierheimen"))).toBeNull();
+  });
+});
+
+describe("freigabeGueltig", () => {
+  /**
+   * Die Schranke aus dem Prozessmodell: „Richtlinienprüfung durch Verantwortlichen" →
+   * „Prüfung und Anpassung der Eingaben" → „Freigabe zur Richtlinienerstellung". Sie steht
+   * dort VOR dem Ausformulieren.
+   *
+   * Ohne sie formulierte das Werkzeug los, sobald Angaben bestätigt waren — und ein fertiger
+   * Richtlinientext sieht amtlich aus, auch wenn ihn niemand gegengelesen hat.
+   */
+  it("ohne Freigabe gilt nichts", () => {
+    expect(freigabeGueltig(entwurf())).toBe(false);
+  });
+
+  it("die Freigabe gilt für ihren Stand", () => {
+    const d = entwurf();
+    d.version = 12;
+    d.freigabe = { person: "Dr. Beispiel", am: "2026-09-24T10:00:00Z", version: 12 };
+    expect(freigabeGueltig(d)).toBe(true);
+  });
+
+  it("und verfällt bei der nächsten Änderung", () => {
+    // Sonst gälte eine Unterschrift für Angaben, die nach ihr geändert wurden — derselbe
+    // Gedanke wie bei `textVeraltet`.
+    const d = entwurf();
+    d.version = 13;
+    d.freigabe = { person: "Dr. Beispiel", am: "2026-09-24T10:00:00Z", version: 12 };
+    expect(freigabeGueltig(d)).toBe(false);
   });
 });

@@ -97,6 +97,14 @@ const serverApi = {
       `/api/drafts/${id}/abschnitt/${nr}/vorschlag`,
       { method: "POST" },
     ),
+  /** Die Angaben freigeben — im Prozessmodell der Schritt vor dem Ausformulieren. */
+  freigeben: (id: string, person: string) =>
+    request<RichtlinieDraft>(`/api/drafts/${id}/freigabe`, {
+      method: "POST",
+      body: JSON.stringify({ person }),
+    }),
+  freigabeZuruecknehmen: (id: string) =>
+    request<RichtlinieDraft>(`/api/drafts/${id}/freigabe`, { method: "DELETE" }),
   loeschen: (id: string) =>
     fetch(`/api/drafts/${id}`, { method: "DELETE" }).then((res) => {
       if (!res.ok) throw new Error("Der Entwurf konnte nicht gelöscht werden.");

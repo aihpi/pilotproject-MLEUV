@@ -237,6 +237,28 @@ export const draftSchema = z.object({
    * alles, was die Bearbeiterin selbst beantwortet hatte.
    */
   gefragteStufen: z.array(z.string()).optional(),
+  /**
+   * Die Freigabe der Angaben, bevor daraus Text wird.
+   *
+   * Im Prozessmodell drei Aufgaben hintereinander: „Richtlinienprüfung durch
+   * Verantwortlichen" → „Prüfung und Anpassung der Eingaben durch VB ELER" → „Freigabe zur
+   * Richtlinienerstellung". Die Freigabe steht dort VOR dem Ausformulieren, nicht danach.
+   *
+   * Ohne sie formuliert das Werkzeug bereitwillig einen Richtlinientext aus Werten, die
+   * niemand gegengelesen hat — und der fertige Text sieht amtlich aus. Das ist der Punkt,
+   * an dem ein Mensch die Verantwortung übernimmt, bevor die Maschine Prosa daraus macht.
+   *
+   * `version` hält fest, für WELCHEN Stand freigegeben wurde. Ändert danach jemand eine
+   * Angabe, verfällt die Freigabe — sonst wäre ein Stand freigegeben, den es nicht mehr
+   * gibt. Siehe `freigabeGueltig`.
+   */
+  freigabe: z
+    .object({
+      person: z.string().min(1),
+      am: z.string(),
+      version: z.number().int(),
+    })
+    .optional(),
   status: z.enum(["draft", "review", "complete"]),
   version: z.number().int(),
   createdAt: z.string(),
@@ -1139,6 +1161,17 @@ export function schlussformel(draft: RichtlinieDraft): string | null {
     ministerium,
     "Im Auftrag",
   ].join("\n");
+}
+
+/**
+ * Gilt die Freigabe noch für den gegenwärtigen Stand?
+ *
+ * Jede Änderung an einem Feld erhöht `version`. Eine Freigabe, die für Version 12 erteilt
+ * wurde, deckt Version 13 nicht — sonst würde eine Unterschrift für Angaben gelten, die
+ * nach ihr geändert wurden. Das ist derselbe Gedanke wie bei `textVeraltet`.
+ */
+export function freigabeGueltig(draft: RichtlinieDraft): boolean {
+  return !!draft.freigabe && draft.freigabe.version === draft.version;
 }
 
 export function emptySections(): Record<string, SectionData> {

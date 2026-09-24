@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
+  freigabeGueltig,
   sections,
   textVeraltet,
   type RichtlinienAbschnitt,
@@ -111,10 +113,27 @@ export function RichtlinienPage() {
     mutationFn: () => api.richtlinieErzeugen(id),
     onSuccess: (draft) => qc.setQueryData(["draft", id], draft),
   });
+  /**
+   * Die Freigabe — im Prozessmodell der Schritt VOR dem Ausformulieren.
+   *
+   * Der Name ist Pflicht, weil im Prüfvermerk am Ende steht, wer wofür geradesteht. Dass im
+   * Einzelnutzerbetrieb dieselbe Person erhebt und freigibt, lässt sich nicht verhindern —
+   * festgehalten wird es trotzdem.
+   */
+  const [person, setPerson] = useState("");
+  const freigeben = useMutation({
+    mutationFn: () => api.freigeben(id, person),
+    onSuccess: (draft) => qc.setQueryData(["draft", id], draft),
+  });
+  const zuruecknehmen = useMutation({
+    mutationFn: () => api.freigabeZuruecknehmen(id),
+    onSuccess: (draft) => qc.setQueryData(["draft", id], draft),
+  });
 
   if (isLoading || !d) return <p role="status">Entwurf wird geladen …</p>;
   const text = d.richtlinientext;
   const veraltet = textVeraltet(d);
+  const freigegeben = freigabeGueltig(d);
 
   return (
     <>
@@ -128,10 +147,67 @@ export function RichtlinienPage() {
         <Link to={`/entwurf/${id}`}>Zurück zur Übersicht</Link>
       </p>
 
+      {/*
+        Die Schranke aus dem Prozessmodell, sichtbar gemacht. Ohne sie entstand Text aus
+        Angaben, die niemand gegengelesen hatte — und ein fertiger Richtlinientext sieht
+        amtlich aus, auch wenn er es nicht ist.
+      */}
+      {freigegeben ? (
+        <Alert kind="success" title="Angaben freigegeben">
+          <p>
+            Freigegeben von {d.freigabe!.person} am{" "}
+            {new Date(d.freigabe!.am).toLocaleString("de-DE")}. Ändern Sie danach eine
+            Angabe, verfällt die Freigabe.
+          </p>
+          <button
+            className="button button--tertiary"
+            disabled={zuruecknehmen.isPending}
+            onClick={() => zuruecknehmen.mutate()}
+          >
+            Freigabe zurücknehmen
+          </button>
+        </Alert>
+      ) : (
+        <Alert
+          kind="warning"
+          title={
+            d.freigabe
+              ? "Die Freigabe ist verfallen"
+              : "Die Angaben sind noch nicht freigegeben"
+          }
+        >
+          <p>
+            {d.freigabe
+              ? "Nach der Freigabe wurde eine Angabe geändert. Bitte erneut gegenlesen und freigeben."
+              : "Im Prozessmodell steht die Freigabe vor dem Ausformulieren: erst liest jemand die Angaben gegen, dann entsteht Text."}
+          </p>
+          <div className="field">
+            <label htmlFor="freigabe-person">Wer gibt die Angaben frei?</label>
+            <input
+              id="freigabe-person"
+              type="text"
+              value={person}
+              onChange={(e) => setPerson(e.target.value)}
+              placeholder="Name der oder des Verantwortlichen"
+            />
+          </div>
+          <button
+            className="button button--primary"
+            disabled={!person.trim() || freigeben.isPending}
+            onClick={() => freigeben.mutate()}
+          >
+            {freigeben.isPending ? "Wird freigegeben …" : "Angaben freigeben"}
+          </button>
+          {freigeben.error && (
+            <p className="error">{String((freigeben.error as Error).message)}</p>
+          )}
+        </Alert>
+      )}
+
       <div className="actions">
         <button
           className="button button--primary"
-          disabled={erzeugen.isPending}
+          disabled={erzeugen.isPending || !freigegeben}
           onClick={() => erzeugen.mutate()}
         >
           {erzeugen.isPending

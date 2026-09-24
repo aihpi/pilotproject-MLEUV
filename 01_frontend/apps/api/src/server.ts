@@ -13,6 +13,8 @@ import {
   chatStages,
   fieldVisible,
   feldwertAusVorschlag,
+  feldwertText,
+  freigabeGueltig,
   naechsteFrage,
   nextChatStage,
   istBelegSatz,
@@ -310,6 +312,11 @@ async function holeVorschlaege(
   // Ohne sie schrieb ein Freitextfeld hin, was ein Auswahlfeld daneben schon aufnimmt —
   // die beiden Anfragen wussten nichts voneinander.
   nachbarfelder: { id: string; label: string }[] = [],
+  // Darf ein ungedecktes Feld aus dem Regelfall abgeleitet werden? Im Gespräch nein, beim
+  // Knopf im Formular ja — siehe `_MIT_REGELFALL` im Vorschlagsdienst.
+  regelfall = false,
+  // Was im selben Abschnitt schon bestätigt ist — Vorgabe, an der sich das Modell ausrichtet.
+  entschieden: { label: string; wert: string }[] = [],
 ): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean }> {
   // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
   // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
@@ -322,7 +329,8 @@ async function holeVorschlaege(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart,
+      abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart, regelfall,
+      entschieden: entschieden.length ? entschieden : undefined,
       nachbarfelder: nachbarfelder.length ? nachbarfelder : undefined,
     }),
     signal: abbruch,
@@ -352,8 +360,75 @@ async function holeVorschlaege(
  * Entwurfsversion zusammen — daran erkennt die Oberfläche, dass der Text zu geänderten
  * Angaben nicht mehr passt.
  */
+/**
+ * Die Angaben freigeben — der Schritt, der im Prozessmodell vor dem Ausformulieren steht.
+ *
+ * „Richtlinienprüfung durch Verantwortlichen" → „Prüfung und Anpassung der Eingaben" →
+ * „Freigabe zur Richtlinienerstellung". Bis hierher fehlte die ganze Kette: das Werkzeug
+ * formulierte los, sobald Angaben bestätigt waren.
+ *
+ * Wer freigibt, ist nicht, wer erhoben hat — deshalb der Name als Pflichtangabe. Im
+ * Einzelnutzerbetrieb lässt sich das nicht erzwingen; festgehalten wird es trotzdem, denn
+ * im Prüfvermerk steht am Ende, wer wofür geradesteht.
+ */
+app.post("/api/drafts/:id/freigabe", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const { person } = req.body as { person?: string };
+  if (!person?.trim())
+    throw Object.assign(
+      new Error("Bitte geben Sie an, wer die Angaben freigibt."),
+      { statusCode: 400 },
+    );
+
+  // Offene Pflichtangaben sind kein Freigabehindernis — unvollständig freizugeben ist eine
+  // zulässige Entscheidung, und die Gesamtprüfung zeigt die Lücken ohnehin. Ein offener
+  // Prüfvermerk ist es dagegen schon: dort steht, was das MdFE begründet sehen will.
+  const offen = (d.vermerk ?? []).filter(
+    (v) => v.status === "offen" || v.status === "beantwortet",
+  );
+  if (offen.length)
+    throw Object.assign(
+      new Error(
+        `Der Prüfvermerk hat ${offen.length} Punkt(e), die noch nicht bestätigt sind. ` +
+          "Ohne sie ist die Richtlinie nicht einreichungsreif.",
+      ),
+      { statusCode: 409 },
+    );
+
+  d.freigabe = {
+    person: person.trim(),
+    am: new Date().toISOString(),
+    version: d.version,
+  };
+  await persist();
+  return d;
+});
+
+/** Eine Freigabe zurücknehmen — etwa, wenn beim Gegenlesen doch etwas auffällt. */
+app.delete("/api/drafts/:id/freigabe", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  delete d.freigabe;
+  await persist();
+  return d;
+});
+
 app.post("/api/drafts/:id/richtlinie", async (req, reply) => {
   const d = get((req.params as { id: string }).id);
+
+  // Die Schranke aus dem Prozessmodell: erst freigeben, dann formulieren.
+  //
+  // Der fertige Text sieht amtlich aus, und genau das ist das Risiko — wer ihn liest, hält
+  // ihn für geprüft. Die Freigabe ist der Punkt, an dem ein Mensch die Verantwortung dafür
+  // übernimmt, bevor die Maschine Prosa aus den Angaben macht.
+  if (!freigabeGueltig(d))
+    return reply.code(409).send({
+      message: d.freigabe
+        ? "Die Angaben wurden nach der Freigabe geändert. Bitte erneut freigeben — sonst " +
+          "entsteht Text aus einem Stand, den niemand gegengelesen hat."
+        : "Die Angaben sind noch nicht freigegeben. Im Prozessmodell steht die Freigabe vor " +
+          "dem Ausformulieren: erst liest jemand die Angaben gegen, dann entsteht Text.",
+    });
+
   const abschnitte = sections
     .map((s) => Number(s.id))
     .filter((n) => n >= 1 && n <= 8);
@@ -461,6 +536,8 @@ async function vorschlaegeFuer(
   sectionId: SectionId,
   eingabe: string,
   targets: FieldDefinition[],
+  regelfall = false,
+  entschieden: { label: string; wert: string }[] = [],
 ): Promise<{ proposals: FieldProposal[]; geliefert: DienstVorschlag[] }> {
   let proposals: FieldProposal[] = [];
     // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
@@ -485,6 +562,8 @@ async function vorschlaegeFuer(
               })),
               // Die jeweils andere Gruppe als Nachbarschaft.
               (alle[1 - i] ?? []).map((f) => ({ id: f.id, label: f.label })),
+              regelfall,
+              entschieden,
             )
           : Promise.resolve({ vorschlaege: [], vorbild: false }),
       ),
@@ -596,6 +675,19 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
       def.id,
       (d.chatVerlauf ?? []).join("\n\n"),
       targets,
+      // Beim Knopf im Formular ist der Regelfall das Gewünschte. Die Bearbeiterin hat ihn
+      // gedrückt, weil sie etwas vorgelegt bekommen will — und sieht am Feld, dass der Wert
+      // nicht durch ihre Angaben gedeckt ist.
+      true,
+      // Und die schon bestätigten Felder desselben Abschnitts als Vorgabe: „Schriftlich, mit
+      // Antragsfrist" macht ein Datum nötig, „Festbetragsfinanzierung" einen Betrag statt
+      // eines Satzes. Ohne sie wurde jedes Feld für sich geraten.
+      def.fields.flatMap((f) => {
+        const feld = d.sections[nr]?.fields[f.id];
+        return feld?.confirmedByUser && !feldLeer(feld.value ?? null)
+          ? [{ label: f.label, wert: feldwertText(nr, f.id, feld.value) }]
+          : [];
+      }),
     );
     const offen = geliefert
       .filter((v) => v.status === "unklar")
@@ -831,7 +923,50 @@ app.get("/api/drafts/:id/preview", async (req) => {
  * einen überholten Stand trägt, ist genau der Fehler, den dieses Werkzeug verhindern soll —
  * sie sieht fertig aus und niemand sieht ihr das Alter an.
  */
-app.post("/api/drafts/:id/export", async (req, reply) => {
+// GET, nicht POST: ein Download ist ein Verweis, den der Browser öffnet.
+// Als POST lief der Knopf ins Leere — Fastify antwortete mit einem JSON-Fehler,
+// und der Browser speicherte ihn dank `download` als „export.json". Ein Word-Export,
+// der eine Fehlermeldung ausliefert und dabei wie eine Datei aussieht, ist die
+// unangenehmste Sorte Fehler: er sieht erfolgreich aus.
+/**
+ * Ein Dateiname, den ein Mensch wiederfindet.
+ *
+ * Vorher `richtlinie-<UUID>.docx` — technisch eindeutig und im Downloadordner unbrauchbar.
+ * Wer drei Fassungen erzeugt, hat drei Dateien, die sich nur an einer Zeichenkette
+ * unterscheiden, die niemand liest.
+ *
+ * Aus dem Titel wird der tragende Teil genommen: der Behördenname steht in jeder Richtlinie
+ * gleich und trennt nichts. Dazu das Datum, denn mehrere Fassungen desselben Entwurfs sind
+ * der Normalfall.
+ */
+/** Einen Abschnittstext in seine Absätze zerlegen. Leerzeile trennt, Einzelumbruch nicht. */
+function absaetze(text: string): string[] {
+  return text
+    .split(/\n\s*\n+/)
+    .map((a) => a.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
+}
+
+function contentDisposition(name: string) {
+  // Umlaute im Dateinamen brauchen die RFC-5987-Form, sonst zeigt der Browser Kauderwelsch.
+  // Der ASCII-Name daneben ist der Rückfall für alte Clients.
+  const ascii = name.replace(/[^\x20-\x7E]/g, "-");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
+function dateiname(art: string, titel: string) {
+  const kern = (titel.match(/(?:zur|über|für)\s+(.{3,60})$/i)?.[1] ?? titel)
+    .replace(/^(?:die|der|das|Gewährung von Zuwendungen)\s+/i, "")
+    .replace(/[^\wäöüÄÖÜß ]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 5)
+    .join("-");
+  const tag = new Date().toISOString().slice(0, 10);
+  return `${art}-${kern || "Entwurf"}-${tag}.docx`;
+}
+
+app.get("/api/drafts/:id/export", async (req, reply) => {
   const d = get((req.params as { id: string }).id);
   const text = d.richtlinientext;
 
@@ -844,15 +979,38 @@ app.post("/api/drafts/:id/export", async (req, reply) => {
 
   const children = text
     ? [
-        new Paragraph({ text: d.title, heading: HeadingLevel.TITLE }),
+        new Paragraph({
+          text: d.title,
+          heading: HeadingLevel.TITLE,
+          spacing: { after: 480 },
+        }),
         ...text.abschnitte
           .filter((a) => a.text.trim())
           .flatMap((a) => [
+            // Ohne Punkt hinter der Nummer, wie in den Richtlinien des Landes: dort steht
+            // „5 Art und Umfang, Höhe der Zuwendungen", darunter „5.1", „5.2". Der Punkt
+            // ist eine Gewohnheit aus Aufsätzen, keine aus Rechtstexten.
             new Paragraph({
-              text: `${a.nr}. ${sections.find((s) => s.id === String(a.nr))?.title ?? ""}`,
+              text: `${a.nr} ${sections.find((s) => s.id === String(a.nr))?.title ?? ""}`,
               heading: HeadingLevel.HEADING_1,
+              spacing: { before: 360, after: 160 },
             }),
-            new Paragraph({ text: a.text }),
+            // Absätze einzeln, nicht als ein Block.
+            //
+            // Vorher ging der ganze Abschnitt in EIN Paragraph-Element; Word kennt darin
+            // keine Absätze, und aus drei Regelungen wurde eine Textwand. Ein Rechtstext
+            // lebt von der Gliederung — wer ihn gegenliest, sucht Absatz für Absatz.
+            // Nummeriert wie im Vorbild: „5.1", „5.2", „5.3". Die Richtlinien des Landes
+            // gliedern jeden Abschnitt so, und wer später auf eine Stelle verweisen will,
+            // braucht eine Nummer — „Nummer 5.2" steht in jedem Bewilligungsbescheid.
+            ...absaetze(a.text).map(
+              (absatz, i, alle) =>
+                new Paragraph({
+                  text: alle.length > 1 ? `${a.nr}.${i + 1} ${absatz}` : `${a.nr}.1 ${absatz}`,
+                  spacing: { after: 160 },
+                  alignment: "both",
+                }),
+            ),
           ]),
       ]
     : [
@@ -894,7 +1052,7 @@ app.post("/api/drafts/:id/export", async (req, reply) => {
     )
     .header(
       "content-disposition",
-      `attachment; filename="richtlinie-${d.id}.docx"`,
+      contentDisposition(dateiname("Richtlinie", d.title)),
     )
     .send(buffer);
 });
@@ -909,7 +1067,12 @@ app.post("/api/drafts/:id/export", async (req, reply) => {
  * Offene Punkte werden mit ausgegeben und als offen bezeichnet. Sie wegzulassen hiesse, ein
  * unvollständiges Anschreiben vollständig aussehen zu lassen.
  */
-app.post("/api/drafts/:id/export/vermerk", async (req, reply) => {
+// GET, nicht POST: ein Download ist ein Verweis, den der Browser öffnet.
+// Als POST lief der Knopf ins Leere — Fastify antwortete mit einem JSON-Fehler,
+// und der Browser speicherte ihn dank `download` als „export.json". Ein Word-Export,
+// der eine Fehlermeldung ausliefert und dabei wie eine Datei aussieht, ist die
+// unangenehmste Sorte Fehler: er sieht erfolgreich aus.
+app.get("/api/drafts/:id/export/vermerk", async (req, reply) => {
   const d = get((req.params as { id: string }).id);
   const eintraege = (d.vermerk ?? []).filter((v) => v.status !== "gegenstandslos");
 
@@ -947,7 +1110,7 @@ app.post("/api/drafts/:id/export/vermerk", async (req, reply) => {
       "content-type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    .header("content-disposition", `attachment; filename="pruefvermerk-${d.id}.docx"`)
+    .header("content-disposition", contentDisposition(dateiname("Pruefvermerk", d.title)))
     .send(buffer);
 });
 
