@@ -33,6 +33,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 /** Was der Prüf-Modus zurückgibt. Siehe pruefmodus.py — Struktur bewusst flach. */
+/** Eine fremde Begründung mit Fundstelle. Unverändert aus dem Korpus, nicht formuliert. */
+export type Vorbild = {
+  fundstelle: string;
+  text: string;
+  datei?: string | null;
+  seite?: number | null;
+};
+
 export type Pruefbericht = {
   abschnitte: Record<string, { titel: string; zeichen: number }>;
   befunde: { baustein: number; art: string; schwere: "fehler" | "hinweis"; text: string }[];
@@ -121,6 +129,12 @@ const serverApi = {
     }),
   richtlinieErzeugen: (id: string) =>
     request<RichtlinieDraft>(`/api/drafts/${id}/richtlinie`, { method: "POST" }),
+  /** Wie frühere Richtlinien dieselbe Abweichung begründet haben. Vorbilder, keine Vorlage. */
+  vorbilder: (id: string, eintragId: string) =>
+    request<{ vorbilder: Vorbild[] }>(
+      `/api/drafts/${id}/vermerk/${eintragId}/vorbilder`,
+      { method: "POST" },
+    ),
   bestaetigen: (id: string, eintragId: string) =>
     request<VermerkEintrag>(`/api/drafts/${id}/vermerk/${eintragId}/bestaetigen`, {
       method: "POST",

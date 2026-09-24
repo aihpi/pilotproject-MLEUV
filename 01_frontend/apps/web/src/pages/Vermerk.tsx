@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { sections, type VermerkEintrag } from "@richtlinie/shared";
-import { api } from "../api";
-import { Alert, PageHeader } from "../components";
+import { dokumentUrl, sections, type VermerkEintrag } from "@richtlinie/shared";
+import { api, type Vorbild } from "../api";
+import { Alert, BelegPanel, PageHeader, type Beleg } from "../components";
 
 /**
  * Der Prüfvermerk — das zweite Arbeitsergebnis neben der Richtlinie.
@@ -32,7 +32,15 @@ const STATUS: Record<VermerkEintrag["status"], { text: string; art: string }> = 
   gegenstandslos: { text: "gegenstandslos", art: "empty" },
 };
 
-function Eintrag({ id, e }: { id: string; e: VermerkEintrag }) {
+function Eintrag({
+  id,
+  e,
+  onBeleg,
+}: {
+  id: string;
+  e: VermerkEintrag;
+  onBeleg: (b: Beleg) => void;
+}) {
   const qc = useQueryClient();
   const [text, setText] = useState(e.begruendung ?? "");
   const frisch = () => qc.invalidateQueries({ queryKey: ["vermerk", id] });
@@ -43,6 +51,21 @@ function Eintrag({ id, e }: { id: string; e: VermerkEintrag }) {
   const bestaetigen = useMutation({
     mutationFn: () => api.bestaetigen(id, e.id),
     onSuccess: frisch,
+  });
+  /**
+   * „Vorformulierte Begründung abfragen" aus dem Prozessmodell.
+   *
+   * Vorbilder, keine Vorlage: gesucht wird, wie frühere Richtlinien dieselbe Abweichung
+   * begründet haben, und was gefunden wird, steht unverändert mit Fundstelle da. Kein
+   * Modellaufruf — eine erzeugte Begründung läse sich fertig und würde durchgewunken.
+   *
+   * Übernehmen hängt den Text ins Feld, ohne zu speichern. Wer ihn unverändert abschickt,
+   * hat eine fremde Begründung unterschrieben; das soll man sehen, bevor es passiert.
+   */
+  const [vorbilder, setVorbilder] = useState<Vorbild[] | null>(null);
+  const suchen = useMutation({
+    mutationFn: () => api.vorbilder(id, e.id),
+    onSuccess: (r) => setVorbilder(r.vorbilder),
   });
   const abschnitt = sections.find((s) => s.id === e.sectionId);
   const erledigt = e.status === "bestaetigt" || e.status === "gegenstandslos";
@@ -112,6 +135,16 @@ function Eintrag({ id, e }: { id: string; e: VermerkEintrag }) {
             */}
             <button
               type="button"
+              className="button--secondary"
+              disabled={erledigt || suchen.isPending}
+              onClick={() => suchen.mutate()}
+            >
+              {suchen.isPending
+                ? "Wird gesucht …"
+                : "Wie haben das andere begründet?"}
+            </button>
+            <button
+              type="button"
               className="button--primary"
               disabled={e.status !== "beantwortet" || bestaetigen.isPending}
               onClick={() => bestaetigen.mutate()}
@@ -119,9 +152,67 @@ function Eintrag({ id, e }: { id: string; e: VermerkEintrag }) {
               {bestaetigen.isPending ? "Wird bestätigt …" : "Begründung bestätigen"}
             </button>
           </div>
-          {(begruenden.error || bestaetigen.error) && (
+          {vorbilder !== null && (
+            <div className="vorbilder">
+              {vorbilder.length ? (
+                <>
+                  <p className="vorbilder__kopf">
+                    <strong>So haben andere Richtlinien das begründet.</strong> Kein
+                    Vorschlag für Ihren Fall — die Begründung schreiben Sie, und unter dem
+                    Anschreiben ans MdFE steht Ihre Unterschrift.
+                  </p>
+                  <ul>
+                    {vorbilder.map((v, i) => (
+                      <li key={i}>
+                        <blockquote>{v.text}</blockquote>
+                        <p className="vorbilder__quelle">
+                          {/* `dokumentLink` erwartet undefined, der Dienst liefert null. */}
+                          {/* Anklickbar wie überall: eine Fundstelle ohne Weg zum Dokument
+                              ist eine Behauptung. */}
+                          {dokumentUrl(v.datei, v.seite) ? (
+                            <a
+                              href={
+                                dokumentUrl(v.datei, v.seite)!
+                              }
+                              onClick={(ev) => {
+                                ev.preventDefault();
+                                onBeleg({
+                                  url: dokumentUrl(v.datei, v.seite)!,
+                                  titel: v.fundstelle,
+                                });
+                              }}
+                            >
+                              {v.fundstelle}
+                            </a>
+                          ) : (
+                            v.fundstelle
+                          )}
+                          {!erledigt && (
+                            <button
+                              type="button"
+                              className="button--tertiary"
+                              onClick={() => setText(v.text)}
+                            >
+                              In das Feld übernehmen
+                            </button>
+                          )}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>
+                  Zu dieser Abweichung findet sich in früheren Richtlinien keine Begründung.
+                </p>
+              )}
+            </div>
+          )}
+          {(begruenden.error || bestaetigen.error || suchen.error) && (
             <Alert kind="error" title="Das hat nicht geklappt">
-              {String((begruenden.error ?? bestaetigen.error)?.message ?? "")}
+              {String(
+                (begruenden.error ?? bestaetigen.error ?? suchen.error)?.message ?? "",
+              )}
             </Alert>
           )}
         </>
@@ -136,13 +227,16 @@ export function VermerkPage() {
     queryKey: ["vermerk", id],
     queryFn: () => api.vermerk(id),
   });
+  const [beleg, setBeleg] = useState<Beleg | null>(null);
   if (isLoading || !data) return <p role="status">Prüfvermerk wird geladen …</p>;
 
   const offene = data.eintraege.filter((e) => e.status !== "gegenstandslos");
   const erledigte = data.eintraege.filter((e) => e.status === "gegenstandslos");
 
   return (
-    <>
+    // Dokument neben dem Vermerk, wie im Chat und im Formular.
+    <div className={beleg ? "mit-beleg" : undefined}>
+      <div className="mit-beleg__inhalt">
       <PageHeader eyebrow={ADRESSAT.mdfe} title="Prüfvermerk">
         <p>
           Die begründungspflichtigen Abweichungen dieser Richtlinie. Sie wachsen mit jeder
@@ -173,7 +267,7 @@ export function VermerkPage() {
 
       <ul className="vermerk">
         {offene.map((e) => (
-          <Eintrag key={e.id} id={id} e={e} />
+          <Eintrag key={e.id} id={id} e={e} onBeleg={setBeleg} />
         ))}
       </ul>
 
@@ -186,11 +280,13 @@ export function VermerkPage() {
           </p>
           <ul className="vermerk">
             {erledigte.map((e) => (
-              <Eintrag key={e.id} id={id} e={e} />
+              <Eintrag key={e.id} id={id} e={e} onBeleg={setBeleg} />
             ))}
           </ul>
         </>
       )}
-    </>
+      </div>
+      {beleg && <BelegPanel beleg={beleg} onClose={() => setBeleg(null)} />}
+    </div>
   );
 }

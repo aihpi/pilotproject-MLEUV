@@ -18,6 +18,7 @@ import {
   istBelegSatz,
   istWiederholung,
   pruefungenAnwenden,
+  schlussformel,
   stufeGilt,
   stufenFelder,
   textVeraltet,
@@ -206,6 +207,44 @@ app.post("/api/drafts/:id/vermerk/:eintragId/begruendung", async (req) => {
   eintrag.status = "beantwortet";
   touch(d);
   return eintrag;
+});
+
+/**
+ * Wie frühere Richtlinien dieselbe Abweichung begründet haben.
+ *
+ * Das Prozessmodell führt dafür „Vorformulierte Begründung abfragen". Gemeint ist NICHT,
+ * dass das Werkzeug die Begründung schreibt — unter einem Anschreiben ans MdFE steht die
+ * Unterschrift einer Person. Gemeint ist, dass es zeigt, wie andere es gemacht haben.
+ *
+ * Deshalb kommt kein Modell zum Einsatz: gesucht wird, und was gefunden wird, geht
+ * unverändert und mit Fundstelle zurück. Eine erzeugte Begründung läse sich fertig und würde
+ * durchgewunken; eine fremde mit Quellenangabe daneben lädt zum Vergleichen ein.
+ */
+app.post("/api/drafts/:id/vermerk/:eintragId/vorbilder", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const eintrag = vermerkEintrag(d, (req.params as { eintragId: string }).eintragId);
+  try {
+    const res = await fetch(`${VORSCHLAG_URL}/begruendung`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        regel: eintrag.regel,
+        rechtsstelle: eintrag.rechtsstelle ?? null,
+        wert: eintrag.beurteilung ?? null,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { vorbilder: await res.json() };
+  } catch (e) {
+    throw Object.assign(
+      new Error(
+        "Die Suche nach Vorbildern ist derzeit nicht erreichbar. Sie können die Begründung " +
+          `selbst schreiben. (${e instanceof Error ? e.message : String(e)})`,
+      ),
+      { statusCode: 502 },
+    );
+  }
 });
 
 app.post("/api/drafts/:id/vermerk/:eintragId/bestaetigen", async (req) => {
@@ -525,6 +564,32 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
       ),
   );
   if (!targets.length) return { proposals: [], hinweis: "In diesem Abschnitt ist alles bestätigt." };
+
+  // Die Schlussformel wird gerechnet, nicht gefragt.
+  //
+  // Ort, Datum, Ministerium stehen schon im Entwurf, und die Formel sieht in jeder
+  // Landesrichtlinie gleich aus. Ein Modellaufruf dafür wäre eine Minute Wartezeit für einen
+  // Satz, der sich ausrechnen lässt — und er könnte danebengreifen, was hier nicht kann.
+  if (nr === "10" && targets.some((f) => f.id === "closing")) {
+    const formel = schlussformel(d);
+    return {
+      proposals: formel
+        ? [{
+            sectionId: "10" as const,
+            fieldId: "closing",
+            label: "Schlussformel, Ort und Datum",
+            value: formel,
+            confidence: 1,
+            evidence:
+              "Zusammengesetzt aus dem Titel (Ministerium) und dem Inkrafttreten in " +
+              "Baustein 8. Kein Modellaufruf.",
+          }]
+        : [],
+      hinweis: formel
+        ? ""
+        : "Aus dem Titel lässt sich das Ministerium nicht ablesen — bitte selbst eintragen.",
+    };
+  }
 
   try {
     const { proposals, geliefert } = await vorschlaegeFuer(

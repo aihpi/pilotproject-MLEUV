@@ -378,6 +378,9 @@ export const staticApi = {
     proposals: [],
     hinweis: "Ohne laufenden Vorschlagsdienst gibt es keine Vorschläge.",
   }),
+  // Ohne laufenden Dienst gibt es keine Vorbilder — erfundene wären das Gegenteil dessen,
+  // wofür sie da sind.
+  vorbilder: async () => ({ vorbilder: [] }),
   loeschen: async (id: string) => {
     save(load().filter((d) => d.id !== id));
   },

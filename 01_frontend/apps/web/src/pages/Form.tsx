@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  dokumentLink,
   feldLeer,
   fieldVisible,
   sections,
@@ -13,7 +14,7 @@ import {
   type SectionData,
 } from "@richtlinie/shared";
 import { api } from "../api";
-import { Alert, PageHeader, ProcessSteps, Progress, StatusBadge } from "../components";
+import { Alert, BelegPanel, PageHeader, ProcessSteps, Progress, StatusBadge, type Beleg } from "../components";
 function sectionStatus(d: RichtlinieDraft, id: string) {
   const section = sections.find((s) => s.id === id)!;
   const vals = d.sections[id]?.fields ?? {};
@@ -293,6 +294,8 @@ export function SectionPage() {
    * dort aus, als hätte sie ihn selbst eingetragen.
    */
   const [vorausgefuellt, setVorausgefuellt] = useState<Record<string, FieldProposal>>({});
+  /** Das aufgeschlagene Quelldokument, wie im Chat. */
+  const [beleg, setBeleg] = useState<Beleg | null>(null);
   // Der Zustand aus der letzten Darstellung, für Code der IHN LESEN muss, statt ihn zu
   // ändern. Im Rückruf des Vorschlags stünde sonst der Stand vom Klick — und der ist nach
   // ein bis zwei Minuten Wartezeit womöglich überholt.
@@ -374,7 +377,9 @@ export function SectionPage() {
   };
   const templateNote = templateNotes[sectionId];
   return (
-    <>
+    // Dieselbe Aufteilung wie im Chat: Dokument neben dem Entwurf, nicht statt seiner.
+    <div className={beleg ? "mit-beleg" : undefined}>
+      <div className="mit-beleg__inhalt">
       <PageHeader eyebrow={`Abschnitt ${def.id} von 10`} title={def.title}>
         <p className="lead">{def.description}</p>
       </PageHeader>
@@ -451,7 +456,29 @@ export function SectionPage() {
                   ? `Gedeckt durch Ihre Angabe: „${p.deckung}"`
                   : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
                 {p.musterbaustein && ` Satzrahmen: Musterbaustein ${p.musterbaustein}.`}
-                {p.fundstelle && ` Vorbild: ${p.fundstelle}.`}
+                {p.fundstelle && (
+                  <>
+                    {" Vorbild: "}
+                    {/*
+                      Anklickbar wie im Chat. Als bloßer Text war die Fundstelle eine
+                      Behauptung, die nur nachprüfen kann, wer den Datenordner kennt.
+                    */}
+                    {dokumentLink(p) ? (
+                      <a
+                        href={dokumentLink(p)!}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setBeleg({ url: dokumentLink(p)!, titel: p.fundstelle! });
+                        }}
+                      >
+                        {p.fundstelle}
+                      </a>
+                    ) : (
+                      p.fundstelle
+                    )}
+                    {"."}
+                  </>
+                )}
               </p>
             ) : null;
             if (field.kind === "radio" || field.kind === "checkbox")
@@ -519,6 +546,8 @@ export function SectionPage() {
           </button>
         </div>
       </form>
-    </>
+      </div>
+      {beleg && <BelegPanel beleg={beleg} onClose={() => setBeleg(null)} />}
+    </div>
   );
 }

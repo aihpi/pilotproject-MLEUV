@@ -11,7 +11,7 @@ import {
   type FieldProposal,
 } from "@richtlinie/shared";
 import { api } from "../api";
-import { Alert, PageHeader, Progress } from "../components";
+import { Alert, BelegPanel, PageHeader, Progress, type Beleg } from "../components";
 type Msg = { role: "assistant" | "user"; text: string };
 
 /**
@@ -43,9 +43,6 @@ function wertText(p: FieldProposal): string {
  * Der Grad wird aus den vorliegenden Angaben benannt, nicht aus der Zahl abgelesen: „durch
  * Ihre Angabe gedeckt" sagt mehr als „95 Prozent".
  */
-/** Ein aufgeschlagener Beleg im Seitenbereich. */
-type Beleg = { url: string; titel: string };
-
 function Herkunft({ p, onBeleg }: { p: FieldProposal; onBeleg: (b: Beleg) => void }) {
   const nichts = !p.deckung && !p.belegzitat && !p.musterbaustein;
   if (nichts && p.confidence == null) return null;
@@ -407,30 +404,7 @@ export function ChatPage() {
         versteht. Ein eigener Betrachter im Bündel wäre mehrere hundert Kilobyte für eine
         Anzeige, die das Betriebssystem schon kann.
       */}
-      {beleg && (
-        <aside className="beleg" aria-label={`Belegstelle ${beleg.titel}`}>
-          <header className="beleg__kopf">
-            <strong>{beleg.titel}</strong>
-            <button
-              type="button"
-              className="button button--tertiary"
-              onClick={() => setBeleg(null)}
-            >
-              Schließen
-            </button>
-          </header>
-          <iframe className="beleg__rahmen" src={beleg.url} title={beleg.titel} />
-          <p className="beleg__fuss">
-            {/* Für den Fall, dass der eingebaute Betrachter streikt — etwa weil der
-                Vorschlagsdienst nicht läuft. */}
-            Zeigt der Bereich nichts,{" "}
-            <a href={beleg.url} target="_blank" rel="noreferrer">
-              öffnen Sie das Dokument in einem neuen Tab
-            </a>
-            .
-          </p>
-        </aside>
-      )}
+      {beleg && <BelegPanel beleg={beleg} onClose={() => setBeleg(null)} />}
     </div>
   );
 }
