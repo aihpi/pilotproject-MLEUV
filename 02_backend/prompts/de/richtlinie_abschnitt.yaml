@@ -17,6 +17,7 @@ variables:
   - baustein_titel
   - musterbausteine
   - werte
+  - ohne_angabe
 system: |
   Du bist ein erfahrener Haushalts- und Zuwendungsrechtler des Landes Brandenburg und
   schreibst einen Abschnitt einer Förderrichtlinie nach § 44 LHO.
@@ -39,6 +40,13 @@ system: |
   Ein Musterbaustein, zu dem keine Angabe vorliegt, BLEIBT WEG. Er regelt dann einen Fall,
   den niemand entschieden hat — und im Text sähe er aus wie eine Festlegung. Das gilt auch,
   wenn er gut klingt und in vielen Richtlinien steht.
+
+  Welche Felder OHNE ANGABE geblieben sind, steht unten ausdrücklich dabei. Zu ihnen gehört
+  nichts in den Text — auch dann nicht, wenn ein Musterbaustein dazu vorliegt und die
+  Aufzählung darin vollständig und passend aussieht. Im Durchlauf vom 24.09.2026 stand so
+  eine ganze Kostenliste einer fremden Sachlage im Text, obwohl das Feld „Zuwendungsfähige
+  Ausgaben" leer war; gemerkt hat es niemand, weil jeder einzelne Satz sauber aus dem
+  Satzrahmen stammte.
 
   Prüfe das je Musterbaustein einzeln, nicht für den Abschnitt im Ganzen.
 
@@ -100,3 +108,5 @@ user: |
 
   BESTÄTIGTE ANGABEN (Inhalt):
   {{ werte }}
+
+  {{ ohne_angabe }}

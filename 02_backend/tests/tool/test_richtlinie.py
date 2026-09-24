@@ -455,3 +455,102 @@ class TestNachbesserung:
         text, nachweis, _ = self._lauf(monkeypatch, [schlecht, "kein JSON"])
         assert "Verschiedenes" in text
         assert "fehler" not in nachweis
+
+
+class TestOhneAngabe:
+    """Die leeren Felder ausdrücklich benennen.
+
+    Durchlauf vom 24.09.2026: Baustein 5 enthielt eine vollständige Kostenliste
+    („Investitionskosten, Vergabeverfahren, Honorarkosten, Öffentlichkeitsarbeit"), obwohl
+    das Feld „Zuwendungsfähige Ausgaben" leer war. Jeder einzelne Satz stammte sauber aus
+    einem Musterbaustein — `pruefe_text` musste ihn durchlassen, denn Musterbausteine sind
+    eine zulässige Quelle.
+
+    Der erste Versuch, das nachträglich zu prüfen, war falsch: ein Satz, der zu fünf Sechsteln
+    aus dem Satzrahmen und zu einem Sechstel aus dem Wert besteht, ist der NORMALFALL
+    („Die maximale Fördersumme beträgt 500.000 Euro"). Deshalb hier statt einer Prüfung eine
+    Angabe: das Modell soll sehen, wozu nichts vorliegt.
+    """
+
+    felder = [
+        {"id": "fundingRate", "label": "Fördersatz in Prozent"},
+        {"id": "eligibleCosts", "label": "Zuwendungsfähige Ausgaben oder Kosten"},
+        {"id": "minimum", "label": "Bagatellgrenze in Euro"},
+    ]
+
+    def test_leere_felder_werden_benannt(self):
+        text = richtlinie._ohne_angabe_text([{"feld": "fundingRate", "wert": 90}], self.felder)
+        assert "Zuwendungsfähige Ausgaben oder Kosten" in text
+        assert "Bagatellgrenze in Euro" in text
+        assert "Fördersatz" not in text          # der ist gefüllt
+        assert "NICHTS in den Text" in text
+
+    def test_alles_gefuellt_ergibt_nichts(self):
+        werte = [{"feld": f["id"], "wert": "x"} for f in self.felder]
+        assert richtlinie._ohne_angabe_text(werte, self.felder) == ""
+
+    def test_ohne_felddefinitionen_ergibt_nichts(self):
+        # Die Felddefinitionen sind freiwillig; fehlen sie, entfällt diese Angabe still.
+        assert richtlinie._ohne_angabe_text([{"feld": "x", "wert": 1}], None) == ""
+
+    def test_beschriftung_statt_kennung(self):
+        text = richtlinie._ohne_angabe_text([], self.felder)
+        assert "eligibleCosts" not in text
+
+
+class TestKeinWaechterGegenFormularzeilen:
+    """Am 24.09.2026 gebaut, am selben Tag widerlegt.
+
+    Die Annahme: „Bemessungsgrundlage: Spitzabrechnung" sei ein ausgefülltes Formular und
+    keine Regelung. Der Abgleich mit dem Korpus ergab 26 Richtlinien, die genau so schreiben
+    — „5.1 Zuwendungsart: Projektförderung", „5.2 Finanzierungsart: Anteilfinanzierung".
+
+    Der Test bleibt als Merkposten stehen: was ein Rechtstext darf, steht in den Rechtstexten.
+    """
+
+    def test_die_pruefung_gibt_es_nicht_mehr(self):
+        assert not hasattr(richtlinie, "pruefe_formularzeilen")
+
+
+class TestFehlalarmeAus24092026:
+    """Zwei Fehlalarme aus demselben Durchlauf, beide im Wortvergleich.
+
+    Von sechs Befunden waren zwei falsch — und eine Befundliste, in der ein Drittel nicht
+    stimmt, liest bald niemand mehr. Fehlalarme sind an dieser Stelle teurer als übersehene
+    Funde: die Prüfung ist das, was Vertrauen schaffen soll.
+    """
+
+    def test_abgewaehlte_option_im_namen_der_gewaehlten(self):
+        """„Zulässig" steckt in „Nicht zulässig" — das ist kein Widerspruch."""
+        felder = [{"id": "forwarding", "options": [
+            {"value": "no", "label": "Nicht zulässig"},
+            {"value": "yes", "label": "Zulässig"}]}]
+        werte = [{"feld": "forwarding", "wert": "no"}]
+        text = "Eine Weiterleitung der Zuwendung an Dritte ist nicht zulässig."
+        assert richtlinie.pruefe_verworfene_optionen(text, felder, werte) == []
+
+    def test_echter_widerspruch_bleibt(self):
+        felder = [{"id": "forwarding", "options": [
+            {"value": "no", "label": "Nicht zulässig"},
+            {"value": "yes", "label": "Zulässig"}]}]
+        werte = [{"feld": "forwarding", "wert": "yes"}]
+        text = "Eine Weiterleitung an Dritte ist nicht zulässig."
+        assert len(richtlinie.pruefe_verworfene_optionen(text, felder, werte)) == 1
+
+    def test_kompositum_zaehlt_als_treffer(self):
+        """„Zuständiges Ministerium" erscheint im Text als „Fachministerium"."""
+        felder = [{"id": "auditRights", "label": "Prüfberechtigte Stellen", "options": [
+            {"value": "lrh", "label": "Landesrechnungshof Brandenburg"},
+            {"value": "ministry", "label": "Zuständiges Ministerium"}]}]
+        werte = [{"feld": "auditRights", "wert": ["lrh", "ministry"]}]
+        text = ("Der Landesrechnungshof, das Fachministerium sowie deren beauftragte Dritte "
+                "sind berechtigt, bei den Zuwendungsempfangenden zu prüfen.")
+        assert richtlinie.pruefe_fehlende_werte(text, felder, werte) == []
+
+    def test_wirklich_fehlende_angabe_wird_weiter_gemeldet(self):
+        # Der Wächter darf nicht durch die Lockerung stumm werden: ANBest steht nirgends.
+        felder = [{"id": "ancillary", "label": "Allgemeine Nebenbestimmungen", "options": [
+            {"value": "anbest-p-g", "label": "ANBest-P und ANBest-G"}]}]
+        werte = [{"feld": "ancillary", "wert": "anbest-p-g"}]
+        text = "Der Landesrechnungshof ist zur Prüfung berechtigt."
+        assert len(richtlinie.pruefe_fehlende_werte(text, felder, werte)) == 1

@@ -164,6 +164,17 @@ def _klartext(wert, feld):
     return str(optionen.get(wert, wert))
 
 
+def _ohne_angabe_text(werte, felder=None):
+    """Die Felder des Abschnitts, zu denen KEINE bestätigte Angabe vorliegt."""
+    gefuellt = {w["feld"] for w in werte}
+    offen = [f for f in felder or [] if f.get("id") not in gefuellt]
+    if not offen:
+        return ""
+    namen = "\n".join(f"- {f.get('label') or f['id']}" for f in offen)
+    return ("OHNE ANGABE GEBLIEBEN — dazu gehört NICHTS in den Text, auch kein "
+            f"Musterbaustein:\n{namen}")
+
+
 def _werte_text(werte, felder=None):
     """Die bestätigten Angaben für den Prompt — mit Beschriftung, nicht mit Feldkennung.
 
@@ -240,10 +251,21 @@ def pruefe_verworfene_optionen(text, felder, werte, bausteine=None):
         # Der Satzrahmen entlastet NUR die Felder aus `_RAHMEN_ENTLASTET`, siehe dort.
         entlastet = f.get("id") in _RAHMEN_ENTLASTET
         angenommen = wert if isinstance(wert, list) else [wert]
+        # Die Beschriftungen der GEWÄHLTEN Optionen, gegen die geprüft wird.
+        #
+        # „Nicht zulässig" enthält „Zulässig" als Teilwort. Der Wächter meldete deshalb, der
+        # Text nenne die abgewählte Option — obwohl dort „ist nicht zulässig" stand. Ein
+        # Fehlalarm ausgerechnet an der Stelle, an der die Prüfung Vertrauen schaffen soll.
+        gewaehlt_text = " ".join(
+            _norm(o.get("label") or "") for o in optionen if o.get("value") in angenommen)
         for o in optionen:
             if o.get("value") in angenommen:
                 continue
             beschriftung = (o.get("label") or "").strip()
+            # Steckt die abgewählte Beschriftung in einer gewählten, sagt ihr Vorkommen im
+            # Text nichts: „Zulässig" in „Nicht zulässig" ist kein Widerspruch.
+            if _norm(beschriftung) and _norm(beschriftung) in gewaehlt_text:
+                continue
             # Kurze Beschriftungen („Ja", „Nein", „Land") treffen zu häufig zufällig.
             if len(beschriftung) < 8 or _norm(beschriftung) not in kleintext:
                 continue
@@ -300,6 +322,20 @@ def pruefe_selbstbezeichnung(text, werte):
     return befunde
 
 
+# Kein Wächter gegen „Bemessungsgrundlage: Spitzabrechnung".
+#
+# Am 24.09.2026 gebaut und am selben Tag wieder entfernt. Die Annahme war, eine Zeile aus
+# Beschriftung, Doppelpunkt und Wert sei ein ausgefülltes Formular und keine Regelung.
+#
+# Der Abgleich mit dem Korpus hat sie widerlegt: **26 Richtlinien** schreiben genau so —
+# „5.1 Zuwendungsart: Projektförderung", „5.2 Finanzierungsart: Anteilfinanzierung". Das ist
+# die übliche Form in Brandenburger Förderrichtlinien, nicht ihr Gegenteil.
+#
+# Die Lehre daran ist allgemeiner als der Fall: Was ein Rechtstext darf, steht in den
+# Rechtstexten, nicht in meinem Sprachgefühl. Vor dem nächsten Wächter dieser Art gehört ein
+# Blick in den Korpus.
+
+
 def pruefe_fehlende_werte(text, felder, werte):
     """Kommt jede bestätigte Angabe im Text vor?
 
@@ -335,7 +371,13 @@ def pruefe_fehlende_werte(text, felder, werte):
         woerter = set(re.findall(r"\w{5,}", klartext))
         if not woerter:
             continue
-        if len(woerter & textwoerter) / len(woerter) < 1 / 3:
+        # Als Teilwort suchen, nicht als ganzes Wort. Der Wert „Zuständiges Ministerium"
+        # erscheint im Text als „Fachministerium" — dasselbe Organ, anderes Kompositum. Mit
+        # ganzen Wörtern verglichen fiel die Prüfung durch und meldete die Angabe als
+        # fehlend, obwohl sie dastand. Deutsche Komposita machen den Wortvergleich zur
+        # Falle, und eine Falschmeldung ist hier teurer als ein übersehener Fund.
+        gefunden = sum(1 for w in woerter if w in kleintext)
+        if gefunden / len(woerter) < 1 / 3:
             befunde.append(f"{w['feld']}: „{name}“ ist bestätigt, kommt im Text aber "
                            f"nicht vor")
     return befunde
@@ -365,9 +407,22 @@ def pruefe_text(text, bausteine, werte, felder=None):
     # bestätigte Auswahl wiedergibt. Ein Fehlalarm an der Stelle, an der die Prüfung
     # Vertrauen schaffen soll, ist teurer als ein übersehener Fund.
     nach_id = {f.get("id"): f for f in felder or []}
-    quelle = _norm(" ".join([t.get("text") or "" for t in bausteine]
-                            + [_klartext(w["wert"], nach_id.get(w["feld"])) for w in werte]))
-    quellwoerter = set(re.findall(r"\w{5,}", quelle))
+    # Die beiden Quellen GETRENNT, nicht in einen Topf.
+    #
+    # Zusammengeworfen deckt ein Musterbaustein jeden Satz, den er trägt — auch einen, für
+    # den niemand etwas angegeben hat. Im Durchlauf vom 24.09.2026 stand so eine vollständige
+    # Kostenliste („Investitionskosten, Vergabeverfahren, Honorarkosten, Öffentlichkeits-
+    # arbeit") in Baustein 5, obwohl das Feld „Zuwendungsfähige Ausgaben" leer war. Sauber
+    # gedeckt, inhaltlich fremd — und der Prompt verbietet es ausdrücklich: „Ein
+    # Musterbaustein, zu dem keine Angabe vorliegt, BLEIBT WEG."
+    #
+    # Für einen ganz leeren Abschnitt griff die Regel längst („ein Abschnitt allein aus
+    # Musterbausteinen wäre die Musterrichtlinie"). Für ein einzelnes leeres Feld nicht.
+    rahmenwoerter = set(re.findall(
+        r"\w{5,}", _norm(" ".join(t.get("text") or "" for t in bausteine))))
+    wertwoerter = set(re.findall(r"\w{5,}", _norm(
+        " ".join(_klartext(w["wert"], nach_id.get(w["feld"])) for w in werte))))
+    quellwoerter = rahmenwoerter | wertwoerter
     befunde = []
     for satz in _saetze(text):
         woerter = set(re.findall(r"\w{5,}", _norm(satz)))
@@ -377,6 +432,7 @@ def pruefe_text(text, bausteine, werte, felder=None):
         if deckung < 0.5:
             befunde.append(f"Satz ohne Rückhalt in Musterbaustein oder Angabe "
                            f"({int(deckung * 100)} % Überlappung): {satz[:120]!r}")
+
     offen = sorted({m.group(0) for m in PLATZHALTER.finditer(text or "")})
     if offen:
         befunde.append(f"nicht gefüllte Platzhalter: {', '.join(offen)}")
@@ -409,6 +465,11 @@ def abschnitt_bauen(entwurf, abschnitt_nr, titel=None, nur_landesrecht=True, fel
         # dieselbe Absicherung wie in vorschlag.py und rag_query.py.
         werte=sanitize_and_wrap(_werte_text(werte, felder), tag_name="angaben",
                                 max_length=50000).wrapped_content,
+        # Die leeren Felder ausdrücklich benennen. Das Modell sah bisher nur, WAS da ist —
+        # und ergänzte zu einem leeren Feld bereitwillig den Musterbaustein, weil dessen
+        # Aufzählung vollständig und passend aussah. Die Regel dagegen steht im Prompt seit
+        # jeher; ihr fehlte nur die Liste, auf die sie sich beziehen kann.
+        ohne_angabe=_ohne_angabe_text(werte, felder),
     )
     def pruefen(text):
         return (pruefe_text(text, bausteine, werte, felder)

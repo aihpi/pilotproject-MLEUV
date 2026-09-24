@@ -70,6 +70,17 @@ class Anfrage(BaseModel):
                     "Ausschlüssen und Zuwendungsbestimmungen dreimal wörtlich vor. Ohne "
                     "Angabe wird der ganze Korpus gesehen.")
     top_k: int = Field(default=TOP_K, ge=1, le=20)
+    regelfall: bool = Field(
+        default=False,
+        description="Darf ein Feld, das die Eingabe nicht deckt, aus dem REGELFALL der "
+                    "Musterbausteine abgeleitet werden? Im Gespräch nein — dort ist "
+                    "Schweigen eine Auskunft. Beim Knopf „Vorschlag holen\" im Formular ja: "
+                    "dort ist der Regelfall das Gewünschte, ausgewiesen als nicht gedeckt.")
+    entschieden: list[dict] | None = Field(
+        default=None,
+        description="Schon bestätigte Werte desselben Abschnitts als [{label, wert}]. "
+                    "Vorgabe, nicht Vorschlag: an ihnen richtet sich das Modell aus, statt "
+                    "jedes Feld für sich zu raten.")
     nachbarfelder: list[FeldDefinition] | None = Field(
         default=None,
         description="Die übrigen Felder desselben Abschnitts, die in einer ANDEREN Anfrage "
@@ -182,8 +193,16 @@ def richtlinie_bauen(anfrage: RichtlinieAnfrage):
             # Je Abschnitt nur Umfang und Beanstandungen — der Text selbst steht im Entwurf.
             zeichen={a.get("nr"): len(a.get("text") or "")
                      for a in ergebnis.get("abschnitte", [])},
-            nachbesserungen={a.get("nr"): len((a.get("nachweis") or {}).get("modelle") or [])
-                             for a in ergebnis.get("abschnitte", [])},
+            # `bauen` legt die Nachweisfelder direkt auf die Abschnittsebene, nicht unter
+            # „nachweis" — gesucht wurde dort, gefunden nie, und das Protokoll meldete für
+            # jeden Abschnitt null Modellaufrufe. Ein Protokoll, das immer dasselbe sagt,
+            # sagt nichts, und man merkt es erst, wenn man ihm eine Frage stellt.
+            modellaufrufe={a.get("nr"): len(a.get("modelle") or [])
+                           for a in ergebnis.get("abschnitte", [])},
+            # Mehr als ein Aufruf heisst: der erste Versuch wurde beanstandet und neu
+            # geschrieben. Genau das will man nach einem Durchlauf nachlesen können.
+            nachgebessert=[a.get("nr") for a in ergebnis.get("abschnitte", [])
+                           if len(a.get("modelle") or []) > 1],
             befunde=ergebnis.get("befunde"),
         )
         return ergebnis
@@ -313,7 +332,9 @@ def vorschlag_erzeugen(anfrage: Anfrage):
             top_k=anfrage.top_k, konsens=anfrage.konsens,
             abfrageart=anfrage.abfrageart,
             nachbarfelder=[f.model_dump(exclude_none=True)
-                           for f in anfrage.nachbarfelder or []] or None)
+                           for f in anfrage.nachbarfelder or []] or None,
+            regelfall=anfrage.regelfall,
+            entschieden=anfrage.entschieden)
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.
