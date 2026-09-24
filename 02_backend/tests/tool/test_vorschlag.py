@@ -373,3 +373,64 @@ class TestDoppelteWerte:
         v = [{"feld": "goal", "wert": self.satz},
              {"feld": "purpose", "wert": "  " + self.satz.upper() + " "}]
         assert len(vorschlag._doppelte_werte_verwerfen(v)) == 1
+
+
+FELD_AUSZAHLUNG = {
+    "id": "payment", "label": "Anforderungs- und Auszahlungsverfahren", "kind": "radio",
+    "options": [
+        {"value": "advance", "label": "Vorschussprinzip"},
+        {"value": "refund", "label": "Erstattungsprinzip"},
+    ],
+}
+
+
+class TestDeckungOhneBezug:
+    """Die Deckung ist echt — trägt sie auch den Wert?
+
+    Durchlauf vom 24.09.2026: unter „Anforderungs- und Auszahlungsverfahren:
+    Erstattungsprinzip" stand die Deckung „Fördersatz beträgt 90 Prozent, als
+    Anteilfinanzierung in Form eines Zuschusses". Ein echtes Zitat aus der Eingabe, das über
+    Vorschuss oder Erstattung nichts sagt — und ein ungedeckter Wert, der sich als gedeckt
+    ausgibt, entgeht auch dem aufmerksamen Gegenlesen.
+
+    Kein Befund, nur eine Herabstufung: die Prüfung ist grob und würde sonst ausgerechnet die
+    gut formulierten Umschreibungen anmahnen.
+    """
+
+    def test_deckung_ohne_bezug_wird_herabgestuft(self):
+        eingabe = ("Der Fördersatz beträgt 90 Prozent, als Anteilfinanzierung in Form "
+                   "eines Zuschusses.")
+        v = {"feld": "payment", "wert": "refund", "quelle": "eingabe", "konfidenz": 0.9,
+             "deckung": "Der Fördersatz beträgt 90 Prozent, als Anteilfinanzierung in Form "
+                        "eines Zuschusses."}
+        befunde = vorschlag._pruefen(v, FELD_AUSZAHLUNG, [], eingabe=eingabe)
+        assert v["gedeckt_durch_eingabe"] is False
+        assert any("ohne erkennbaren Bezug" in b for b in befunde)
+
+    def test_echte_deckung_bleibt(self):
+        eingabe = "Die Auszahlung erfolgt nach dem Erstattungsprinzip."
+        v = {"feld": "payment", "wert": "refund", "quelle": "eingabe", "konfidenz": 0.9,
+             "deckung": "Die Auszahlung erfolgt nach dem Erstattungsprinzip."}
+        vorschlag._pruefen(v, FELD_AUSZAHLUNG, [], eingabe=eingabe)
+        assert v["gedeckt_durch_eingabe"] is True
+
+    def test_zahlen_zaehlen_als_bezug(self):
+        """„90 Prozent" deckt einen Fördersatz von 90, auch ohne gemeinsames Wort."""
+        feld = {"id": "fundingRate", "label": "Fördersatz in Prozent", "kind": "number"}
+        eingabe = "Gewährt werden 90 Prozent der zuwendungsfähigen Ausgaben."
+        v = {"feld": "fundingRate", "wert": 90, "quelle": "eingabe", "konfidenz": 0.9,
+             "deckung": "Gewährt werden 90 Prozent der zuwendungsfähigen Ausgaben."}
+        vorschlag._pruefen(v, feld, [], eingabe=eingabe)
+        assert v["gedeckt_durch_eingabe"] is True
+
+    def test_beschriftung_der_option_zaehlt(self):
+        eingabe = "Vorgesehen ist das Vorschussprinzip."
+        v = {"feld": "payment", "wert": "advance", "quelle": "eingabe", "konfidenz": 0.9,
+             "deckung": "Vorgesehen ist das Vorschussprinzip."}
+        vorschlag._pruefen(v, FELD_AUSZAHLUNG, [], eingabe=eingabe)
+        assert v["gedeckt_durch_eingabe"] is True
+
+    def test_ohne_deckung_bleibt_alles_wie_bisher(self):
+        v = {"feld": "payment", "wert": "refund", "quelle": "musterbaustein", "konfidenz": 0.9}
+        vorschlag._pruefen(v, FELD_AUSZAHLUNG, [], eingabe="Irgendwas anderes.")
+        assert v["gedeckt_durch_eingabe"] is False

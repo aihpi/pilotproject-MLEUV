@@ -127,6 +127,30 @@ def _doppelte_werte_verwerfen(vorschlaege):
     return befunde
 
 
+def _ohne_bezug(deckung, wert, feld):
+    """Teilt die Deckung kein tragendes Wort mit dem Wert oder seiner Beschriftung?
+
+    Grob mit Absicht, siehe die Begründung an der Aufrufstelle: hier wird nichts beanstandet,
+    sondern nur das Etikett heruntergestuft. Verglichen wird gegen drei Dinge, damit eine
+    Umschreibung nicht sofort durchfällt — den Wert selbst, die Beschriftung der gewählten
+    Option und die des Feldes.
+    """
+    def woerter(s):
+        return {w.lower() for w in re.findall(r"\w{5,}", normalisieren(s))}
+
+    deck = woerter(deckung)
+    if not deck:
+        return False
+    optionen = {o.get("value"): (o.get("label") or "") for o in feld.get("options") or []}
+    bezug = woerter(wert) | woerter(feld.get("label") or "")
+    for teil in (wert if isinstance(wert, list) else [wert]):
+        bezug |= woerter(optionen.get(teil, ""))
+    # Zahlen zählen mit: „90 Prozent" deckt einen Fördersatz von 90.
+    bezug |= {z for z in re.findall(r"\d+", str(wert))}
+    deck |= {z for z in re.findall(r"\d+", str(deckung))}
+    return bool(bezug) and not (deck & bezug)
+
+
 def _als_liste(wert):
     """Eine Mehrfachauswahl in eine Liste bringen, wie das Modell sie auch schreibt.
 
@@ -398,6 +422,29 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
         befunde.append(f"{feld['id']}: angebliche Deckung steht nicht in der Angabe — "
                        f"{str(v['deckung'])[:100]!r}")
 
+    # Die Deckung ist ECHT — trägt sie auch den Wert?
+    #
+    # Bisher wurde nur nachgeprüft, ob das Zitat wörtlich in der Eingabe steht. Am 24.09.2026
+    # stand deshalb unter „Anforderungs- und Auszahlungsverfahren: Erstattungsprinzip" die
+    # Deckung „Fördersatz beträgt 90 Prozent, als Anteilfinanzierung in Form eines
+    # Zuschusses" — ein echtes Zitat, das über Vorschuss oder Erstattung nichts sagt. Ein
+    # ungedeckter Wert, der sich als gedeckt ausgibt, entgeht auch dem aufmerksamen
+    # Gegenlesen.
+    #
+    # Geprüft wird auf gemeinsame Wörter, und das ist bewusst grob: „Die Auszahlung erfolgt
+    # nach Abschluss der Maßnahme gegen Nachweis" stützt das Erstattungsprinzip, ohne ein
+    # Wort mit ihm zu teilen. Deshalb gibt es hier KEINEN Befund — die Behauptung wird nur
+    # abgeschwächt. Ein zu vorsichtiges „bitte prüfen" kostet einen Blick, ein falsches
+    # „gedeckt" kostet die Prüfung ganz.
+    #
+    # Die inhaltliche Prüfung — stützt die Stelle die Aussage wirklich? — braucht ein
+    # bewertendes Modell und steht weiter aus.
+    if v["gedeckt_durch_eingabe"] and _ohne_bezug(v.get("deckung"), wert_roh, feld):
+        v["gedeckt_durch_eingabe"] = False
+        befunde.append(
+            f"{feld['id']}: Deckung ohne erkennbaren Bezug zum Wert — als abgeleitet "
+            f"behandelt statt als gedeckt")
+
     if unklar:
         v["wert"] = UNKLAR
         v["status"] = "unklar"
@@ -507,9 +554,34 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
     return befunde
 
 
+# Was gilt, wenn die Angabe ein Feld nicht deckt — je nach Einstiegspunkt verschieden.
+#
+# Im GESPRÄCH ist Schweigen eine Auskunft: die Bearbeiterin wurde gerade gefragt und hat
+# nichts dazu gesagt. Ein abgeleiteter Wert wäre dort eine Unterstellung.
+#
+# Beim KNOPF im Formular ist es umgekehrt. Sie drückt ihn, weil sie etwas vorgelegt bekommen
+# will — und für die Bausteine 6 bis 10 hat die Musterrichtlinie meist eine Antwort. Ohne
+# Regelfall lieferte der Knopf für Baustein 7 ein Feld von sechs (Durchlauf vom 24.09.2026),
+# und das eine war ausgerechnet ein ungedeckter Wert, den das Modell entgegen der Regel doch
+# abgeleitet hatte.
+_OHNE_REGELFALL = (
+    'Dann ist der Wert genau "[Unklar]" und die Konfidenz höchstens 0.3. Rate nicht, und '
+    "leite auch nichts aus dem Regelfall ab. Eine fehlende Angabe ist eine Auskunft, keine "
+    "Lücke."
+)
+
+_MIT_REGELFALL = (
+    "Dann leite den Wert aus dem REGELFALL der Musterbausteine ab, wenn diese dazu etwas "
+    "hergeben, und setze \"deckung\" auf null. Das ist hier ausdrücklich erwünscht: die "
+    "Bearbeiterin hat um einen Vorschlag gebeten und bekommt ihn als solchen ausgewiesen.\n\n"
+    'Geben die Musterbausteine nichts her, ist der Wert genau "[Unklar]". Erfinde nichts — '
+    "ein abgeleiteter Wert steht im Musterbaustein, ein erfundener nirgends."
+)
+
+
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
                 konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None,
-                nachbarfelder=None):
+                nachbarfelder=None, regelfall=False, entschieden=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
@@ -577,6 +649,17 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         # sieht hier also nicht alle seine Felder. Ohne diese Liste schrieb „Weitere
         # fachliche Nebenbestimmungen" die Prüfungsberechtigten als Fließtext hin, während
         # sie im selben Abschnitt längst als Auswahl standen.
+        regelfall_regel=_MIT_REGELFALL if regelfall else _OHNE_REGELFALL,
+        # Die schon bestätigten Werte desselben Abschnitts.
+        #
+        # Ohne sie wurde jedes Feld für sich geraten: „Antragsverfahren: mit Frist" stand
+        # bestätigt im Entwurf, und die Antragsfrist kam trotzdem als „[Unklar]", weil das
+        # Modell den Zusammenhang nicht sehen konnte.
+        entschieden=(
+            "BEREITS BESTÄTIGT IN DIESEM ABSCHNITT (Vorgabe, nicht zu ändern):\n"
+            + "\n".join(f"- {e['label']}: {e['wert']}" for e in entschieden)
+            if entschieden else ""
+        ),
         nachbarfelder=(
             "WIRD AN ANDERER STELLE DIESES ABSCHNITTS ERFASST (nicht hier wiederholen):\n"
             + "\n".join(f"- {f.get('label') or f['id']}" for f in nachbarfelder)
