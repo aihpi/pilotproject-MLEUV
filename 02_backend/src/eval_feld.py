@@ -101,6 +101,14 @@ def pruefe_feld(erwartung, v, bloecke_text):
 
 
 def lauf(fall, felder_def, ausfuehrlich=False, konsens=False, mit_belegen=True):
+    # Ein Fall, der ein undefiniertes Feld nennt, ist ein Fehler in der Fallbeschreibung —
+    # und er muss als solcher auffallen. Vorher lief F-20 mit „0/0 Prüfungen in 0 Läufen"
+    # durch und sah aus wie ein bestandener Fall ohne Prüfungen; tatsächlich war
+    # `applicationDeadline` in der Feldliste vergessen worden.
+    fehlend = [i for i in fall["felder"] if i not in felder_def]
+    if fehlend:
+        raise KeyError(
+            f"{fall['id']}: Feld(er) nicht unter `felder:` definiert: {', '.join(fehlend)}")
     felder = [felder_def[i] for i in fall["felder"]]
     # Nachbarfelder wie im Betrieb: ein Abschnitt wird dort in zwei Anfragen gefüllt, und das
     # Modell muss wissen, was die andere Anfrage aufnimmt. Ohne sie schrieb ein Freitextfeld

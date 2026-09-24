@@ -115,6 +115,13 @@ felder:
     id: ancillary
     label: Allgemeine Nebenbestimmungen
     kind: radio
+    # Wortgleich mit dem `help` in packages/shared — der Hinweis geht dort in den Prompt, und
+    # ein Fall ohne ihn prüft etwas anderes als den Betrieb. Bleibt beides nicht beieinander,
+    # misst der Eval eine Oberfläche, die es so nicht gibt.
+    help: >-
+      ANBest-P gilt für Zuwendungen zur Projektförderung allgemein, ANBest-G für Gemeinden
+      und Gemeindeverbände. Umfasst der Empfängerkreis BEIDE Gruppen, gelten auch beide —
+      jede für ihre Gruppe.
     options:
       - {value: anbest-p, label: ANBest-P}
       - {value: anbest-g, label: ANBest-G}
@@ -136,6 +143,80 @@ felder:
     id: otherConditions
     label: Weitere fachliche Nebenbestimmungen
     kind: textarea
+
+  # --- Baustein 4, Zuwendungsvoraussetzungen ---
+  requirements:
+    id: requirements
+    label: Zuwendungsvoraussetzungen
+    kind: textarea
+  area:
+    id: area
+    label: Gebietskulisse
+    kind: textarea
+  selectionCriteria:
+    id: selectionCriteria
+    label: Auswahl- und Wertungskriterien
+    kind: textarea
+  aidRegime:
+    id: aidRegime
+    label: Beihilferechtliche Einordnung
+    kind: checkbox
+    options:
+      - {value: de-minimis, label: De-minimis}
+      - {value: agvo, label: AGVO}
+      - {value: agrar-gvo, label: AgrarGVO}
+      - {value: notification, label: Notifizierung}
+
+  # --- Baustein 7, Verfahren ---
+  authority:
+    id: authority
+    label: Bewilligungsbehörde
+    kind: text
+  selection:
+    id: selection
+    label: Antragsauswahl
+    kind: radio
+    options:
+      - {value: first, label: Windhundprinzip}
+      - {value: criteria, label: Kriteriengebundene Auswahl}
+  applicationProcedure:
+    id: applicationProcedure
+    label: Antragsverfahren
+    kind: radio
+    options:
+      - {value: analog, label: Schriftlich, ohne Frist}
+      - {value: analog-deadline, label: Schriftlich, mit Antragsfrist}
+      - {value: digital, label: Digitales Antragssystem, ohne Frist}
+      - {value: digital-deadline, label: Digitales Antragssystem, mit Antragsfrist}
+  payment:
+    id: payment
+    label: Anforderungs- und Auszahlungsverfahren
+    kind: radio
+    options:
+      - {value: advance, label: Vorschussprinzip}
+      - {value: refund, label: Erstattungsprinzip}
+  applicationDeadline:
+    id: applicationDeadline
+    label: Antragsfrist
+    kind: date
+  applicationType:
+    id: applicationType
+    label: Verfahrensart
+    kind: radio
+    options:
+      - {value: one, label: Einstufig}
+      - {value: two, label: "Zweistufig (Antrag, Verwendungsnachweis inklusive Auszahlung)"}
+      - {value: three, label: "Dreistufig (Antrag, Auszahlung, Verwendungsnachweis)"}
+
+  # --- Baustein 8, Geltungsdauer ---
+  validFrom:
+    id: validFrom
+    label: Inkrafttreten
+    kind: date
+  validUntil:
+    id: validUntil
+    label: Außerkrafttreten
+    kind: date
 
 faelle:
 
@@ -392,3 +473,93 @@ faelle:
         enthaelt: [chipnummer]
         nicht: [Landesrechnungshof, inventarisier, Geschlechtergleichstellung]
         gedeckt: true
+
+  # ---------------------------------------------------------------------------
+  # Bausteine 4, 7 und 8 — bis zum 23.09.2026 mit keinem einzigen Fall gemessen.
+  #
+  # Ausgewählt, weil dort Musterbausteine UND echte Prüfregeln sitzen: Geltungsdauer,
+  # Antragsfrist, Auswahlverfahren. Ein falscher Wert hat hier Folgen im Verfahren, nicht
+  # nur im Text.
+  # ---------------------------------------------------------------------------
+
+  - id: F-18-voraussetzungen-eigen
+    notiz: >-
+      Voraussetzungen sind der Kern von Baustein 4 — und genau das Feld, das sich im
+      Durchlauf vom 22.09.2026 den Empfängerkreis und die Kosten aus anderen Bausteinen
+      zusammensuchte. Es darf NUR Voraussetzungen enthalten.
+    abschnitt_nr: 4
+    eingabe: >-
+      Der Antragsteller muss seinen Sitz im Land Brandenburg haben und die Maßnahme dort
+      durchführen. Tierschutzvereine müssen nach § 11 des Tierschutzgesetzes erlaubt und
+      amtlich anerkannt sein.
+    felder: [requirements, area]
+    erwartet:
+      requirements: {enthaelt: [tierschutzgesetz], gedeckt: true}
+      area: {enthaelt: [brandenburg]}
+
+  - id: F-19-beihilfe-de-minimis
+    notiz: >-
+      Die beihilferechtliche Einordnung ist eine Mehrfachauswahl mit vier Optionen. Nennt
+      die Angabe De-minimis ausdrücklich, muss genau das kommen — und nicht zusätzlich die
+      AGVO, die das Modell gern mitnimmt.
+    abschnitt_nr: 4
+    eingabe: >-
+      Die Förderung erfolgt als De-minimis-Beihilfe nach der einschlägigen
+      De-minimis-Verordnung.
+    felder: [aidRegime]
+    erwartet:
+      aidRegime: {enthaelt: [de-minimis], nicht: [notification], gedeckt: true}
+
+  - id: F-20-verfahren-vollstaendig
+    notiz: >-
+      Der Regelfall von Baustein 7: Behörde, Verfahren, Frist, Auszahlung, Stufigkeit auf
+      einmal. „Mit Antragsfrist" und das Datum hängen zusammen — kommt das eine ohne das
+      andere, ist die Richtlinie in sich widersprüchlich.
+    abschnitt_nr: 7
+    eingabe: >-
+      Bewilligungsbehörde ist das Landesamt für Ländliche Entwicklung, Landwirtschaft und
+      Flurneuordnung. Anträge sind schriftlich bis zum 31. März 2027 zu stellen. Die
+      Auszahlung erfolgt nach dem Erstattungsprinzip in einem zweistufigen Verfahren.
+    felder: [authority, applicationProcedure, applicationDeadline, payment, applicationType]
+    erwartet:
+      authority: {enthaelt: [landesamt], gedeckt: true}
+      applicationProcedure: {wert: analog-deadline}
+      applicationDeadline: {enthaelt: ["2027-03-31"], gedeckt: true}
+      payment: {wert: refund}
+      applicationType: {wert: two}
+
+  - id: F-21-windhund-ohne-kriterien
+    notiz: >-
+      Windhundprinzip heißt: es entscheidet der Zeitpunkt des Antrags, nicht eine Bewertung.
+      Wertungskriterien wären dann ein Widerspruch — sie dürfen nicht miterfunden werden.
+    abschnitt_nr: 7
+    eingabe: >-
+      Über die Anträge wird in der Reihenfolge ihres Eingangs entschieden, solange Mittel
+      verfügbar sind.
+    felder: [selection]
+    erwartet:
+      selection: {wert: first, gedeckt: true}
+
+  - id: F-22-geltungsdauer
+    notiz: >-
+      Zwei Datumsangaben aus einem Satz. An ihnen hängen zwei Prüfregeln: die Reihenfolge
+      (Fehler) und die Drei-Jahres-Grenze nach Anlage 19 zu VV Nr. 14.2.1 (Warnung,
+      begründungspflichtig). Kommen die Daten nicht als Datum an, schlägt keine von beiden an.
+    abschnitt_nr: 8
+    eingabe: >-
+      Die Richtlinie tritt am 1. Januar 2027 in Kraft und am 31. Dezember 2031 außer Kraft.
+    felder: [validFrom, validUntil]
+    erwartet:
+      validFrom: {enthaelt: ["2027-01-01"], gedeckt: true}
+      validUntil: {enthaelt: ["2031-12-31"], gedeckt: true}
+
+  - id: F-23-geltungsdauer-nicht-genannt
+    notiz: >-
+      Die Eingabe schweigt zur Geltungsdauer. Ein geratenes Datum stünde in der Richtlinie
+      als Festlegung, an der Zuwendungsempfänger ihre Planung ausrichten.
+    abschnitt_nr: 8
+    eingabe: Gefördert wird die Kastration freilebender Katzen aus Landesmitteln.
+    felder: [validFrom, validUntil]
+    erwartet:
+      validFrom: {unklar: true}
+      validUntil: {unklar: true}

@@ -625,11 +625,36 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
 
     nach_id = {f["id"]: f for f in felder}
     vorschlaege, befunde = [], list(konsens_befunde)
+    # Auch die Beschriftung als Kennung zulassen.
+    #
+    # Das Modell antwortete für die Antragsauswahl mit `"selection: Antragsauswahl"` —
+    # Kennung und Beschriftung zusammengeklebt, wie sie im Prompt untereinander stehen. Die
+    # strenge Zuordnung verwarf das als unbekanntes Feld, und eine inhaltlich richtige
+    # Antwort landete im Müll, weil die Schreibweise nicht stimmte.
+    nach_label = {normalisieren(f.get("label") or "").lower(): f for f in felder}
+
+    def feld_finden(kennung):
+        k = str(kennung or "").strip()
+        if k in nach_id:
+            return nach_id[k], None
+        # „selection: Antragsauswahl" oder „Antragsauswahl (selection)"
+        for teil in re.split(r"\s*[:(\[]\s*", k):
+            teil = teil.strip(" )]")
+            if teil in nach_id:
+                return nach_id[teil], f"Feldkennung erst nach Zerlegung lesbar ({k!r})"
+            treffer = nach_label.get(normalisieren(teil).lower())
+            if treffer:
+                return treffer, f"Beschriftung statt Kennung geliefert ({k!r})"
+        return None, None
+
     for v in daten:
-        feld = nach_id.get(v.get("feld"))
+        feld, hinweis = feld_finden(v.get("feld"))
+        if hinweis:
+            befunde.append(f"{feld['id']}: {hinweis}")
         if not feld:
             befunde.append(f"unbekanntes Feld verworfen: {v.get('feld')!r}")
             continue
+        v["feld"] = feld["id"]
         befunde += _pruefen(v, feld, bloecke, rahmen_txt, eingabe, abfrageart)
         vorschlaege.append({
             "feld": feld["id"],
