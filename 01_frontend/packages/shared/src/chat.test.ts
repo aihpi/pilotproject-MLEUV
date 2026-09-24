@@ -8,6 +8,7 @@ import {
   istWiederholung,
   naechsteFrage,
   nextChatStage,
+  schlussformel,
   sections,
   stufenFelder,
   type RichtlinieDraft,
@@ -391,5 +392,53 @@ describe("feldLeer", () => {
     expect(feldLeer("Text")).toBe(false);
     expect(feldLeer(["municipal"])).toBe(false);
     expect(feldLeer(90)).toBe(false);
+  });
+});
+
+describe("schlussformel", () => {
+  // Baustein 10 hat in der Musterrichtlinie keinen Satzrahmen — einen Regelfall hat er
+  // trotzdem, er steht nur nicht in der Vorlage. Zusammengesetzt statt vorgeschlagen: eine
+  // Minute Wartezeit gespart, und danebengreifen kann es nicht.
+  const mit = (titel: string, von?: string): RichtlinieDraft => {
+    const d = entwurf();
+    d.sections["0"] = {
+      fields: {
+        title: { value: titel, status: "confirmed", source: "user-chat", confirmedByUser: true },
+      },
+    };
+    if (von)
+      d.sections["8"] = {
+        fields: {
+          validFrom: { value: von, status: "confirmed", source: "user-form", confirmedByUser: true },
+        },
+      };
+    return d;
+  };
+
+  const titel =
+    "Richtlinie des Ministeriums für Landwirtschaft, Umwelt und Verbraucherschutz über die " +
+    "Gewährung von Zuwendungen zur Kastration freilebender Katzen";
+
+  it("liest Ministerium und Datum aus dem Entwurf", () => {
+    const f = schlussformel(mit(titel, "2027-01-01"))!;
+    expect(f).toContain("Potsdam, den 1. Januar 2027");
+    expect(f).toContain("Ministerium für Landwirtschaft, Umwelt und Verbraucherschutz");
+    expect(f).toContain("Im Auftrag");
+  });
+
+  it("schneidet den Namen vor der Formel ab", () => {
+    // „… über die Gewährung von Zuwendungen …" gehört nicht zum Behördennamen.
+    expect(schlussformel(mit(titel, "2027-01-01"))).not.toContain("Gewährung");
+  });
+
+  it("ohne Inkrafttreten bleibt das Datum offen", () => {
+    const f = schlussformel(mit(titel))!;
+    expect(f).toContain("Potsdam, den");
+    expect(f).not.toMatch(/\d{4}/);
+  });
+
+  it("ohne erkennbares Ministerium lieber nichts", () => {
+    // Die Unterschriftszeile einer Richtlinie ist der letzte Ort für eine Vermutung.
+    expect(schlussformel(mit("Richtlinie zur Förderung von Tierheimen"))).toBeNull();
   });
 });

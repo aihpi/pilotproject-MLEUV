@@ -188,3 +188,52 @@ describe("Baustein 6, Prüfberechtigte Stellen", () => {
     expect(regeln(mit([]))).toEqual([]);
   });
 });
+
+describe("Baustein 6, Nebenbestimmungen und Empfängerkreis", () => {
+  /**
+   * ANBest-P hängt an der VV, ANBest-G an der VVG — zwei verschiedene
+   * Verwaltungsvorschriften. Umfasst der Empfängerkreis beide Gruppen, gelten beide.
+   *
+   * Der Feldvorschlag wählte bei gemischtem Kreis nur ANBest-P (Eval-Fall F-15, 0 von 3
+   * Läufen). Ein Hinweis am Feld hat das behoben — aber nur dort, wo das Modell füllt. Wer
+   * es von Hand einträgt, braucht diese Prüfung.
+   */
+  const mit = (empfaenger: string[], nebenbestimmungen: string): RichtlinieDraft => {
+    const d = entwurf({});
+    const wert = (v: unknown) => ({
+      value: v as FieldValue["value"],
+      status: "confirmed" as const,
+      source: "user-form" as const,
+      confirmedByUser: true,
+    });
+    d.sections["3"] = { fields: { recipients: wert(empfaenger) } };
+    d.sections["6"] = { fields: { ancillary: wert(nebenbestimmungen) } };
+    return d;
+  };
+  const regeln = (d: RichtlinieDraft) => pruefeBaustein6(d).map((e) => e.befund.regel);
+
+  it("gemischter Kreis verlangt beide", () => {
+    expect(regeln(mit(["municipal", "private"], "anbest-p"))).toContain(
+      "nebenbestimmungen_empfaengerkreis",
+    );
+    expect(regeln(mit(["municipal", "private"], "anbest-p-g"))).toEqual([]);
+  });
+
+  it("nur Kommunen verlangen ANBest-G", () => {
+    expect(regeln(mit(["municipal"], "anbest-p"))).toContain(
+      "nebenbestimmungen_empfaengerkreis",
+    );
+    expect(regeln(mit(["municipal"], "anbest-g"))).toEqual([]);
+  });
+
+  it("ohne Kommunen genügt ANBest-P", () => {
+    expect(regeln(mit(["private", "natural"], "anbest-p"))).toEqual([]);
+    expect(regeln(mit(["private"], "anbest-p-g"))).toContain(
+      "nebenbestimmungen_empfaengerkreis",
+    );
+  });
+
+  it("ohne Empfängerkreis wird nichts gemeldet", () => {
+    expect(regeln(mit([], "anbest-p"))).toEqual([]);
+  });
+});

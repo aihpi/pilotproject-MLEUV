@@ -305,10 +305,26 @@ export const DOKUMENT_BASIS =
   (typeof process !== "undefined" && process.env?.VORSCHLAG_URL) || "http://127.0.0.1:8000";
 
 /** Verweis auf die Belegstelle, aufgeschlagen an der richtigen Seite. Null ohne Datei. */
+// Nimmt alles, was eine Datei und eine Seite kennt — nicht nur einen Feldvorschlag. Seit die
+// Vorbilder im Prüfvermerk dieselbe Verlinkung brauchen, wäre die engere Signatur eine
+// künstliche Hürde: gebraucht werden ohnehin nur diese beiden Angaben.
+/**
+ * Der Weg zu einem Quelldokument, aufgeschlagen an der richtigen Seite.
+ *
+ * Die Grundform mit zwei Angaben statt mit einem ganzen Feldvorschlag: dieselbe Verlinkung
+ * brauchen inzwischen drei Stellen — Chat, Formular und die Vorbilder im Prüfvermerk —, und
+ * nur die letzte hat einen Feldvorschlag zur Hand.
+ */
+export function dokumentUrl(
+  datei?: string | null,
+  seite?: number | null,
+): string | null {
+  if (!datei) return null;
+  return `${DOKUMENT_BASIS}/dokument/${encodeURIComponent(datei)}${seite ? `#page=${seite}` : ""}`;
+}
+
 export function dokumentLink(p: FieldProposal): string | null {
-  if (!p.belegdatei) return null;
-  const seite = p.belegseite ? `#page=${p.belegseite}` : "";
-  return `${DOKUMENT_BASIS}/dokument/${encodeURIComponent(p.belegdatei)}${seite}`;
+  return dokumentUrl(p.belegdatei, p.belegseite);
 }
 export interface ChatExtraction {
   id: string;
@@ -630,6 +646,14 @@ export const sections: SectionDefinition[] = [
         label: "Allgemeine Nebenbestimmungen",
         kind: "radio",
         required: true,
+        // Der Hinweis geht in den Prompt mit (siehe `_felder_text` im Vorschlagsdienst) und
+        // ist deshalb mehr als eine Lesehilfe. Ohne ihn wählte das Modell bei gemischtem
+        // Empfängerkreis nur ANBest-P — die Kommunen stünden dann ohne ihre
+        // Nebenbestimmungen da, obwohl beide Dokumente im Korpus liegen.
+        help:
+          "ANBest-P gilt für Zuwendungen zur Projektförderung allgemein, ANBest-G für " +
+          "Gemeinden und Gemeindeverbände. Umfasst der Empfängerkreis BEIDE Gruppen, gelten " +
+          "auch beide — jede für ihre Gruppe.",
         options: [
           { value: "anbest-p", label: "ANBest-P" },
           { value: "anbest-g", label: "ANBest-G" },
@@ -1072,6 +1096,49 @@ export function naechsteFrage(draft: RichtlinieDraft, ohne?: string): string {
     "\n\nMöchten Sie dazu etwas ergänzen oder ändern? Wenn nicht, weiter:\n\n" +
     frage
   );
+}
+
+/**
+ * Die Schlussformel aus dem zusammensetzen, was schon im Entwurf steht.
+ *
+ * Ort, Datum, Ministerium, „Im Auftrag" — die Formel sieht in jeder Landesrichtlinie gleich
+ * aus, und alle Bestandteile liegen bereits vor: das Ministerium im Titel, das Datum als
+ * Inkrafttreten in Baustein 8. Ein Modellaufruf dafür wäre eine Minute Wartezeit für einen
+ * Satz, der sich ausrechnen lässt — und er könnte danebengreifen, was hier nicht kann.
+ *
+ * Die Bausteine 0, 9 und 10 haben in der Musterrichtlinie keinen Satzrahmen. Für 9
+ * (Anhänge) gibt es auch keinen Regelfall; für 10 gibt es ihn, er steht nur nicht in der
+ * Vorlage.
+ *
+ * Ergibt null, wenn das Ministerium nicht aus dem Titel zu lesen ist. Lieber nichts als eine
+ * Behörde, die niemand genannt hat — die Unterschriftszeile einer Richtlinie ist der letzte
+ * Ort für eine Vermutung.
+ */
+export function schlussformel(draft: RichtlinieDraft): string | null {
+  const titel = String(draft.sections["0"]?.fields["title"]?.value ?? draft.title ?? "");
+  // „Richtlinie des Ministeriums für X über die Gewährung …" — der Name endet vor dem
+  // nächsten Bindewort, das die Formel einleitet.
+  const treffer = titel.match(
+    /\b(Ministeriums?|Ministerium)\s+(für|der|des)\s+(.+?)(?=\s+(?:über|zur|zum|betreffend|vom)\b|$)/i,
+  );
+  if (!treffer) return null;
+  const ministerium = `Ministerium ${treffer[2]} ${treffer[3]}`.replace(/\s+/g, " ").trim();
+
+  const von = draft.sections["8"]?.fields["validFrom"]?.value;
+  const datum =
+    typeof von === "string" && /^\d{4}-\d{2}-\d{2}$/.test(von)
+      ? new Date(von).toLocaleDateString("de-DE", {
+          day: "numeric", month: "long", year: "numeric",
+        })
+      : null;
+
+  // Potsdam als Sitz der Landesregierung. Steht so in jeder Landesrichtlinie; ein eigenes
+  // Feld dafür wäre eine Frage, die nie eine andere Antwort hat.
+  return [
+    datum ? `Potsdam, den ${datum}` : "Potsdam, den",
+    ministerium,
+    "Im Auftrag",
+  ].join("\n");
 }
 
 export function emptySections(): Record<string, SectionData> {
@@ -1612,10 +1679,48 @@ export const PRUEFORGANE_LAND = ["lrh", "ministry"];
  * an der das Modell einen festen Inhalt nennt: „Prüforgan: LHO: LRH + Min".
  */
 export function pruefeBaustein6(draft: RichtlinieDraft): Pruefergebnis[] {
-  const stellen = draft.sections["6"]?.fields["auditRights"]?.value;
-  if (!Array.isArray(stellen) || !stellen.length) return [];
-
   const raus: Pruefergebnis[] = [];
+
+  // Die Nebenbestimmungen müssen zum Empfängerkreis passen.
+  //
+  // ANBest-P gilt für die Projektförderung allgemein, ANBest-G für Gemeinden und
+  // Gemeindeverbände — zwei Anlagen an zwei verschiedenen Verwaltungsvorschriften (Anlage 15
+  // zur VV, Anlage 21 zur VVG). Umfasst der Empfängerkreis beide Gruppen, gelten beide, jede
+  // für ihre.
+  //
+  // Ein Hinweis am Feld hat den Feldvorschlag repariert (Eval-Fall F-15, von 0/3 auf 3/3).
+  // Er hilft aber nur dort, wo das Modell füllt — wer es von Hand einträgt, bekommt keinen
+  // Hinweis. Geprüft wird deshalb hier, unabhängig davon, wer das Feld gefüllt hat.
+  const empfaenger = draft.sections["3"]?.fields["recipients"]?.value;
+  const nebenbestimmungen = draft.sections["6"]?.fields["ancillary"]?.value;
+  if (Array.isArray(empfaenger) && empfaenger.length && typeof nebenbestimmungen === "string") {
+    const kommunal = empfaenger.includes("municipal");
+    const andere = empfaenger.some((e) => e !== "municipal");
+    const soll = kommunal && andere ? "anbest-p-g" : kommunal ? "anbest-g" : "anbest-p";
+    const name = (v: string) =>
+      v === "anbest-p-g" ? "ANBest-P und ANBest-G" : v === "anbest-g" ? "ANBest-G" : "ANBest-P";
+    if (nebenbestimmungen !== soll)
+      raus.push({
+        befund: {
+          sectionId: "6", fieldId: "ancillary", severity: "warning",
+          regel: "nebenbestimmungen_empfaengerkreis",
+          rechtsstelle: "Anlagen 15 und 21 zu VV bzw. VVG Nr. 5.1 zu § 44 LHO",
+          message:
+            `Zum angegebenen Empfängerkreis passt ${name(soll)}, gewählt ist ` +
+            `${name(nebenbestimmungen)}. ANBest-G gilt für Gemeinden und Gemeindeverbände, ` +
+            `ANBest-P für die übrigen Zuwendungsempfangenden.`,
+        },
+      });
+  }
+
+  // Die Prüfrechte erst ab hier — und nur sie hängen daran, dass etwas angegeben ist.
+  //
+  // Dieser Ausstieg stand bis zum 24.09.2026 ganz oben in der Funktion und übersprang damit
+  // alles Folgende: wer die Prüfberechtigten noch nicht ausgefüllt hatte, bekam auch keinen
+  // Befund zu den Nebenbestimmungen. Ein Wächter, der auf einen unbeteiligten Wert wartet,
+  // schweigt an der falschen Stelle.
+  const stellen = draft.sections["6"]?.fields["auditRights"]?.value;
+  if (!Array.isArray(stellen) || !stellen.length) return raus;
 
   const fehlend = PRUEFORGANE_LAND.filter((s) => !stellen.includes(s));
   if (fehlend.length) {
