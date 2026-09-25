@@ -48,7 +48,45 @@ cp .env.example .env
 ```
 
 **Jetzt von Hand:** in `.env` Endpunkt, Schlüssel und Modelle eintragen, und die
-Quelldokumente des MLEUV nach `02_backend/data` legen. Ohne sie hat der Index nichts zu lesen.
+Quelldokumente des MLEUV ergänzen — siehe der folgende Abschnitt. Ohne sie hat der Index
+nichts zu lesen.
+
+### Quelldokumente von Hand ergänzen
+
+Der Datenbestand des MLEUV ist nicht Teil des Repos. Er gehört nach
+`02_backend/data/Daten des MLEUV/` und hat diesen Aufbau:
+
+| Ordner | Inhalt | Dateien |
+|---|---|---|
+| `01 TESTCASE` | Testfall für den Durchlauf | 3 |
+| `03 Rechtsgrundlage Bund GAK Rahmenplan` | GAK-Rahmenplan des Bundes | 11 |
+| `04 Rechtsgrundlage Land § 44 LHO und nebst VV` | LHO, VV und VVG, Grundsätze für Förderrichtlinien | 7 |
+| `05 NICHT VERÖFFENTLICHEN (KI ist OK) Rechtsgrundlage MLEUV Verwaltungsbehörde ELER intern` | interne Vorgaben der ELER-Verwaltungsbehörde, dazu die Musterrichtlinien | 14 |
+| `06 NICHT VERÖFFENTLICHEN (KI ist OK) Rechtsgrundlage MLEUV Erlasse des Beauftragten des Haushalts intern` | Erlasse des Beauftragten für den Haushalt | 35 |
+| `07 NICHT VERÖFFENTLICHEN (KI ist OK) MLEUV Workshopunterlagen` | Unterlagen aus den Workshops | 2 |
+| `08 Rechtsgrundlage EU Beihilfenrecht` | AGVO, AgrarGVO, De-minimis, Leitlinien | 14 |
+| `09 Rechtsgrundlage Richtlinien MLEUV Land` | bestehende Landesrichtlinien — die Vorbilder | 18 |
+| `10 Rechtsgrundlage MLEUV GAK (Bund)` | Landesrichtlinien mit GAK-Kofinanzierung | 12 |
+| `11 Rechtsgrundlage MLEUV ELER` | ELER-Richtlinien und -Vorgaben | 20 |
+| `prozesse/` | BPMN des Prozessmodells samt Report | 3 |
+| *(oben, lose)* | `Anlage 04 Musterrichtlinie Land.pdf` — Vorlage für die Satzrahmen | 1 |
+
+**Die drei mit „NICHT VERÖFFENTLICHEN" dürfen an das Sprachmodell, aber nicht ins Repo.**
+Deshalb stehen ihre Dateinamen nirgends im Code, und `CORPUS_PREFIXES` in der `.env` lässt
+sie beim Indizieren aus.
+
+Aus zwei dieser Dokumente entstehen Dateien, die ebenfalls von git ausgenommen sind, weil sie
+deren Wortlaut tragen:
+
+| Erzeugte Datei | Entsteht aus | Befehl |
+|---|---|---|
+| `02_backend/musterbausteine_lokal.yaml` | Musterrichtlinie | `python src/musterbausteine.py --pdf "<Pfad>"` |
+| `02_backend/regeln_roh_lokal.yaml` | BPMN des Prozessmodells | `python src/regeln.py --bpmn "<Pfad>"` |
+
+Statt der Schalter gehen auch `MUSTER_PDF` und `PROZESS_BPMN` in der `.env`. Dazu kommt
+`02_backend/korpus_register_lokal.yaml`, von Hand gepflegt: dort stehen die Registereinträge
+der Dokumente, deren Dateiname nicht ins Repo gehört. Fehlt er, bleiben diese Dokumente ohne
+Kurznamen, und ihre Fundstellen sind nicht zitierfähig.
 
 ```bash
 # 2 Einmalige Läufe
