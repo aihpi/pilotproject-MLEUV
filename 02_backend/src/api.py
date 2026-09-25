@@ -55,7 +55,13 @@ class FeldDefinition(BaseModel):
 
 class Anfrage(BaseModel):
     abschnitt_nr: int = Field(ge=0, le=10, description="Baustein 1-8; 0, 9, 10 sind formal")
-    eingabe: str = Field(min_length=1)
+    eingabe: str = Field(
+        default="",
+        description="Die Angabe des Fachreferats. DARF LEER SEIN: der Knopf „Vorschlag "
+                    "holen\" im Formular wird auch auf einem Entwurf gedrückt, zu dem noch "
+                    "nichts gesagt wurde. Dort trägt allein der Regelfall, und eine "
+                    "abgewiesene Anfrage (HTTP 422) wäre die falsche Antwort auf eine "
+                    "zulässige Frage.")
     felder: list[FeldDefinition] = Field(min_length=1)
     konsens: bool = Field(
         default=False,
@@ -160,7 +166,7 @@ class RichtlinieAnfrage(BaseModel):
     """
     entwurf: dict
     abschnitte: list[int] | None = Field(
-        default=None, description="nur diese Abschnitte; ohne Angabe 1 bis 8")
+        default=None, description="nur diese Abschnitte; ohne Angabe 0 bis 10")
     titel: dict[int, str] | None = Field(
         default=None, description="Überschrift je Abschnitt, aus den Abschnittsdefinitionen")
     felder: dict[int, list[FeldDefinition]] | None = Field(
@@ -183,7 +189,7 @@ def richtlinie_bauen(anfrage: RichtlinieAnfrage):
                   for nr, liste in (anfrage.felder or {}).items()}
         ergebnis = richtlinie.bauen(
             anfrage.entwurf,
-            abschnitte=anfrage.abschnitte or range(1, 9),
+            abschnitte=anfrage.abschnitte or range(0, 11),
             titel=anfrage.titel,
             felder=felder or None,
         )

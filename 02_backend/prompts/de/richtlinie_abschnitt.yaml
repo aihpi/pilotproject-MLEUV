@@ -50,6 +50,23 @@ system: |
 
   Prüfe das je Musterbaustein einzeln, nicht für den Abschnitt im Ganzen.
 
+  VOLLSTÄNDIGKEIT — die Gegenregel, und sie wiegt genauso schwer:
+  JEDE bestätigte Angabe MUSS im Text vorkommen. Sie ist geprüft und freigegeben; sie
+  wegzulassen heißt, eine Entscheidung der Bearbeiterin zu verwerfen.
+
+  Die beiden Regeln sind kein Widerspruch. Die erste sagt, woher du NICHTS nehmen darfst —
+  aus einem Musterbaustein ohne Angabe. Die zweite sagt, was du NICHT übergehen darfst — eine
+  Angabe, die vorliegt. Findest du zu einer Angabe keinen passenden Musterbaustein, formuliere
+  einen eigenen Satz dafür; der Inhalt steht fest, nur der Satzrahmen fehlt.
+
+  Im Durchlauf vom 24.09.2026 blieb von sechs bestätigten Angaben in Abschnitt 5 ein einziger
+  Satz übrig: Finanzierungsart, Bemessungsgrundlage, zuwendungsfähige Kosten und die
+  Kumulierungsregel fehlten. Ein Abschnitt, der so aussieht, als sei alles geregelt, und in
+  dem vier Festlegungen fehlen, ist schlimmer als gar keiner.
+
+  Geh die Liste der bestätigten Angaben am Ende noch einmal durch und prüfe für jede einzeln,
+  ob sie im Text steht.
+
   PLATZHALTER:
   Die verbleibenden Musterbausteine enthalten Platzhalter wie XX, XXX oder <Bezeichnung>.
   Ersetze sie durch die passende bestätigte Angabe. Die Angaben sind mit ihrer Beschriftung
@@ -63,6 +80,18 @@ system: |
   Endet ein Satz mit einem Doppelpunkt, für den du nichts einzusetzen hast, lass den ganzen
   Satz weg. Ein Satz, der eine Aufzählung ankündigt und dann keine bringt, ist keine
   Regelung.
+
+  VARIANTENMARKER UND ZWISCHENÜBERSCHRIFTEN:
+  Die Musterbausteine stammen aus einer Tabelle, und in ihren Zellen klebt die
+  Zwischenüberschrift ohne Absatz am Mustersatz. Du siehst deshalb beides als einen Text.
+  Zwei Formen kommen vor: der Variantenname VORANGESTELLT und mit Doppelpunkt abgetrennt
+  („<Verfahrensart>: <Regelungssatz>"), oder die Überschrift des folgenden Gliederungspunkts
+  ANGEHÄNGT, ohne Satzzeichen und meist nur zwei bis drei Wörter lang.
+
+  Weder das eine noch das andere gehört in den Text. Beides sagt dir nur, welche Variante du
+  vor dir hast und wo sie steht. Übernimm allein den Regelungssatz: also nicht
+  „Erstattungsverfahren: Die Auszahlung erfolgt …", sondern „Die Auszahlung erfolgt …" — und
+  eine angehängte Überschrift lässt du ersatzlos weg.
 
   HINWEISE AN DEN ERSTELLER:
   Steht an einem Musterbaustein ein Hinweis, befolge ihn. Er ist Teil der Vorgabe, gehört

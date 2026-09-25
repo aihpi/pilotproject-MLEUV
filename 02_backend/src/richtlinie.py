@@ -41,7 +41,37 @@ from config import BASE
 loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 
 # Platzhalter der Musterrichtlinie. `XX` in allen Längen, dazu spitze Klammern.
-PLATZHALTER = re.compile(r"X{2,}|<[^>]{2,60}>", re.I)
+#
+# Dazu die Ausfüllhinweise, die KEINE Klammern tragen und deshalb wie Text aussehen. Der
+# Mustersatz zum Antragsverfahren nennt die Bewilligungsstelle als spitze Klammer und hängt
+# zwei weitere Lücken an: eine mit „ggf." eingeleitete Aufzählung dessen, was die Bearbeiterin
+# an Anschrift und Ansprechpartner ergänzen soll, und eine als „(variabel: …)" markierte
+# Frist. Im Durchlauf vom 24.09.2026 hat das Modell die spitze Klammer sauber durch die
+# Behörde ersetzt und den Rest stehen lassen — im fertigen Richtlinientext stand hinter dem
+# Behördennamen noch die Aufforderung, Ansprechpartner und Adresse einzusetzen. Eine
+# Anweisung an die Bearbeiterin, die in keine Richtlinie gehört.
+PLATZHALTER = re.compile(r"X{2,}|<[^>]{2,60}>|\bggf\.|\(variabel:", re.I)
+
+# Wo ein Satz endet — und wo eine Ordnungszahl nur so aussieht.
+#
+# Der Punkt in „31. Dezember 2031" ist kein Satzende. Ohne die Rücksicht darauf zerfiel
+# Abschnitt 8 in „… gilt bis zum 31." und „Dezember 2031.", und der Fragmentwächter meldete
+# den zweiten Teil als Zwischenüberschrift — ein Fehlalarm, den erst die Umstellung auf
+# deutsche Datumsschreibweise überhaupt möglich gemacht hat.
+SATZENDE = re.compile(r"(?<![0-9])(?<=[.!?])\s+")
+
+# Ab wie vielen Wörtern ein eigenständiger Satz beginnt.
+#
+# Die Musterrichtlinie ist eine Tabelle, und in ihren Zellen steht die Zwischenüberschrift
+# ohne Absatz vor oder hinter dem Mustersatz. docling macht daraus eine Zeile: auf den
+# Mustersatz zum Inkrafttreten folgt unmittelbar die Überschrift des nächsten
+# Gliederungspunkts, drei Wörter ohne Satzzeichen. Das Modell gibt sie getreu wieder, und im
+# Richtlinientext vom 24.09.2026 endete Abschnitt 8 mit genau diesem Fragment.
+#
+# Nicht in der Ingestion getrennt, sondern hier gemeldet: welcher Teil der Zelle Überschrift
+# ist und welcher Regelung, steht nirgends: ein Trennversuch würde Regelungstext löschen —
+# derselbe Grund, aus dem `pruefe_verworfene_optionen` feststellt statt zu filtern.
+SATZ_MINDESTWOERTER = 5
 
 # Ab dieser Länge gilt ein Satz als eigenständige Aussage, die belegt sein muss. Kürzere
 # sind Überschriften, Nummern oder Formeln wie „Im Auftrag" — dort sagt ein Zeichenvergleich
@@ -150,6 +180,26 @@ def _bausteine_text(bausteine):
     return "\n\n".join(teile) if teile else "(keine Musterbausteine für diesen Abschnitt)"
 
 
+_MONATE = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+           "September", "Oktober", "November", "Dezember")
+
+
+def _datum(wert):
+    """Ein Datumsfeld als deutsches Datum. Ohne erkennbares Datum unverändert.
+
+    Im Durchlauf vom 24.09.2026 stand in Abschnitt 8 „Die Richtlinie tritt mit Wirkung zum
+    2027-01-01 in Kraft". Das Datumsfeld liefert ISO, und ISO ging ungefiltert durch bis in
+    den Richtlinientext — eine Form, die in keiner Rechtsvorschrift des Landes vorkommt.
+    """
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", str(wert or "").strip())
+    if not m:
+        return None
+    jahr, monat, tag = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not 1 <= monat <= 12:
+        return None
+    return f"{tag}. {_MONATE[monat - 1]} {jahr}"
+
+
 def _klartext(wert, feld):
     """Den Wert so schreiben, wie er im Text erscheinen soll.
 
@@ -157,6 +207,8 @@ def _klartext(wert, feld):
     nichts; es muss aus dem Feldnamen erraten, was gemeint ist. Mit der Beschriftung aus
     der Optionsliste steht stattdessen „Anteilfinanzierung" da.
     """
+    if (feld or {}).get("kind") == "date":
+        return _datum(wert) or str(wert)
     optionen = {o.get("value"): (o.get("label") or o.get("value"))
                 for o in (feld or {}).get("options") or []}
     if isinstance(wert, list):
@@ -195,7 +247,7 @@ def _werte_text(werte, felder=None):
 
 
 def _saetze(text):
-    roh = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+    roh = SATZENDE.split((text or "").strip())
     return [s.strip() for s in roh if len(s.strip()) >= SATZ_MINDESTLAENGE]
 
 
@@ -336,6 +388,58 @@ def pruefe_selbstbezeichnung(text, werte):
 # Blick in den Korpus.
 
 
+# Ab wie vielen gemeinsamen Anfangszeichen zwei Wörter als dasselbe gelten.
+#
+# Zehn, und die Zahl ist an den Fehlern geeicht. Die Werte sind Komposita mit austauschbarem
+# Zweitglied: „Erstattungsprinzip" im Formular, „Erstattungsverfahren" im Text — dasselbe
+# Verfahren, anderes Grundwort. Kürzer angesetzt träfe „Zuwendungszweck" auf
+# „Zuwendungsempfangende", und der Wächter würde blind.
+_STAMM_MINDESTLAENGE = 10
+
+
+def _ist_zahlenfeld(wert, feld):
+    """Trägt dieses Feld eine Zahl, auf die es ankommt?
+
+    Die Unterscheidung ist nötig, seit die Zahlenprüfung streng ist: fehlt eine Zahl im Text,
+    gilt die Angabe als fehlend — ohne Spielraum. Für einen Fördersatz ist das richtig, für
+    ein Auswahlfeld nicht. „Variante 1 — nur noch nicht begonnene Vorhaben (Grundsatz nach
+    § 44 LHO)" trägt die Ziffern 1 und 44, und beide sind Kennungen des Formulars, keine
+    Regelung. Am 24.09.2026 wurde die Angabe deshalb als fehlend gemeldet, obwohl der Text
+    den Grundsatz wörtlich wiedergab.
+
+    Am WERT erkannt, nicht nur an `kind`: die Felddefinitionen sind freiwillig, und ohne sie
+    fiele die Zahlenprüfung sonst ganz aus.
+    """
+    if isinstance(wert, bool):
+        return False
+    if isinstance(wert, (int, float)):
+        return True
+    if (feld or {}).get("kind") in ("number", "date"):
+        return True
+    return bool(re.fullmatch(r"[\d .,]+", str(wert or "").strip()))
+
+
+def _wort_gedeckt(wort, kleintext, textwoerter):
+    """Kommt dieses Wort im Text vor — auch als anderes Kompositum?
+
+    Drei Stufen, von streng nach großzügig. Als Teilwort suchen, nicht als ganzes: der Wert
+    „Zuständiges Ministerium" erscheint im Text als „Fachministerium" — dasselbe Organ,
+    anderes Kompositum. Deutsche Komposita machen den Wortvergleich zur Falle, und eine
+    Falschmeldung ist hier teurer als ein übersehener Fund.
+
+    Die dritte Stufe kam aus dem Durchlauf vom 24.09.2026 dazu: bestätigt war
+    „Erstattungsprinzip", im Text stand „Erstattungsverfahren" und „im Wege der Erstattung".
+    Kein Teilwort traf, und der Wächter meldete die Angabe als fehlend — mitten in einem
+    Abschnitt, der sie über zwei Absätze ausbreitet.
+    """
+    if wort in kleintext:
+        return True
+    if len(wort) < _STAMM_MINDESTLAENGE:
+        return False
+    stamm = wort[:_STAMM_MINDESTLAENGE]
+    return any(t.startswith(stamm) for t in textwoerter)
+
+
 def pruefe_fehlende_werte(text, felder, werte):
     """Kommt jede bestätigte Angabe im Text vor?
 
@@ -360,7 +464,15 @@ def pruefe_fehlende_werte(text, felder, werte):
         if not klartext:
             continue
 
-        zahlen = re.findall(r"\d+", klartext)
+        # Zahlen NUR bei Zahlenfeldern suchen.
+        #
+        # Vorher galt: enthält der Klartext irgendeine Ziffer, muss jede davon im Text
+        # stehen. Bei einem Auswahlfeld ist das falsch, und im Durchlauf vom 24.09.2026 war
+        # es ein Fehlalarm: die Option „Variante 1 — nur noch nicht begonnene Vorhaben
+        # (Grundsatz nach § 44 LHO)" trägt die Ziffern 1 und 44. Der Text gab den Grundsatz
+        # vollständig wieder, aber ohne die Nummer der Variante — die ist eine Kennung des
+        # Formulars, keine Regelung. Gemeldet wurde trotzdem „steht nicht im Text".
+        zahlen = re.findall(r"\d+", klartext) if _ist_zahlenfeld(w["wert"], feld) else []
         if zahlen:
             fehlend = [z for z in zahlen if z not in kleintext]
             if fehlend:
@@ -371,12 +483,7 @@ def pruefe_fehlende_werte(text, felder, werte):
         woerter = set(re.findall(r"\w{5,}", klartext))
         if not woerter:
             continue
-        # Als Teilwort suchen, nicht als ganzes Wort. Der Wert „Zuständiges Ministerium"
-        # erscheint im Text als „Fachministerium" — dasselbe Organ, anderes Kompositum. Mit
-        # ganzen Wörtern verglichen fiel die Prüfung durch und meldete die Angabe als
-        # fehlend, obwohl sie dastand. Deutsche Komposita machen den Wortvergleich zur
-        # Falle, und eine Falschmeldung ist hier teurer als ein übersehener Fund.
-        gefunden = sum(1 for w in woerter if w in kleintext)
+        gefunden = sum(1 for wort in woerter if _wort_gedeckt(wort, kleintext, textwoerter))
         if gefunden / len(woerter) < 1 / 3:
             befunde.append(f"{w['feld']}: „{name}“ ist bestätigt, kommt im Text aber "
                            f"nicht vor")
@@ -420,23 +527,115 @@ def pruefe_text(text, bausteine, werte, felder=None):
     # Musterbausteinen wäre die Musterrichtlinie"). Für ein einzelnes leeres Feld nicht.
     rahmenwoerter = set(re.findall(
         r"\w{5,}", _norm(" ".join(t.get("text") or "" for t in bausteine))))
+    # Die BESCHRIFTUNG zählt zur Angabe, nicht nur der Wert.
+    #
+    # Ein Auswahlfeld trägt seinen Gegenstand im Namen und seine Entscheidung im Wert:
+    # „Weiterleitung an Dritte" = „Nicht zulässig". Der Satz, der beides zusammenführt —
+    # „Eine Weiterleitung der Zuwendung an Dritte ist nicht zulässig." — kam am 24.09.2026
+    # auf 40 Prozent Überlappung und wurde als Satz ohne Rückhalt gemeldet, obwohl er genau
+    # die bestätigte Angabe wiedergibt und nichts sonst. Wer den Wert im Text nennen soll,
+    # muss auch sagen dürfen, wovon er handelt.
+    beschriftungen = " ".join((nach_id.get(w["feld"]) or {}).get("label") or "" for w in werte)
     wertwoerter = set(re.findall(r"\w{5,}", _norm(
-        " ".join(_klartext(w["wert"], nach_id.get(w["feld"])) for w in werte))))
+        " ".join(_klartext(w["wert"], nach_id.get(w["feld"])) for w in werte)
+        + " " + beschriftungen)))
     quellwoerter = rahmenwoerter | wertwoerter
+    quelltext = " ".join(sorted(quellwoerter))
     befunde = []
     for satz in _saetze(text):
         woerter = set(re.findall(r"\w{5,}", _norm(satz)))
         if not woerter:
             continue
-        deckung = len(woerter & quellwoerter) / len(woerter)
+        # Mit derselben Nachsicht wie `pruefe_fehlende_werte`, und aus demselben Grund.
+        #
+        # Vorher wurden hier ganze Wörter geschnitten: „allgemeinen" traf die Beschriftung
+        # „Allgemeine Nebenbestimmungen" nicht, und der Satz „Für dieses Vorhaben gelten die
+        # allgemeinen Nebenbestimmungen nach ANBest-P" kam auf 33 Prozent — gemeldet als Satz
+        # ohne Rückhalt, obwohl er nichts anderes sagt als der bestätigte Wert. Zwei Wächter,
+        # die dieselbe Frage verschieden streng beantworten, sind einer zu viel.
+        gefunden = sum(1 for wort in woerter
+                       if _wort_gedeckt(wort, quelltext, quellwoerter))
+        deckung = gefunden / len(woerter)
         if deckung < 0.5:
             befunde.append(f"Satz ohne Rückhalt in Musterbaustein oder Angabe "
                            f"({int(deckung * 100)} % Überlappung): {satz[:120]!r}")
+
+    befunde += pruefe_fragmente(text)
 
     offen = sorted({m.group(0) for m in PLATZHALTER.finditer(text or "")})
     if offen:
         befunde.append(f"nicht gefüllte Platzhalter: {', '.join(offen)}")
     return befunde
+
+
+def pruefe_fragmente(text):
+    """Steht im Text etwas, das kein Satz ist?
+
+    Gemeint sind die Zwischenüberschriften der Musterrichtlinie, die beim Einlesen an ihrem
+    Mustersatz kleben bleiben (siehe `SATZ_MINDESTWOERTER`). Sie fallen durch beide
+    bisherigen Prüfungen: `pruefe_text` lässt alles unter `SATZ_MINDESTLAENGE` aus, weil dort
+    ein Zeichenvergleich nichts mehr sagt, und gedeckt sind sie ohnehin — sie stammen
+    wörtlich aus einem Musterbaustein.
+
+    Zwei Formen, beide aus dem Durchlauf vom 24.09.2026:
+
+    - Am Ende von Abschnitt 8 eine dreiwörtrige Überschrift OHNE Satzzeichen.
+    - In Abschnitt 7 eine zweiwörtrige MIT Punkt — 43 Zeichen lang und damit über der
+      Zeichenschranke, ein Satz mit Regelungsgehalt ist es trotzdem nicht.
+    """
+    def ist_satz(stueck):
+        # Ein Satz endet auf ein Satzzeichen UND trägt genug Wörter. Beides ist nötig:
+        # die eine Überschrift scheitert am fehlenden Satzzeichen, die andere trägt einen
+        # Punkt und scheitert allein an der Wortzahl.
+        return bool(re.search(r"[.!?]$", stueck)) and len(stueck.split()) >= SATZ_MINDESTWOERTER
+
+    stuecke = [s.strip() for t2 in (text or "").strip().split("\n")
+               for s in SATZENDE.split(t2)]
+    stuecke = [s for s in stuecke if s]
+    # Nur dort, wo der Abschnitt überhaupt aus Sätzen besteht.
+    #
+    # Ein Text ganz ohne Satz ist kein Regelungstext, sondern eine Formel — die Schlussformel
+    # „Potsdam, den 1. Januar 2027 / Ministerium … / Im Auftrag" besteht aus nichts anderem.
+    # Sie wird wörtlich übernommen und hat mit diesem Wächter nichts zu tun.
+    if not any(ist_satz(s) for s in stuecke):
+        return []
+    return [f"kein vollständiger Satz, vermutlich eine Zwischenüberschrift aus der Vorlage: "
+            f"{s[:120]!r}" for s in stuecke if not ist_satz(s)]
+
+
+# Abschnitte, die wörtlich übernommen werden — ohne Modellaufruf.
+#
+# Präambel, Sonstiges und Schlussformel haben keine Musterbausteine und nichts zu
+# formulieren: was die Bearbeiterin dort schreibt, IST der Text. Ein Modell könnte hier nur
+# umformulieren, und umformulieren heißt hier verfälschen — „Potsdam, den 1. Januar 2027"
+# verträgt keine Verbesserung.
+#
+# Bis zum 24.09.2026 wurden diese drei gar nicht gebaut: `bauen` lief über `range(1, 9)`, und
+# die Oberfläche fragte dieselben acht ab. Die Schlussformel war im Formular bestätigt, stand
+# im Prüfvermerk als vollständig — und fehlte in der Word-Datei ersatzlos.
+_WOERTLICH = {0, 9, 10}
+
+# Felder, die im Dokument schon woanders stehen und im Abschnittstext nur doppelt wären.
+_NICHT_IN_DEN_TEXT = {"title"}
+
+
+def _woertlicher_abschnitt(entwurf, abschnitt_nr, felder=None):
+    """Einen wörtlichen Abschnitt zusammensetzen. Ergibt (text, nachweis)."""
+    werte = bestaetigte_werte(entwurf, abschnitt_nr)
+    nach_id = {f.get("id"): f for f in felder or []}
+    absaetze = [str(_klartext(w["wert"], nach_id.get(w["feld"]))).strip()
+                for w in werte if w["feld"] not in _NICHT_IN_DEN_TEXT]
+    text = "\n\n".join(a for a in absaetze if a)
+    if not text:
+        return "", {"uebersprungen": "keine bestätigten Angaben", "begruendungen": [],
+                    "befunde": [], "modelle": []}
+    return text, {
+        "begruendungen": begruendungen(entwurf, abschnitt_nr),
+        "verwendete_bausteine": [], "offene_platzhalter": [],
+        # Keine Prüfung, und das ist kein Versäumnis: geprüft wird, ob das Modell von den
+        # Angaben abgewichen ist. Hier war kein Modell beteiligt.
+        "befunde": [], "modelle": [], "woertlich": True,
+    }
 
 
 def abschnitt_bauen(entwurf, abschnitt_nr, titel=None, nur_landesrecht=True, felder=None):
@@ -446,6 +645,9 @@ def abschnitt_bauen(entwurf, abschnitt_nr, titel=None, nur_landesrecht=True, fel
     die Prüfung auf verworfene Optionen gebraucht und sind deshalb freiwillig — fehlen sie,
     entfällt diese eine Prüfung, der Rest läuft.
     """
+    if abschnitt_nr in _WOERTLICH:
+        return _woertlicher_abschnitt(entwurf, abschnitt_nr, felder)
+
     bausteine = vorschlag.rahmen(abschnitt_nr, nur_landesrecht)
     werte = bestaetigte_werte(entwurf, abschnitt_nr)
 
@@ -538,7 +740,7 @@ def abschnitt_bauen(entwurf, abschnitt_nr, titel=None, nur_landesrecht=True, fel
     }
 
 
-def bauen(entwurf, abschnitte=range(1, 9), titel=None, nur_landesrecht=True, felder=None):
+def bauen(entwurf, abschnitte=range(0, 11), titel=None, nur_landesrecht=True, felder=None):
     """Die ganze Richtlinie. Ergibt {abschnitte: [...], befunde: [...]}."""
     raus, alle_befunde = [], []
     for nr in abschnitte:
@@ -556,7 +758,7 @@ def main():
     args = p.parse_args()
 
     entwurf = json.loads(Path(args.entwurf).read_text(encoding="utf-8"))
-    nummern = [args.abschnitt] if args.abschnitt else range(1, 9)
+    nummern = [args.abschnitt] if args.abschnitt else range(0, 11)
     ergebnis = bauen(entwurf, nummern)
 
     for a in ergebnis["abschnitte"]:

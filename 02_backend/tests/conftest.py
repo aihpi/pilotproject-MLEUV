@@ -45,8 +45,10 @@ def musterbausteine_fest(monkeypatch):
         8: [
             # Landesrecht — die angeklebte Überschrift steht jenseits von Zeichen 80.
             {"nummer": "8.1",
-             "text": "Die Richtlinie tritt mit Wirkung zum XXX in Kraft und gilt bis zum XXX. "
-                     "Geltungsdauer im Beihilfebereich",
+             # Erfundener Satz mit dem Bauplan des echten: Landesrecht voran, die
+             # angeklebte Beihilfe-Überschrift erst jenseits von Zeichen 80.
+             "text": "Diese Förderrichtlinie tritt am Tag nach ihrer Bekanntmachung in Kraft "
+                     "und endet mit Ablauf der festgelegten Frist. Laufzeit im Beihilfebereich",
              "hinweis": None},
             {"nummer": "8.2", "text": "AGVO Die Laufzeit dieser Förderrichtlinie ist befristet.",
              "hinweis": None},

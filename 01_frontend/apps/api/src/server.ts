@@ -412,6 +412,14 @@ app.delete("/api/drafts/:id/freigabe", async (req) => {
   return d;
 });
 
+/**
+ * Abschnitte, die im Rechtstext ohne Nummer und ohne Überschrift stehen.
+ *
+ * 0 ist die Präambel, 10 die Schlussformel, 9 ein freier Anhang. „0 Titel und Präambel" und
+ * „10 Schlussformel" sind Namen unseres Formulars, nicht Gliederungspunkte einer Richtlinie.
+ */
+const OHNE_NUMMER = new Set([0, 9, 10]);
+
 app.post("/api/drafts/:id/richtlinie", async (req, reply) => {
   const d = get((req.params as { id: string }).id);
 
@@ -429,9 +437,13 @@ app.post("/api/drafts/:id/richtlinie", async (req, reply) => {
           "dem Ausformulieren: erst liest jemand die Angaben gegen, dann entsteht Text.",
     });
 
-  const abschnitte = sections
-    .map((s) => Number(s.id))
-    .filter((n) => n >= 1 && n <= 8);
+  // Alle elf, nicht nur die acht mit Musterbausteinen.
+  //
+  // Bis zum 24.09.2026 lief hier `n >= 1 && n <= 8`. Präambel, Sonstiges und Schlussformel
+  // fielen damit aus dem erzeugten Text heraus — im Formular bestätigt, in der
+  // Abschnittsliste als vollständig ausgewiesen und in der Word-Datei nicht vorhanden. Der
+  // Dienst setzt sie wörtlich zusammen, ohne Modellaufruf; sie kosten also keine Zeit.
+  const abschnitte = sections.map((s) => Number(s.id));
 
   let res: Response;
   try {
@@ -987,14 +999,24 @@ app.get("/api/drafts/:id/export", async (req, reply) => {
         ...text.abschnitte
           .filter((a) => a.text.trim())
           .flatMap((a) => [
-            // Ohne Punkt hinter der Nummer, wie in den Richtlinien des Landes: dort steht
-            // „5 Art und Umfang, Höhe der Zuwendungen", darunter „5.1", „5.2". Der Punkt
-            // ist eine Gewohnheit aus Aufsätzen, keine aus Rechtstexten.
-            new Paragraph({
-              text: `${a.nr} ${sections.find((s) => s.id === String(a.nr))?.title ?? ""}`,
-              heading: HeadingLevel.HEADING_1,
-              spacing: { before: 360, after: 160 },
-            }),
+            // Präambel und Schlussformel tragen weder Nummer noch Überschrift.
+            //
+            // Sie stehen in keiner Richtlinie des Landes unter „0 Titel und Präambel" oder
+            // „10 Schlussformel" — das sind unsere Formularnamen, nicht die Gliederung des
+            // Rechtstextes. Die Präambel steht vor Nummer 1, die Schlussformel nach der
+            // letzten Nummer, beide ohne Zähler.
+            ...(OHNE_NUMMER.has(a.nr)
+              ? []
+              : [
+                  // Ohne Punkt hinter der Nummer, wie in den Richtlinien des Landes: dort
+                  // steht „5 Art und Umfang, Höhe der Zuwendungen", darunter „5.1", „5.2".
+                  // Der Punkt ist eine Gewohnheit aus Aufsätzen, keine aus Rechtstexten.
+                  new Paragraph({
+                    text: `${a.nr} ${sections.find((s) => s.id === String(a.nr))?.title ?? ""}`,
+                    heading: HeadingLevel.HEADING_1,
+                    spacing: { before: 360, after: 160 },
+                  }),
+                ]),
             // Absätze einzeln, nicht als ein Block.
             //
             // Vorher ging der ganze Abschnitt in EIN Paragraph-Element; Word kennt darin
@@ -1006,9 +1028,15 @@ app.get("/api/drafts/:id/export", async (req, reply) => {
             ...absaetze(a.text).map(
               (absatz, i, alle) =>
                 new Paragraph({
-                  text: alle.length > 1 ? `${a.nr}.${i + 1} ${absatz}` : `${a.nr}.1 ${absatz}`,
+                  text: OHNE_NUMMER.has(a.nr)
+                    ? absatz
+                    : alle.length > 1
+                      ? `${a.nr}.${i + 1} ${absatz}`
+                      : `${a.nr}.1 ${absatz}`,
                   spacing: { after: 160 },
-                  alignment: "both",
+                  // Die Schlussformel steht links und ungesperrt: Blocksatz würde „Potsdam,
+                  // den" über die Zeilenbreite ziehen.
+                  alignment: OHNE_NUMMER.has(a.nr) ? "left" : "both",
                 }),
             ),
           ]),

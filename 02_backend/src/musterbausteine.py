@@ -178,6 +178,25 @@ def schreiben(bausteine, pfad=ZIEL):
     return pfad
 
 
+# Eine Fußnotenziffer, wie sie die PDF-Aufbereitung stehen lässt.
+#
+# In der Musterrichtlinie hängt an einer Paragrafenangabe eine hochgestellte 1. Beim Einlesen
+# rutscht sie als gewöhnliche Ziffer zwischen die Abkürzung und das nächste Wort — und der
+# Satz ging so in den Richtlinientext, mit der Ziffer mitten drin (Durchlauf vom
+# 24.09.2026).
+#
+# Eng gefasst mit Absicht: nur eine ein- bis zweistellige Zahl zwischen einer ABKÜRZUNG in
+# Großbuchstaben und einem großgeschriebenen Wort. „§ 44 LHO" selbst bleibt unberührt, „nach
+# Nummer 2 Buchstabe a" ebenfalls — dort steht vor der Zahl ein Bezugswort. Eine Zahl, die
+# eine Regelung trägt, steht nie so allein.
+_FUSSNOTE = re.compile(r"\b([A-ZÄÖÜ]{2,})\s+\d{1,2}\s+(?=[A-ZÄÖÜ])")
+
+
+def fussnoten_weg(text):
+    """Fußnotenziffern aus einem eingelesenen Textbaustein entfernen."""
+    return _FUSSNOTE.sub(r"\1 ", text or "")
+
+
 def laden(pfad=ZIEL):
     """Erzeugte Datei laden: {baustein: [textbausteine]}. Leer, wenn sie fehlt.
 
@@ -189,7 +208,13 @@ def laden(pfad=ZIEL):
             daten = yaml.safe_load(f) or {}
     except FileNotFoundError:
         return {}
-    return {b["nummer"]: b.get("textbausteine") or [] for b in (daten.get("bausteine") or [])}
+    # Beim LADEN bereinigen, nicht beim Erzeugen: die erzeugte Datei bleibt damit ein
+    # getreues Abbild der Vorlage, und wer sie liest, sieht, was wirklich dort steht.
+    return {
+        b["nummer"]: [{**t, "text": fussnoten_weg(t.get("text"))}
+                      for t in (b.get("textbausteine") or [])]
+        for b in (daten.get("bausteine") or [])
+    }
 
 
 def main():

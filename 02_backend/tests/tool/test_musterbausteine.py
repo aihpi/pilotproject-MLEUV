@@ -87,3 +87,28 @@ class TestLaden:
         geladen = mb.laden(datei)
         assert list(geladen) == [1]
         assert geladen[1][0]["nummer"] == "1.1"
+
+
+class TestFussnoten:
+    """Fußnotenziffern aus der PDF-Aufbereitung.
+
+    In der Musterrichtlinie hängt an einer Paragrafenangabe eine hochgestellte 1. Beim
+    Einlesen rutscht sie als gewöhnliche Ziffer zwischen die Abkürzung und das nächste Wort —
+    und genau so ging der Satz in den Richtlinientext, mit der Ziffer mitten drin (Durchlauf
+    vom 24.09.2026). Die Proben sind nachgebaut, nicht aus der Vorlage zitiert.
+    """
+
+    def test_fussnote_nach_abkuerzung_faellt_weg(self):
+        assert mb.fussnoten_weg(
+            "gemäß § 12 der ABC 1 Leistungen werden gewährt"
+        ) == "gemäß § 12 der ABC Leistungen werden gewährt"
+
+    def test_eine_bezugszahl_bleibt(self):
+        # „Nummer 2" trägt eine Regelung — davor steht ein Bezugswort, keine Abkürzung.
+        for s in ["nach Nummer 2 Buchstabe a", "Artikel 107 Absatz 1 AEUV",
+                  "§ 44 LHO", "bis zu 90 Prozent der Ausgaben"]:
+            assert mb.fussnoten_weg(s) == s
+
+    def test_leerer_text_bleibt_leer(self):
+        assert mb.fussnoten_weg(None) == ""
+        assert mb.fussnoten_weg("") == ""
