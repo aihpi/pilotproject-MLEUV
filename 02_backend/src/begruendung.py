@@ -13,16 +13,22 @@ finanzschwache Gemeinden, definiert über das Haushaltssicherungskonzept, bestä
 Kommunalaufsicht" — keine fertige Begründung, aber ein anerkanntes Muster, an dem sich eine
 eigene ausrichten lässt.
 
-Deshalb kommt hier KEIN Modell zum Einsatz: gesucht wird, gekürzt wird nach Wortüberschneidung,
-und was gefunden wird, geht unverändert mit Quellenangabe zurück. Was nicht formuliert wird,
-kann auch nicht danebenformuliert werden — und eine erzeugte Begründung läse sich fertig und
-würde durchgewunken.
+Hier wird NICHTS FORMULIERT: gesucht wird, ausgewählt wird, und was gefunden wird, geht
+unverändert mit Quellenangabe zurück. Was nicht formuliert wird, kann auch nicht
+danebenformuliert werden — und eine erzeugte Begründung läse sich fertig und würde
+durchgewunken.
+
+Ein Modell ist dabei, seit der Satzfilter am 24.09.2026 zurückkam, aber nur als AUSWÄHLENDES:
+es entscheidet, welche Sätze eines Fundes zur Sache gehören, und schreibt keinen einzigen.
+Vorher stand als „Vorbild" zum Fördersatz ein Hinweis an den Ersteller auf dem Bildschirm —
+kein Modellaufruf, dafür ein wertloser Präzedenzfall.
 
     from begruendung import vorbilder
     vorbilder("bagatellgrenze", "Ziff. 1.5 VV zu § 44 LHO", "1000")
 """
 import re
 
+import satzfilter
 from anfrage import suche
 from rag_query import bloecke_bilden
 from satzfilter import saetze_teilen, zusammensetzen
@@ -109,10 +115,12 @@ def _teilen(text):
 def _kuerzen(text, anfrage, hoechstens=SAETZE_JE_FUND):
     """Den Block auf die Sätze kürzen, die die Suchbegriffe tragen. Ohne Modell.
 
-    Der Satzfilter in `satzfilter.py` könnte das besser, kostet aber einen Modellaufruf — und
-    der ist hier ausdrücklich nicht gewollt: was unverändert aus der Quelle kommt, kann nicht
-    danebenformuliert werden. Gewichtet wird deshalb nach Wortüberschneidung, in der
-    ursprünglichen Reihenfolge, Lücken mit `(...)` gekennzeichnet wie überall im Werkzeug.
+    Der Notbehelf, seit der Satzfilter zurück ist: er greift nur noch dort, wo dieser nichts
+    geliefert hat — bei einem Ausfall oder einer Antwort, die sich nicht zuordnen ließ. Ein
+    ausgefallener Filterlauf soll den Knopf nicht leer zurückgeben.
+
+    Gewichtet wird nach Wortüberschneidung, in der ursprünglichen Reihenfolge, Lücken mit
+    `(...)` gekennzeichnet wie überall im Werkzeug.
     """
     saetze = _teilen(text)
     if len(saetze) <= hoechstens:
@@ -128,7 +136,7 @@ def _kuerzen(text, anfrage, hoechstens=SAETZE_JE_FUND):
 
 
 def vorbilder(regel, rechtsstelle=None, wert=None, top_k=VORBILDER, ohne_dateien=None):
-    """Bis zu `top_k` Textstellen mit Fundstelle. Ohne Modell, ohne Umformulierung.
+    """Bis zu `top_k` Textstellen mit Fundstelle. Unverändert, ohne Umformulierung.
 
     Ergibt [{fundstelle, text, datei, seite}]. Die Datei- und Seitenangabe macht die
     Fundstelle anklickbar — ohne sie wäre sie eine Behauptung, die nur nachprüfen kann, wer
@@ -140,26 +148,45 @@ def vorbilder(regel, rechtsstelle=None, wert=None, top_k=VORBILDER, ohne_dateien
     # Nur frühere Richtlinien und Rahmenpläne: die VV sagt, was zulässig ist, aber nicht, wie
     # man eine Abweichung begründet. Dieselbe Einschränkung wie bei der Abfragesorte
     # „vorschlagen" im Prozessmodell.
-    # OHNE Reranking, und das ist der Punkt: es ist der einzige Modellaufruf in dieser
-    # Kette. Mit ihm dauerte der Knopf zehn Sekunden und das Versprechen „kein Modell" war
-    # falsch. Für einen Präzedenzfall genügt die Trefferliste der Suche — es geht nicht um
-    # die beste Stelle, sondern um drei zum Vergleichen.
+    # OHNE Reranking: für einen Präzedenzfall genügt die Trefferliste der Suche — es geht
+    # nicht um die beste Stelle, sondern um drei zum Vergleichen.
     treffer = suche(text, top_k=top_k * 3, rerank=False,
                     nur_arten=("richtlinie", "rahmenplan"),
                     ohne_dateien=HOLDOUT_DATEIEN if ohne_dateien is None else ohne_dateien)
+    bloecke = [b for b in bloecke_bilden(treffer)
+               # Unlesbares gar nicht erst anbieten. Die Ursache liegt in der Aufbereitung
+               # und gehört dort behoben — bis dahin ist ein Block weniger besser als ein
+               # Block, den niemand lesen kann.
+               if not _tabellenrest(b["roh"] or "")]
+    if not bloecke:
+        return []
+
+    # Der Satzfilter, am 24.09.2026 zurückgeholt.
+    #
+    # Er war herausgenommen, damit der Knopf schnell bleibt und ohne Modellaufruf auskommt.
+    # Der Preis dafür stand im Durchlauf desselben Tages auf dem Bildschirm: als „Vorbild" zum
+    # Fördersatz erschien ein HINWEIS AN DEN ERSTELLER („Diese Angaben sind vor Bewilligung
+    # eindeutig mit ja/nein zu beurteilen") — keine Regelung, und als Präzedenzfall wertlos.
+    # Dies ist der ungefilterteste Weg im Werkzeug: keine Abschnittsnummer, kein Reranking,
+    # nichts. Zehn Sekunden für drei brauchbare Stellen sind der bessere Handel als drei
+    # sofortige, von denen eine in die Irre führt.
+    #
+    # Er ENTSCHEIDET nichts: er wählt Sätze aus, die schon dastehen. Der Wortlaut bleibt
+    # unverändert, und damit bleibt auch das Versprechen dieses Knopfes gültig.
+    gefiltert, _ = satzfilter.filtern(text, bloecke)
     raus = []
-    for b in bloecke_bilden(treffer):
+    for b in gefiltert:
         if len(raus) >= top_k:
             break
-        # Unlesbares gar nicht erst anbieten. Die Ursache liegt in der Aufbereitung und
-        # gehört dort behoben — bis dahin ist ein Block weniger besser als ein Block, den
-        # niemand lesen kann.
-        if _tabellenrest(b["roh"] or ""):
+        # Ein Block, in dem der Filter keinen einschlägigen Satz gefunden hat, gehört nicht
+        # zur Sache — dieselbe Regel wie in `vorschlag.belege_holen`.
+        if b["gefiltert"] and not b["indizes"]:
             continue
         payload = b["punkt"].payload
         raus.append({
             "fundstelle": b["fundstelle"],
-            "text": _kuerzen(b["roh"] or "", text),
+            # Der Filter hat schon gekürzt; `_kuerzen` greift nur, wo er nichts getan hat.
+            "text": (b["kurz"] if b["gefiltert"] else _kuerzen(b["roh"] or "", text)).strip(),
             "datei": payload.get("quelle"),
             "seite": (payload.get("seiten") or [None])[0],
         })

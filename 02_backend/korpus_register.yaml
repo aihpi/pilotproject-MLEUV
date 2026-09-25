@@ -306,11 +306,19 @@ dokumente:
     zitierweise: nummer
     pruefen: true
   - datei: "Nichtamtliche Lesefassung zur 1. Änderung der Richtlinie zu.pdf"
-    kurzname: "Lesefassung 1. Änderung"
-    aliase: []
+    # Am 24.09.2026 im Dokument nachgesehen: es ist die ILE-RL, „Richtlinie über die
+    # Gewährung von Zuwendungen zur Förderung der integrierten ländlichen Entwicklung"
+    # vom 27. April 2024, in der Lesefassung vom 13.01.2026. Der Dateiname bricht nach
+    # „der Richtlinie zu" ab, deshalb stand hier vorher kein Name.
+    #
+    # Warum das mehr ist als Kosmetik: Der Kurzname steht als Fundstelle unter jedem
+    # Vorbild im Prüfvermerk, und der geht ins Anschreiben ans MdFE. „Lesefassung
+    # 1. Änderung, Nummer 6.4" kann niemand nachschlagen — eine Fundstelle, die man nicht
+    # aufschlagen kann, ist eine Behauptung.
+    kurzname: "ILE-RL (Lesefassung 13.01.2026)"
+    aliase: ["ILE-RL", "ILE-Richtlinie"]
     art: richtlinie
     zitierweise: nummer
-    # ?? Änderung welcher Richtlinie? Titel ist im Dateinamen abgeschnitten
     pruefen: true
   - datei: "RL Junglandwirte 22.pdf"
     kurzname: "RL Junglandwirte"

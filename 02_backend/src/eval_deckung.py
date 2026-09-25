@@ -31,6 +31,7 @@ from pathlib import Path
 from bmds_prompt_loader import PromptLoader
 from bmds_prompt_security import sanitize_and_wrap
 
+import richtlinie
 import vorschlag
 from eval_feld import laden
 from judge_antwort import json_aus
@@ -77,15 +78,27 @@ def lauf(faelle, felder_def, nur=None):
         for v in vorschlaege:
             if v.get("status") != "suggested":
                 continue
+            # Den Wert als KLARTEXT vorlegen, nicht als Kennung.
+            #
+            # Der erste Lauf am 24.09.2026 ergab 36 Prozent nicht tragende Belege. Bei der
+            # Durchsicht waren zehn der zwölf Fehlurteile keine: dem bewertenden Modell stand
+            # „BEHAUPTETER WERT: advance" gegenüber einem deutschen Text über das
+            # Vorschussverfahren — also genau der Sache, die `advance` bezeichnet. Dasselbe
+            # bei `grant`, `anbest-p-g`, `analog-deadline`, `three` und drei ISO-Daten.
+            #
+            # Eine Messung, die ihren eigenen Gegenstand nicht benennen kann, misst sich
+            # selbst. `_klartext` löst dieselbe Aufgabe schon beim Ausformulieren, und aus
+            # demselben Grund.
+            klartext = richtlinie._klartext(v["wert"], felder_def.get(v["feld"]))
             for art, stelle in (("Deckung", v.get("deckung")),
                                 ("Beleg", v.get("belegzitat"))):
                 if not stelle:
                     continue
-                urteil, warum, modell = beurteilen(v["label"], v["wert"], stelle)
+                urteil, warum, modell = beurteilen(v["label"], klartext, stelle)
                 modelle.add(modell)
                 zaehler[(art, urteil)] += 1
                 if urteil == "traegt_nicht":
-                    schlecht.append((fall["id"], art, v["feld"], str(v["wert"])[:40],
+                    schlecht.append((fall["id"], art, v["feld"], str(klartext)[:40],
                                      str(stelle)[:90], warum))
 
     print()

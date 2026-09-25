@@ -62,9 +62,10 @@ _BEIHILFE = re.compile(
 
 # Geprüft wird nur der Textanfang. Ein Musterbaustein, der VON Beihilfe handelt, sagt das im
 # ersten Satz („AGVO Die Laufzeit …", „Allgemeine De-minimis - VO …"). Einer, der sie nur
-# streift, ist Landesrecht — und über den ganzen Text gesucht fiel genau der heraus: an 8.1
-# („Die Richtlinie tritt mit Wirkung zum XXX in Kraft …") klebt die Überschrift des folgenden
-# Abschnitts, ein Artefakt der Zeilenzusammenführung. Damit war Baustein 8 komplett leer.
+# streift, ist Landesrecht — und über den ganzen Text gesucht fiel genau der heraus: am
+# Mustersatz zum Inkrafttreten klebt die Überschrift des folgenden Abschnitts, die ihrerseits
+# den Beihilfebereich nennt — ein Artefakt der Zeilenzusammenführung. Damit war Baustein 8
+# komplett leer.
 _BEIHILFE_FENSTER = 80
 
 # Kyrillische und griechische Zwillinge lateinischer Buchstaben. Ein Probelauf lieferte für
@@ -151,6 +152,19 @@ def _ohne_bezug(deckung, wert, feld):
     return bool(bezug) and not (deck & bezug)
 
 
+# Die Lücken der Musterrichtlinie: „XX Euro", „bis zum XXX", „<Bezeichnung>".
+#
+# ENGER gefasst als `richtlinie.PLATZHALTER`, und der Unterschied ist wichtig. Dort wird
+# erzeugter Text geprüft, hier ein Zitat aus einer echten Richtlinie. „ggf." gehört dort zu
+# den Platzhaltern, weil es als Ausfüllhinweis in der Vorlage steht — in einem
+# Korpusdokument ist es gewöhnliches Verwaltungsdeutsch („ggf. erforderliche Unterlagen"),
+# und ein Beleg dürfte daran nicht scheitern.
+#
+# Auch ohne re.I, anders als dort: der Platzhalter ist großgeschrieben. Ein „xx" in einem
+# Wort ist keines.
+_NOCH_PLATZHALTER = re.compile(r"X{2,}|<[^>]{2,60}>")
+
+
 def _als_liste(wert):
     """Eine Mehrfachauswahl in eine Liste bringen, wie das Modell sie auch schreibt.
 
@@ -232,10 +246,11 @@ def _felder_text(felder):
 # Die Sorten von Abfragen aus dem Prozessmodell, mit dem Korpusausschnitt, den sie sehen.
 #
 # Nur die Sorte „vorschlagen" steht hier, weil nur für sie das Modell einen allgemeinen
-# Filter nennt — und zwar dreimal wörtlich: „Prompt generieren Dokumente: Nur alte RL des
-# Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)". Für die Sorten „übernehmen" und
-# „belegen" benennt das Modell jeweils ein bestimmtes Dokument, keinen Ausschnitt nach Art;
-# die bekommen ihren Filter deshalb vom Aufrufer und keinen Namen hier.
+# Filter nennt — und zwar an drei Stellen gleichlautend: als Hilfestellung ausschließlich
+# frühere Richtlinien des Landes und der GAK, auch bei einer Richtlinie ohne GAK-Bezug. Für
+# die Sorten „übernehmen" und „belegen" benennt das Modell jeweils ein bestimmtes Dokument,
+# keinen Ausschnitt nach Art; die bekommen ihren Filter deshalb vom Aufrufer und keinen
+# Namen hier.
 #
 # Der Unterschied ist haftungsrelevant, nicht technisch: ein Fund aus einer Vorschrift ist
 # Wortlaut mit Fundstelle, ein Vorschlag aus einer fremden Richtlinie ist ein Entwurf zur
@@ -282,13 +297,22 @@ _UEBERSCHRIFT = {
 
 
 def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
-                 ohne_dateien=None):
+                 ohne_dateien=None, zaehler=None):
     """Belegstellen zum Anliegen: Hybrid-Suche, dann Satzfilter. Nur Nachweis, keine Werte.
 
     `uhr`: optionales Wörterbuch, in das die Teilzeiten geschrieben werden. Die beiden
     Schritte sind sehr verschieden teuer — die Suche stellt mehrere Teilanfragen mit je einem
     Embedding-Aufruf, der Satzfilter ruft das Modell je Stapel. Wer beschleunigen will, muss
     wissen, welcher von beiden es ist.
+
+    `zaehler`: optionales Wörterbuch für die Trefferzahlen — wie viele Blöcke die Suche
+    brachte und wie viele davon der Satzfilter als unergiebig verworfen hat.
+
+    Die Verwurfsquote ist die Antwort auf eine Frage, die das Werkzeug bisher nicht messen
+    konnte: „findet die Suche Themenfremdes?" Der Satzfilter beurteilt JEDEN gefundenen Block
+    darauf, ob ein einschlägiger Satz darin steht — ein Relevanzurteil je Block, bei jedem
+    Aufruf, ohne zusätzlichen Modellaufruf. Bis zum 24.09.2026 wurde dieses Urteil benutzt und
+    weggeworfen; das Protokoll wusste danach nur, was übrig blieb, nicht wie viel weg musste.
     """
     t0 = time.monotonic()
     treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k,
@@ -296,6 +320,8 @@ def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
     bloecke = bloecke_bilden(treffer)
     if uhr is not None:
         uhr["belege_suche"] = round(time.monotonic() - t0, 1)
+    if zaehler is not None:
+        zaehler["gefunden"] = len(bloecke)
     if not bloecke:
         return [], []
 
@@ -304,8 +330,17 @@ def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
     if uhr is not None:
         uhr["belege_satzfilter"] = round(time.monotonic() - t0, 1)
     # Ein Block ohne gewählten Satz belegt nichts und fliegt raus — wie in rag_query.
-    bloecke = [b for b in bloecke if not (b["gefiltert"] and not b["indizes"])]
-    return bloecke, metas
+    behalten = [b for b in bloecke if not (b["gefiltert"] and not b["indizes"])]
+    if zaehler is not None:
+        zaehler["verworfen"] = len(bloecke) - len(behalten)
+        # Nur über die Blöcke, die der Filter überhaupt beurteilt hat. Ein Ausfall des
+        # Filters ist kein Relevanzurteil und darf die Quote nicht schönen.
+        beurteilt = [b for b in bloecke if b["gefiltert"]]
+        zaehler["beurteilt"] = len(beurteilt)
+        if beurteilt:
+            ohne_satz = sum(1 for b in beurteilt if not b["indizes"])
+            zaehler["verwurfsquote"] = round(ohne_satz / len(beurteilt), 2)
+    return behalten, metas
 
 
 def _norm(s):
@@ -549,6 +584,25 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
                        f"{str(v['belegzitat'])[:120]!r}")
         v["belegzitat"] = None
         v["beleg_geprueft"] = False
+    elif v.get("belegzitat") and _NOCH_PLATZHALTER.search(str(v["belegzitat"])):
+        # Ein Belegzitat mit Platzhalter belegt nichts.
+        #
+        # Ein Beleg darf aus einem Musterbaustein stammen — das ist Absicht, der Satzrahmen
+        # ist oft die genauere Quelle. Steht darin aber noch die Lücke der Vorlage, ist er
+        # als Beleg wertlos: ein Mustersatz zur Bagatellgrenze, der den Betrag als „XX Euro"
+        # offen lässt, kann die Zahl 1000 nicht stützen — und eine Frist „bis zum XXX" kein
+        # Datum.
+        #
+        # In der Messung vom 25.09.2026 waren das VIER der neun nicht tragenden Belege — die
+        # größte einzelne Gruppe, und die einzige, die sich ohne Abwägung erkennen lässt.
+        #
+        # Verworfen wird nur der BELEG, nicht der Wert: der Wert kann aus der Eingabe gedeckt
+        # und völlig richtig sein. Ihm fehlt dann nur die zusätzliche Verankerung, und keine
+        # Angabe ist besser als eine, die ins Leere zeigt.
+        befunde.append(f"{feld['id']}: Belegzitat enthält noch einen Platzhalter der "
+                       f"Vorlage — {str(v['belegzitat'])[:120]!r}")
+        v["belegzitat"] = None
+        v["beleg_geprueft"] = False
     elif v.get("belegzitat"):
         v["beleg_geprueft"] = True
     return befunde
@@ -577,6 +631,14 @@ _MIT_REGELFALL = (
     'Geben die Musterbausteine nichts her, ist der Wert genau "[Unklar]". Erfinde nichts — '
     "ein abgeleiteter Wert steht im Musterbaustein, ein erfundener nirgends."
 )
+
+
+# Was im Prompt steht, wenn die Bearbeiterin noch nichts gesagt hat.
+#
+# Eine leere Stelle im Prompt liest sich wie ein Fehler; dieser Satz sagt, dass es keiner
+# ist. Gebraucht wird er beim Knopf „Vorschlag holen" auf einem frischen Entwurf — dort
+# trägt allein der Regelfall.
+_KEINE_EINGABE = "(Die Bearbeiterin hat zu diesem Abschnitt noch nichts angegeben.)"
 
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
@@ -615,9 +677,11 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
                          f"bekannt sind {sorted(ABFRAGEARTEN)}")
     nur_arten = ABFRAGEARTEN.get(abfrageart)
 
+    suchzaehler = {}
     if mit_belegen:
         bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr,
-                                      nur_arten=nur_arten, ohne_dateien=ohne_dateien)
+                                      nur_arten=nur_arten, ohne_dateien=ohne_dateien,
+                                      zaehler=suchzaehler)
     else:
         bloecke, metas = [], []
     belege = "\n\n".join(
@@ -638,7 +702,7 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         baustein_titel=(bausteine[0].get("titel") if bausteine and bausteine[0].get("titel")
                         else f"Abschnitt {abschnitt_nr}"),
         musterbausteine=rahmen_txt,
-        eingabe=eingabe,
+        eingabe=eingabe or _KEINE_EINGABE,
         belege=sicher,
         belege_rolle=_ROLLE_VORBILD if abfrageart == "vorschlagen" else _ROLLE_NACHWEIS,
         belege_ueberschrift=_UEBERSCHRIFT.get(abfrageart, _UEBERSCHRIFT[None]),
@@ -809,6 +873,9 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         befunde=befunde,
         dauer_s=uhr,
         modelle=modelle,
+        # Wie viel die Suche brachte und wie viel davon unergiebig war. Siehe `belege_holen`:
+        # das einzige Relevanzmaß, das ohne zusätzlichen Modellaufruf zu haben ist.
+        suche=suchzaehler,
     )
 
     return vorschlaege, nachweis

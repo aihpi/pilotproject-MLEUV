@@ -434,3 +434,30 @@ class TestDeckungOhneBezug:
         v = {"feld": "payment", "wert": "refund", "quelle": "musterbaustein", "konfidenz": 0.9}
         vorschlag._pruefen(v, FELD_AUSZAHLUNG, [], eingabe="Irgendwas anderes.")
         assert v["gedeckt_durch_eingabe"] is False
+
+
+class TestBelegMitPlatzhalter:
+    """Ein Belegzitat mit offener Lücke der Vorlage belegt nichts.
+
+    Ein Beleg darf aus einem Musterbaustein stammen — der Satzrahmen ist oft die genauere
+    Quelle. Steht darin aber noch der Platzhalter, kann er keinen konkreten Wert stützen. In
+    der Messung vom 25.09.2026 waren das vier der neun nicht tragenden Belege: ein Mustersatz
+    zur Bagatellgrenze mit offenem Betrag unter dem Wert 1000, eine Frist „bis zum XXX" unter
+    einer Antragsfrist, und zweimal der Mustersatz zum Inkrafttreten mit zwei offenen Daten.
+    Die Proben unten sind nachgebaut, nicht aus der Vorlage zitiert.
+    """
+
+    def test_platzhalter_wird_erkannt(self):
+        for text in ("Der Mindestbetrag der Zuwendung beträgt XX Euro.",
+                     "bis zum XXX",
+                     "bei der zuständigen Stelle <Bezeichnung> einzureichen"):
+            assert vorschlag._NOCH_PLATZHALTER.search(text), text
+
+    def test_echter_rechtstext_bleibt_unberuehrt(self):
+        """Enger gefasst als in richtlinie.py — sonst fällt gewöhnliches Amtsdeutsch durch."""
+        for text in ("Der Fördersatz beträgt bis zu 90 Prozent der zuwendungsfähigen Ausgaben.",
+                     # „ggf." gilt in der VORLAGE als Ausfüllhinweis, in einer echten
+                     # Richtlinie ist es ein normales Wort.
+                     "Die ggf. erforderlichen Unterlagen sind nachzureichen.",
+                     "Zuwendungsempfangende nach Nummer 2.1 erhalten bis zu 800 000 Euro."):
+            assert not vorschlag._NOCH_PLATZHALTER.search(text), text
