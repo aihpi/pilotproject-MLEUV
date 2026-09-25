@@ -6,6 +6,7 @@ import {
   sections,
   textVeraltet,
   type RichtlinienAbschnitt,
+  musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, PageHeader } from "../components";
@@ -68,7 +69,8 @@ function Abschnitt({ a }: { a: RichtlinienAbschnitt }) {
                         : b.herkunft === "user-form"
                           ? "aus dem Formular"
                           : (b.herkunft ?? "Herkunft unbekannt")}
-                      {b.musterbaustein && `, Satzrahmen aus Musterbaustein ${b.musterbaustein}`}
+                      {b.musterbaustein &&
+                        `, Satzrahmen aus Musterbaustein ${musterbausteinText(b.musterbaustein)}`}
                       {b.fundstelle && `, belegt mit ${b.fundstelle}`}
                       {b.pruefungen.length > 0 && (
                         <span className="rl-geprueft">

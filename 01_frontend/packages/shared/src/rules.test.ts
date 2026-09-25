@@ -80,7 +80,8 @@ describe("rules", () => {
   });
 });
 
-// Modell: „Nur alte RL des Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)."
+// Nach dem Prozessmodell: als Hilfestellung nur frühere Richtlinien des Landes und der
+// GAK, auch bei einer Richtlinie ohne GAK-Bezug.
 describe("Abfragesorte nach Zielfeld", () => {
   it("Voraussetzungen kommen aus früheren Richtlinien", () => {
     expect(abfrageartFuer(["requirements"])).toBe("vorschlagen");

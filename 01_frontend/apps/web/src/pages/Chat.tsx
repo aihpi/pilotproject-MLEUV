@@ -9,6 +9,7 @@ import {
   sections,
   type ChatExtraction,
   type FieldProposal,
+  musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, BelegPanel, PageHeader, Progress, type Beleg } from "../components";
@@ -74,7 +75,7 @@ function Herkunft({ p, onBeleg }: { p: FieldProposal; onBeleg: (b: Beleg) => voi
       {p.musterbaustein && (
         <p>
           <span className="herkunft__marke">Musterbaustein</span>
-          {p.musterbaustein}
+          {musterbausteinText(p.musterbaustein)}
         </p>
       )}
       {/*

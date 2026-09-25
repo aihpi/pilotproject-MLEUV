@@ -861,8 +861,8 @@ export const sections: SectionDefinition[] = [
 
 export interface ChatStage {
   /**
-   * Bedingung für die Übersprünge, die das Prozessmodell ausdrücklich benennt — etwa
-   * „Wenn RGL Landesrecht, dann gehe direkt weiter".
+   * Bedingung für die Übersprünge, die das Prozessmodell ausdrücklich benennt — etwa den
+   * Sprung über die Beihilfestufen, wenn die Rechtsgrundlage reines Landesrecht ist.
    *
    * Muss deterministisch sein und nur bestätigte Werte lesen; siehe `stufeGilt`. Ohne
    * Angabe gilt die Stufe immer, soweit eines ihrer Felder sichtbar ist.
@@ -908,9 +908,9 @@ export const chatStages: ChatStage[] = [
   {
     sectionId: "5",
     // Die Bemessungsgrundlage gehört in den Chat und nicht ins Formular: das Prozessmodell
-    // führt dafür eine eigene Aufgabe „Eingabe über Chat-Interface", weil die Entscheidung
-    // „sehr individuell ist und von verschiedenen Faktoren abhängt". Die Frage nannte sie
-    // schon, erhoben wurde sie bisher nur per Klick.
+    // führt dafür eine eigene Erhebung über das Chat-Interface, mit der Begründung, die
+    // Entscheidung sei stark einzelfallabhängig. Die Frage nannte sie schon, erhoben wurde
+    // sie bisher nur per Klick.
     //
     // Fördersatz, Finanzierungsart und Finanzierungsform stehen mit in der Frage, weil sie
     // sonst niemand erhebt: die Frage nannte sie nicht, also gingen sie auch nicht in die
@@ -1146,21 +1146,21 @@ export function schlussformel(draft: RichtlinieDraft): string | null {
   if (!treffer) return null;
   const ministerium = `Ministerium ${treffer[2]} ${treffer[3]}`.replace(/\s+/g, " ").trim();
 
-  const von = draft.sections["8"]?.fields["validFrom"]?.value;
-  const datum =
-    typeof von === "string" && /^\d{4}-\d{2}-\d{2}$/.test(von)
-      ? new Date(von).toLocaleDateString("de-DE", {
-          day: "numeric", month: "long", year: "numeric",
-        })
-      : null;
+  // Ohne Datum, mit Absicht.
+  //
+  // Bis zum 24.09.2026 stand hier das Inkrafttretensdatum aus Baustein 8, und im Durchlauf
+  // desselben Tages las sich das als „Potsdam, den 1. Januar 2027". Das sind zwei
+  // verschiedene Daten: die Schlussformel trägt den Tag der AUSFERTIGUNG — den Tag, an dem
+  // unterschrieben wird. Der liegt vor dem Inkrafttreten und steht beim Entwerfen noch
+  // nicht fest.
+  //
+  // „Potsdam, den" ohne Datum ist deshalb kein Mangel, sondern die richtige Form eines
+  // unterschriftsreifen Entwurfs. Ein Datum, das wir raten, wäre der schlechtere Zustand:
+  // es sähe fertig aus.
 
   // Potsdam als Sitz der Landesregierung. Steht so in jeder Landesrichtlinie; ein eigenes
   // Feld dafür wäre eine Frage, die nie eine andere Antwort hat.
-  return [
-    datum ? `Potsdam, den ${datum}` : "Potsdam, den",
-    ministerium,
-    "Im Auftrag",
-  ].join("\n");
+  return ["Potsdam, den", ministerium, "Im Auftrag"].join("\n");
 }
 
 /**
@@ -1180,13 +1180,14 @@ export function emptySections(): Record<string, SectionData> {
 /**
  * Felder, für die das Prozessmodell einen KI-Vorschlag aus früheren Richtlinien vorsieht.
  *
- * Das Modell führt dafür eigene Aufgaben — „KI-Vorschlag für Voraussetzungen aus bisherigen
- * Eingaben", „KI-Vorschlag für Fachliche Ausschlüsse", „KI-Vorschlag zu fachlichen
- * Zuwendungsbestimmungen" — und schreibt jeder von ihnen denselben Korpusausschnitt vor:
- * „Nur alte RL des Landes/GAK als Hilfestellung (auch bei nicht GAK-RL)".
+ * Das Modell führt dafür eigene Aufgaben — je eine für Zuwendungsvoraussetzungen, fachliche
+ * Ausschlüsse und fachliche Zuwendungsbestimmungen — und schreibt jeder von ihnen denselben
+ * Korpusausschnitt vor: ausschließlich frühere Richtlinien des Landes und der GAK als
+ * Hilfestellung, und zwar auch dann, wenn die neue Richtlinie selbst keine GAK-Richtlinie ist.
  *
- * Der Grund steht als Beispiel daneben: „Bspw. Tierheime RL enthält ähnliche
- * Voraussetzungen für neue Streichelzoo RL". Hier wird nicht aus einer Vorschrift
+ * Als Begründung nennt es ein Beispiel: eine bestehende Richtlinie eines Sachgebiets trage
+ * ähnliche Voraussetzungen wie eine neu zu schreibende eines verwandten. Hier wird nicht aus
+ * einer Vorschrift
  * übernommen, sondern nach dem Vorbild eines früheren Verfahrens entworfen — und was dabei
  * herauskommt, ist ein Entwurf zur Bestätigung und keine Rechtsgrundlage.
  */
@@ -1331,6 +1332,25 @@ export function abfrageartFuer(fieldIds: string[]): "vorschlagen" | undefined {
  * Die Zahl 0 und `false` sind dagegen KEINE Leere: ein Fördersatz von 0 Prozent und ein
  * abgewähltes Ja/Nein sind Festlegungen.
  */
+/**
+ * Die Musterbaustein-Kennung so schreiben, wie eine Bearbeiterin sie lesen kann.
+ *
+ * In der Musterrichtlinie heißen manche Bausteine „5.4.n" oder „8.n". Das `n` ist keine
+ * Nummer, sondern eine Anweisung an den Ersteller: „laufend zu nummerieren, sooft der
+ * Baustein gebraucht wird". In der erzeugten Datei bleibt es deshalb stehen — sie ist ein
+ * getreues Abbild der Vorlage.
+ *
+ * In der Oberfläche ist es ein Fremdkörper. Im Durchlauf vom 24.09.2026 stand unter einem
+ * Vorschlag „Musterbaustein 5.4.n", und das liest sich wie ein Tippfehler oder ein kaputter
+ * Datensatz. Wer der Herkunftsangabe nicht traut, liest sie nicht mehr — und die
+ * Herkunftsangabe ist der Unterschied zwischen diesem Werkzeug und einem Textgenerator.
+ */
+export function musterbausteinText(nummer: string | null | undefined): string {
+  const roh = (nummer ?? "").trim();
+  if (!roh) return "";
+  return roh.endsWith(".n") ? `${roh.slice(0, -2)} (fortlaufend nummeriert)` : roh;
+}
+
 export function feldLeer(wert: FieldValue["value"]): boolean {
   if (wert === null || wert === undefined) return true;
   if (Array.isArray(wert)) return wert.length === 0;
@@ -1343,6 +1363,37 @@ export function fieldVisible(
   values: Record<string, unknown>,
 ) {
   return field.visible ? field.visible(profile, values) : true;
+}
+
+/**
+ * Wie weit ist der Entwurf? Anteil der bestätigten Pflichtangaben, 0 bis 100.
+ *
+ * Vorher rechnete die Übersicht `1 − Fehleranzahl / 25` und nannte das Ergebnis
+ * „Vollständigkeit". Das war keine: die 25 war eine geratene Obergrenze, und ein frisch
+ * angelegter Entwurf ohne eine einzige Eingabe stand damit auf 12 Prozent — er hatte 22 der
+ * 25 möglichen Fehler. Wer den Balken las, hielt ein leeres Blatt für angefangen.
+ *
+ * Gezählt werden nur SICHTBARE Pflichtfelder: welche das sind, hängt am Pfad — ein Feld, das
+ * die gewählte Finanzierungsart gar nicht vorsieht, darf den Nenner nicht aufblähen. Und nur
+ * BESTÄTIGTE zählen als erledigt, wie überall sonst auch: ein Vorschlag, den niemand
+ * angenommen hat, ist keine Angabe.
+ */
+export function vollstaendigkeit(draft: RichtlinieDraft): number {
+  let noetig = 0;
+  let da = 0;
+  for (const def of sections) {
+    const felder = draft.sections[def.id]?.fields ?? {};
+    const werte = Object.fromEntries(
+      Object.entries(felder).map(([id, f]) => [id, f.value]),
+    );
+    for (const f of def.fields) {
+      if (!f.required || !fieldVisible(f, draft.profile, werte)) continue;
+      noetig += 1;
+      const feld = felder[f.id];
+      if (feld?.confirmedByUser && !feldLeer(feld.value)) da += 1;
+    }
+  }
+  return noetig === 0 ? 0 : Math.round((da / noetig) * 100);
 }
 /**
  * Kyrillische und griechische Zwillinge lateinischer Buchstaben.
@@ -1824,8 +1875,8 @@ export function pruefeBaustein7(draft: RichtlinieDraft): Pruefergebnis[] {
   const feld = (id: string) => draft.sections["7"]?.fields[id]?.value;
 
   // Digitale Antragstellung ist derzeit nur für Programme im Erstattungsverfahren
-  // umgesetzt. Die Programmierung im nationalen Bereich erfolgt nach und nach, das
-  // Vorschussprinzip ist dort noch nicht abgebildet.
+  // umgesetzt. Die technische Umsetzung im nationalen Bereich schreitet schrittweise voran;
+  // das Vorschussprinzip ist dort noch nicht abgebildet.
   //
   // Fehler und nicht Warnung: anders als eine Bagatellgrenze unter 2.500 Euro lässt sich
   // das nicht begründen. Das Verfahren gibt es nicht, also kann die Richtlinie es nicht
@@ -1841,6 +1892,35 @@ export function pruefeBaustein7(draft: RichtlinieDraft): Pruefergebnis[] {
           "Digitale Antragstellung ist derzeit nur für Programme im Erstattungsverfahren " +
           "möglich. Wählen Sie entweder das Erstattungsprinzip oder ein schriftliches " +
           "Antragsverfahren.",
+      },
+    });
+
+  // Das Ministerium als Bewilligungsbehörde.
+  //
+  // Der Fall aus dem Durchlauf vom 24.09.2026, und er ist lehrreich: der Vorschlagsdienst
+  // setzte „Ministerium für Landwirtschaft, Umwelt und Verbraucherschutz" und wies als
+  // Deckung den TITEL der Richtlinie aus — „Richtlinie des Ministeriums für …". Das Zitat
+  // war echt und stand wörtlich in der Eingabe. Es sagt nur über die Bewilligungsbehörde
+  // nichts: wer eine Richtlinie erlässt, bewilligt nach ihr nicht.
+  //
+  // Warnung und nicht Fehler: das Ministerium KANN im Einzelfall selbst bewilligen. Die
+  // Regel stellt fest, was fast immer ein Übernahmefehler ist, und überlässt die
+  // Entscheidung dem Fachreferat.
+  const stelle = feld("authority");
+  const geber = draft.sections["0"]?.fields["title"]?.value;
+  if (
+    typeof stelle === "string" && stelle.trim() &&
+    /ministerium|ministeriums/i.test(stelle) &&
+    typeof geber === "string" && geber.toLowerCase().includes(stelle.trim().toLowerCase())
+  )
+    raus.push({
+      befund: {
+        sectionId: "7", fieldId: "authority", severity: "warning",
+        regel: "bewilligungsbehoerde_ist_richtliniengeber",
+        message:
+          "Als Bewilligungsbehörde ist das Ministerium angegeben, das die Richtlinie " +
+          "erlässt. Bewilligungsbehörde ist in der Regel eine nachgeordnete Behörde. " +
+          "Prüfen Sie, ob das Ministerium hier wirklich selbst bewilligt.",
       },
     });
 
@@ -1901,7 +1981,13 @@ export function pruefeBaustein8(draft: RichtlinieDraft): Pruefergebnis[] {
   grenze.setFullYear(grenze.getFullYear() + GELTUNGSDAUER_JAHRE);
   if (bis <= grenze) return [];
 
-  const jahre = ((bis.valueOf() - von.valueOf()) / (365.2425 * 24 * 3600 * 1000)).toFixed(1);
+  // Deutsch geschrieben, und ohne die überflüssige Null: `toFixed(1)` allein ergab „rund 5.0
+  // Jahre" — ein englischer Dezimalpunkt in einem Satz, der so ins Anschreiben ans
+  // Finanzministerium geht. Halbe Jahre bleiben sichtbar („3,5"), volle stehen glatt da.
+  const jahre = ((bis.valueOf() - von.valueOf()) / (365.2425 * 24 * 3600 * 1000))
+    .toFixed(1)
+    .replace(/\.0$/, "")
+    .replace(".", ",");
   return [{
     befund: {
       sectionId: "8", fieldId: "validUntil", severity: "warning",
@@ -2003,9 +2089,47 @@ export function pruefeEmpfaengerkreis(draft: RichtlinieDraft): Pruefergebnis[] {
  * geprüft: der Regelfall ist die Zuwendungsrichtlinie, und eine Prüfung ausfallen zu lassen,
  * weil ein Feld noch leer ist, wäre die gefährlichere Vorgabe.
  */
+/** Die europäischen Instrumente, auf die eine beihilferechtliche Grundlage lauten kann. */
+const BEIHILFE_INSTRUMENTE =
+  /AGVO|AgrarGVO|FIBER|De-?minimis|Agrarrahmen|Freistellung|Notifizierung|Beihilfe|AEUV|Verordnung \(EU\)|Leitlinien/i;
+
+/**
+ * Die beihilferechtliche Rechtsgrundlage, die keine ist.
+ *
+ * Im Durchlauf vom 24.09.2026 stand im Feld „Beihilferechtliche Rechtsgrundlage": „§ 44 LHO
+ * in Verbindung mit den Verwaltungsvorschriften zur Landeshaushaltsordnung." Das ist die
+ * zuwendungsrechtliche Grundlage — sie steht ein Feld höher und sagt über das Beihilferecht
+ * nichts. Beihilferecht ist Unionsrecht: AGVO, AgrarGVO, De-minimis, Agrarrahmen oder eine
+ * Notifizierung.
+ *
+ * Warnung und nicht Fehler: ob überhaupt ein Beihilfebezug besteht, entscheidet das
+ * Fachreferat. Wer aber etwas einträgt, soll nicht das Falsche eintragen.
+ */
+export function pruefeBeihilfegrundlage(draft: RichtlinieDraft): Pruefergebnis[] {
+  const wert = draft.sections["1"]?.fields["stateAidBasis"]?.value;
+  if (typeof wert !== "string" || !wert.trim()) return [];
+  if (BEIHILFE_INSTRUMENTE.test(wert)) return [];
+  return [{
+    befund: {
+      sectionId: "1", fieldId: "stateAidBasis", severity: "warning",
+      regel: "beihilfegrundlage_ohne_unionsrecht",
+      message:
+        "Die beihilferechtliche Rechtsgrundlage nennt kein europäisches Instrument. " +
+        "§ 44 LHO und die Verwaltungsvorschriften sind die zuwendungsrechtliche " +
+        "Grundlage; beihilferechtlich kommen AGVO, AgrarGVO, De-minimis, der Agrarrahmen " +
+        "oder eine Notifizierung in Betracht. Besteht kein Beihilfebezug, lassen Sie das " +
+        "Feld leer.",
+    },
+  }];
+}
+
 export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
   const rgl = draft.sections["1"]?.fields["legalBasis"]?.value;
-  const immer = [...pruefeZuwendungsform(draft), ...pruefeEmpfaengerkreis(draft)];
+  const immer = [
+    ...pruefeZuwendungsform(draft),
+    ...pruefeEmpfaengerkreis(draft),
+    ...pruefeBeihilfegrundlage(draft),
+  ];
   if (typeof rgl === "string" && rgl !== "" && rgl !== "lho44")
     return [...immer, {
       befund: {

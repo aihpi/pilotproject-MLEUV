@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import type { FundingProfile } from "@richtlinie/shared";
+import { vollstaendigkeit, type FundingProfile } from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, PageHeader, Progress } from "../components";
 
@@ -74,19 +74,7 @@ export function Dashboard() {
                 <Link to={`/entwurf/${d.id}`}>{d.title}</Link>
               </h3>
               <p>{d.profile.gak ? "Bund/Land (GAK)" : "Land"}</p>
-              <Progress
-                value={Math.max(
-                  0,
-                  Math.round(
-                    (1 -
-                      d.validation.issues.filter((i) => i.severity === "error")
-                        .length /
-                        25) *
-                      100,
-                  ),
-                )}
-                label="Vollständigkeit"
-              />
+              <Progress value={vollstaendigkeit(d)} label="Vollständigkeit" />
               <div className="actions actions--karte">
                 <button
                   className="button button--tertiary"

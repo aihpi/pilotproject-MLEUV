@@ -32,6 +32,29 @@ const STATUS: Record<VermerkEintrag["status"], { text: string; art: string }> = 
   gegenstandslos: { text: "gegenstandslos", art: "empty" },
 };
 
+/**
+ * Ein Vorbild als gekennzeichnetes Zitat an die Begründung anhängen.
+ *
+ * Vorher ersetzte der Knopf „In das Feld übernehmen" die Begründung durch den Wortlaut einer
+ * FREMDEN Richtlinie — und tat damit genau das, was der Warntext zwei Zeilen darüber
+ * ausschließt („Die Begründung schreiben Sie"). Wer ihn drückte und speicherte, hatte als
+ * Begründung für seinen Fördersatz stehen, wie eine andere Richtlinie ihren staffelt. Das
+ * begründet nichts, sieht aber ausgefüllt aus — und ein gefülltes Feld wird beim Gegenlesen
+ * nicht mehr hinterfragt.
+ *
+ * Jetzt wird ANGEHÄNGT statt ersetzt, mit „Vergleiche" und der Fundstelle davor und in
+ * Anführungszeichen. Damit steht im Feld sichtbar ein fremder Beleg und kein eigener Satz —
+ * das Abtippen bleibt erspart, die Verwechslung nicht mehr möglich.
+ */
+export function zitatAnfuegen(
+  vorher: string,
+  v: { text: string; fundstelle: string },
+): string {
+  const zitat = `Vergleiche ${v.fundstelle}: „${v.text.trim()}“`;
+  const davor = vorher.trimEnd();
+  return davor ? `${davor}\n\n${zitat}` : zitat;
+}
+
 function Eintrag({
   id,
   e,
@@ -199,9 +222,9 @@ function Eintrag({
                             <button
                               type="button"
                               className="button--tertiary"
-                              onClick={() => setText(v.text)}
+                              onClick={() => setText((vorher) => zitatAnfuegen(vorher, v))}
                             >
-                              In das Feld übernehmen
+                              Als Zitat einfügen
                             </button>
                           )}
                         </p>

@@ -472,7 +472,8 @@ describe("Form der Zuwendung gegen die Rechtsgrundlage", () => {
   });
 });
 
-// Modell: „VV ist anzuwenden, wenn die Zuwendungsempfänger keine Komunen … sind."
+// Nach dem Prozessmodell: die VV gilt, wenn die Zuwendungsempfangenden keine Kommunen
+// sind — für kommunale Empfangende greift stattdessen die VVG.
 describe("Empfängerkreis, VV oder VVG", () => {
   const mitEmpfaengern = (liste: string[]) => {
     const d = entwurf({ fundingRate: 90 });

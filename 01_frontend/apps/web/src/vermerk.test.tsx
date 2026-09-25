@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { VermerkEintrag, VermerkSicht } from "@richtlinie/shared";
+import { zitatAnfuegen } from "./pages/Vermerk";
 
 /**
  * Der Prüfvermerk muss sichtbar und bearbeitbar sein.
@@ -124,5 +125,29 @@ describe("Prüfvermerk", () => {
     await mit([]);
     zeichnen();
     await waitFor(() => expect(screen.getByText("Noch keine Einträge")).toBeInTheDocument());
+  });
+});
+
+/**
+ * Ein Vorbild ist ein Präzedenzfall, keine Begründung.
+ *
+ * Der Knopf hieß „In das Feld übernehmen" und ersetzte die Begründung durch den Wortlaut
+ * einer fremden Richtlinie — genau das, was der Warntext darüber ausschließt. Diese Tests
+ * halten die Korrektur fest: angehängt statt ersetzt, als erkennbares Zitat mit Fundstelle.
+ */
+describe("zitatAnfuegen", () => {
+  const v = { text: "Der Fördersatz beträgt bis zu 90 Prozent.", fundstelle: "ILE-RL, Nummer 6.4" };
+
+  it("kennzeichnet das Zitat mit seiner Fundstelle", () => {
+    const raus = zitatAnfuegen("", v);
+    expect(raus).toContain("Vergleiche ILE-RL, Nummer 6.4:");
+    expect(raus).toContain("„Der Fördersatz beträgt bis zu 90 Prozent.“");
+  });
+
+  it("überschreibt eine vorhandene Begründung nicht", () => {
+    const eigen = "Die Gemeinden sind überwiegend haushaltssicherungspflichtig.";
+    const raus = zitatAnfuegen(eigen, v);
+    expect(raus.startsWith(eigen)).toBe(true);
+    expect(raus).toContain("Vergleiche");
   });
 });

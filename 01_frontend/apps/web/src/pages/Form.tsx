@@ -12,6 +12,7 @@ import {
   type FieldValue,
   type RichtlinieDraft,
   type SectionData,
+  musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
 import { Alert, BelegPanel, PageHeader, ProcessSteps, Progress, StatusBadge, type Beleg } from "../components";
@@ -455,7 +456,8 @@ export function SectionPage() {
                 {p.deckung
                   ? `Gedeckt durch Ihre Angabe: „${p.deckung}"`
                   : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
-                {p.musterbaustein && ` Satzrahmen: Musterbaustein ${p.musterbaustein}.`}
+                {p.musterbaustein &&
+                  ` Satzrahmen: Musterbaustein ${musterbausteinText(p.musterbaustein)}.`}
                 {p.fundstelle && (
                   <>
                     {" Vorbild: "}

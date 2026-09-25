@@ -420,11 +420,19 @@ describe("schlussformel", () => {
     "Richtlinie des Ministeriums für Landwirtschaft, Umwelt und Verbraucherschutz über die " +
     "Gewährung von Zuwendungen zur Kastration freilebender Katzen";
 
-  it("liest Ministerium und Datum aus dem Entwurf", () => {
+  it("liest das Ministerium aus dem Entwurf", () => {
     const f = schlussformel(mit(titel, "2027-01-01"))!;
-    expect(f).toContain("Potsdam, den 1. Januar 2027");
     expect(f).toContain("Ministerium für Landwirtschaft, Umwelt und Verbraucherschutz");
     expect(f).toContain("Im Auftrag");
+  });
+
+  it("trägt kein Datum ein, auch wenn das Inkrafttreten feststeht", () => {
+    // Ausfertigung und Inkrafttreten sind zwei Daten. Die Schlussformel trägt den Tag der
+    // Unterschrift; der steht beim Entwerfen noch nicht fest. Am 24.09.2026 stand hier
+    // „Potsdam, den 1. Januar 2027" — das Inkrafttretensdatum aus Baustein 8.
+    const f = schlussformel(mit(titel, "2027-01-01"))!;
+    expect(f).toContain("Potsdam, den");
+    expect(f).not.toContain("2027");
   });
 
   it("schneidet den Namen vor der Formel ab", () => {
