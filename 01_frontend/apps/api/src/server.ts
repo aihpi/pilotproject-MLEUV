@@ -14,6 +14,7 @@ import {
   fieldVisible,
   feldwertAusVorschlag,
   feldwertText,
+  suchtextFuer,
   freigabeGueltig,
   naechsteFrage,
   nextChatStage,
@@ -37,7 +38,10 @@ import {
 
 const app = Fastify({ logger: true, bodyLimit: 200_000 });
 await app.register(cors, { origin: true });
-const dataPath = resolve(process.cwd(), "data/drafts.json");
+// Wo die Entwürfe liegen. Über `DRAFTS_FILE` umlenkbar, und das ist kein Komfort:
+// `persist()` SCHREIBT hierhin. Ohne die Umlenkung arbeitete jeder Test auf dem echten
+// Bestand der Bearbeiterin und hinterließe dort seine Testentwürfe.
+const dataPath = resolve(process.cwd(), process.env.DRAFTS_FILE ?? "data/drafts.json");
 const ownerId = "prototype-user";
 let drafts: RichtlinieDraft[] = [];
 try {
@@ -317,6 +321,9 @@ async function holeVorschlaege(
   regelfall = false,
   // Was im selben Abschnitt schon bestätigt ist — Vorgabe, an der sich das Modell ausrichtet.
   entschieden: { label: string; wert: string }[] = [],
+  // Womit im Korpus GESUCHT wird, falls das etwas anderes sein soll als `eingabe`.
+  // Siehe `suchtextFuer`: beim Knopf im Formular sind die beiden verschieden.
+  suchtext?: string,
 ): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean }> {
   // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
   // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
@@ -330,6 +337,7 @@ async function holeVorschlaege(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart, regelfall,
+      suchtext: suchtext?.trim() || undefined,
       entschieden: entschieden.length ? entschieden : undefined,
       nachbarfelder: nachbarfelder.length ? nachbarfelder : undefined,
     }),
@@ -550,6 +558,7 @@ async function vorschlaegeFuer(
   targets: FieldDefinition[],
   regelfall = false,
   entschieden: { label: string; wert: string }[] = [],
+  suchtext?: string,
 ): Promise<{ proposals: FieldProposal[]; geliefert: DienstVorschlag[] }> {
   let proposals: FieldProposal[] = [];
     // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
@@ -576,6 +585,7 @@ async function vorschlaegeFuer(
               (alle[1 - i] ?? []).map((f) => ({ id: f.id, label: f.label })),
               regelfall,
               entschieden,
+              suchtext,
             )
           : Promise.resolve({ vorschlaege: [], vorbild: false }),
       ),
@@ -700,6 +710,9 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
           ? [{ label: f.label, wert: feldwertText(nr, f.id, feld.value) }]
           : [];
       }),
+      // Gesucht wird mit dem Abschnitt und den gefragten Feldern, nicht mit dem ganzen
+      // Verlauf — siehe `suchtextFuer`.
+      suchtextFuer(d, def.id, targets),
     );
     const offen = geliefert
       .filter((v) => v.status === "unklar")
@@ -1148,4 +1161,26 @@ app.setErrorHandler((error, _req, reply) => {
     .code(safe.statusCode ?? 500)
     .send({ message: safe.message ?? "Interner Serverfehler" });
 });
-await app.listen({ port: Number(process.env.PORT ?? 4317), host: "0.0.0.0" });
+/**
+ * Starten nur, wenn diese Datei der Einstiegspunkt ist — sonst exportieren.
+ *
+ * Bis zum 06.10.2026 stand hier ein unbedingtes `listen()`, und damit war die Node-API die
+ * einzige Schicht des Werkzeugs ohne einen einzigen Test: wer sie importierte, startete einen
+ * Server auf Port 4317. Geprüft waren der Vorschlagsdienst und `packages/shared`, geprüft war
+ * jede Regel einzeln — ungeprüft war die Naht dazwischen.
+ *
+ * Genau dort saßen die teuersten Befunde des Durchlaufs vom 24.09.2026: die Chat-Übergabe,
+ * die ausgelassenen Abschnitte 0, 9 und 10, der ganze Chatverlauf als Suchanfrage. 354 Tests
+ * meldeten keinen davon.
+ *
+ * Mit dem Export lässt sich `app.inject()` benutzen — Fastifys Weg, eine Route aufzurufen,
+ * ohne zu lauschen. Kein Port, kein Netz, keine Wartezeit.
+ */
+const direktGestartet =
+  process.argv[1] !== undefined &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href;
+
+if (direktGestartet)
+  await app.listen({ port: Number(process.env.PORT ?? 4317), host: "0.0.0.0" });
+
+export { app };
