@@ -643,13 +643,25 @@ _KEINE_EINGABE = "(Die Bearbeiterin hat zu diesem Abschnitt noch nichts angegebe
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
                 konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None,
-                nachbarfelder=None, regelfall=False, entschieden=None):
+                nachbarfelder=None, regelfall=False, entschieden=None, suchtext=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
     konsens: den Vorschlag mehrfach holen und abstimmen, siehe `_abstimmen`. Dreifache
         Kosten, dafür eine gemessene Konfidenz statt der Selbstauskunft des Modells.
     mit_belegen: Fundstellen aus dem Korpus holen und in den Prompt geben.
+    suchtext: womit im Korpus GESUCHT wird, falls das etwas anderes sein soll als `eingabe`.
+
+        Die beiden fielen bis zum 06.10.2026 zusammen, und das war beim Knopf „Vorschlag
+        holen" ein Fehler: dort gibt es keine frische Eingabe, also reichte die Oberfläche
+        den GESAMTEN Chatverlauf durch. Als Eingabe ist er richtig — es sind die Angaben der
+        Bearbeiterin, und die Deckung soll daraus zitiert werden. Als Suchanfrage ist er das
+        Schlechteste, was man schicken kann: ein langer, thematisch gemischter Text trifft
+        überall ein bisschen und nirgends genau. Im Durchlauf vom 24.09.2026 kam so der
+        Richtlinien-TITEL als Deckung für die Bewilligungsbehörde heraus.
+
+        Ohne Angabe bleibt alles wie bisher — der Chat-Weg hat eine echte Eingabe und
+        braucht die Trennung nicht.
     abfrageart: Sorte der Abfrage nach dem Prozessmodell, siehe `ABFRAGEARTEN`. Schränkt den
         sichtbaren Korpusausschnitt ein und steht im Nachweis, damit die Oberfläche einen
         Vorschlag nicht wie einen Fund darstellt.
@@ -679,7 +691,7 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
 
     suchzaehler = {}
     if mit_belegen:
-        bloecke, metas = belege_holen(eingabe, abschnitt_nr, top_k, uhr=uhr,
+        bloecke, metas = belege_holen(suchtext or eingabe, abschnitt_nr, top_k, uhr=uhr,
                                       nur_arten=nur_arten, ohne_dateien=ohne_dateien,
                                       zaehler=suchzaehler)
     else:

@@ -12,7 +12,10 @@ import {
   schlussformel,
   sections,
   stufenFelder,
+  suchtextFuer,
+  type FieldValue,
   type RichtlinieDraft,
+  type SectionId,
 } from "./index";
 
 /**
@@ -479,5 +482,87 @@ describe("freigabeGueltig", () => {
     d.version = 13;
     d.freigabe = { person: "Dr. Beispiel", am: "2026-09-24T10:00:00Z", version: 12 };
     expect(freigabeGueltig(d)).toBe(false);
+  });
+});
+
+/**
+ * Womit gesucht wird, wenn es keine frische Eingabe gibt.
+ *
+ * Der Knopf „Vorschlag holen" im Formular hatte keine, also ging bis zum 06.10.2026 der
+ * ganze Chatverlauf als Suchanfrage an den Index. Daher kam im Durchlauf vom 24.09.2026 der
+ * Richtlinien-Titel als Deckung für die Bewilligungsbehörde: er stand im Verlauf und war das
+ * Ähnlichste, was die Suche zu „Ministerium" fand.
+ */
+describe("suchtextFuer", () => {
+  const mitFeldern = (
+    nr: SectionId,
+    felder: Record<string, { value: FieldValue["value"]; confirmedByUser: boolean }>,
+  ): RichtlinieDraft => {
+    const d = entwurf();
+    d.sections[nr] = {
+      fields: Object.fromEntries(
+        Object.entries(felder).map(([id, f]) => [
+          id,
+          { value: f.value, status: "confirmed", source: "user-form", confirmedByUser: f.confirmedByUser },
+        ]),
+      ),
+    };
+    return d;
+  };
+
+  it("nennt die bestätigten Werte mit ihrer Beschriftung", () => {
+    const d = mitFeldern("7", {
+      authority: { value: "LELF", confirmedByUser: true },
+      payment: { value: "refund", confirmedByUser: true },
+    });
+    const raus = suchtextFuer(d, "7");
+    expect(raus).toContain("LELF");
+    // Die Beschriftung gehört dazu: der Wert allein („refund") sagt der Suche nichts.
+    expect(raus).toContain("Bewilligungsbehörde");
+    expect(raus).toContain("Erstattungsprinzip");
+  });
+
+  it("übergeht unbestätigte WERTE, nennt aber ihr Feld", () => {
+    // Ein Vorschlag, den niemand angenommen hat, darf die Suche nicht lenken — sonst sucht
+    // das Werkzeug nach dem, was es selbst geraten hat. Die Beschriftung gehört trotzdem
+    // hinein: nach diesem Feld wird ja gerade gefragt.
+    const d = mitFeldern("7", { authority: { value: "LELF", confirmedByUser: false } });
+    const raus = suchtextFuer(d, "7");
+    expect(raus).not.toContain("LELF");
+    expect(raus).toContain("Bewilligungsbehörde");
+  });
+
+  it("fragt bei einem frischen Abschnitt nach seinen Feldern", () => {
+    // Kein Wert, aber eine Frage: die Beschriftungen sagen der Suche, worum es geht. Die
+    // Themen des Abschnitts kommen im Dienst ohnehin dazu (ABSCHNITT_THEMEN in anfrage.py).
+    const raus = suchtextFuer(entwurf(), "7");
+    expect(raus).toContain("Bewilligungsbehörde");
+    expect(raus).toContain("Vorzeitiger Vorhabenbeginn");
+  });
+
+  it("stellt die gefragten Felder voran", () => {
+    // Die Reihenfolge trägt: das Gesuchte ist die Frage, die bestätigten Werte sind nur der
+    // Zusammenhang. In Abschnitt 5 fehlte zuletzt allein die Kumulierungsregel — und genau
+    // dieses Wort erreichte die Suche nicht.
+    const d = mitFeldern("5", { fundingRate: { value: 90, confirmedByUser: true } });
+    const raus = suchtextFuer(d, "5", [
+      { id: "cumulation", label: "Kumulierung mit anderen Fördermitteln" },
+    ]);
+    expect(raus.indexOf("Kumulierung")).toBeLessThan(raus.indexOf("Fördersatz"));
+  });
+
+  it("nimmt nur den gefragten Abschnitt, nicht die Nachbarn", () => {
+    // Der Kern des Fehlers: der Titel aus Baustein 0 hat in einer Suche zu Baustein 7
+    // nichts verloren.
+    const d = mitFeldern("7", { authority: { value: "LELF", confirmedByUser: true } });
+    d.sections["0"] = {
+      fields: {
+        title: {
+          value: "Richtlinie des Ministeriums für Landwirtschaft über die Gewährung",
+          status: "confirmed", source: "user-chat", confirmedByUser: true,
+        },
+      },
+    };
+    expect(suchtextFuer(d, "7")).not.toContain("Ministeriums");
   });
 });

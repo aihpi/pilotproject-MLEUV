@@ -1351,6 +1351,56 @@ export function musterbausteinText(nummer: string | null | undefined): string {
   return roh.endsWith(".n") ? `${roh.slice(0, -2)} (fortlaufend nummeriert)` : roh;
 }
 
+/**
+ * Womit im Korpus gesucht wird, wenn es keine frische Eingabe gibt.
+ *
+ * Der Knopf „Vorschlag holen" im Formular hat keine, also reichte die Naht bis zum
+ * 06.10.2026 den GESAMTEN Chatverlauf als Suchanfrage durch. Für die Deckung ist er die
+ * richtige Quelle — es sind die Angaben der Bearbeiterin. Als Suchanfrage ist er das
+ * Schlechteste, was man schicken kann: ein langer, thematisch gemischter Text trifft überall
+ * ein bisschen und nirgends genau. Im Durchlauf vom 24.09.2026 kam so der Richtlinien-Titel
+ * als Deckung für die Bewilligungsbehörde heraus — er stand im Verlauf, und er war das
+ * Ähnlichste, was die Suche zum Stichwort „Ministerium" fand.
+ *
+ * Gesucht wird stattdessen mit dem, worum es in DIESEM Abschnitt geht — und zwar aus zwei
+ * Richtungen:
+ *
+ * - den BESTÄTIGTEN Werten, jeder mit seiner Beschriftung. Sie sagen, worum es in diesem
+ *   Vorhaben geht.
+ * - den Beschriftungen der FEHLENDEN Felder. Sie sagen, wonach überhaupt gefragt ist, und
+ *   ohne sie sucht das Werkzeug nach dem, was schon entschieden ist. In Abschnitt 5 fehlte
+ *   zuletzt allein die Kumulierungsregel; die Anfrage beschrieb Fördersatz und
+ *   Finanzierungsart, und das Wort „Kumulierung" erreichte die Suche überhaupt nicht.
+ *
+ * Die Themen des Abschnitts kommen im Vorschlagsdienst ohnehin dazu (`ABSCHNITT_THEMEN` in
+ * anfrage.py), auch wenn hier nichts zusammenkommt — ein frischer Abschnitt sucht dann
+ * allein über sein Thema, und das ist genau richtig.
+ *
+ * `gesucht` sind die Felder, die gerade gefüllt werden sollen. Ohne Angabe gelten alle noch
+ * nicht bestätigten des Abschnitts.
+ */
+export function suchtextFuer(
+  d: RichtlinieDraft,
+  nr: SectionId,
+  gesucht?: { id: string; label: string }[],
+): string {
+  const def = sections.find((s) => s.id === nr);
+  if (!def) return "";
+  const bestaetigt: string[] = [];
+  const offen: string[] = [];
+  for (const f of def.fields) {
+    const feld = d.sections[nr]?.fields[f.id];
+    if (feld?.confirmedByUser && !feldLeer(feld.value ?? null)) {
+      bestaetigt.push(`${f.label}: ${feldwertText(nr, f.id, feld.value)}`);
+    } else if (!gesucht) {
+      offen.push(f.label);
+    }
+  }
+  for (const f of gesucht ?? []) offen.push(f.label);
+  // Die Gesuchten zuerst: sie sind die Frage, die bestätigten Werte nur der Zusammenhang.
+  return [offen.join(", "), bestaetigt.join(". ")].filter(Boolean).join(". ");
+}
+
 export function feldLeer(wert: FieldValue["value"]): boolean {
   if (wert === null || wert === undefined) return true;
   if (Array.isArray(wert)) return wert.length === 0;

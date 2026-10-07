@@ -62,6 +62,13 @@ class Anfrage(BaseModel):
                     "nichts gesagt wurde. Dort trägt allein der Regelfall, und eine "
                     "abgewiesene Anfrage (HTTP 422) wäre die falsche Antwort auf eine "
                     "zulässige Frage.")
+    suchtext: str | None = Field(
+        default=None,
+        description="Womit im Korpus gesucht wird, falls das etwas anderes sein soll als "
+                    "`eingabe`. Der Knopf „Vorschlag holen\" im Formular schickt hier die "
+                    "bestätigten Werte des Abschnitts, während `eingabe` den ganzen "
+                    "Chatverlauf trägt — als Quelle der Deckung richtig, als Suchanfrage "
+                    "unbrauchbar. Ohne Angabe wird mit `eingabe` gesucht.")
     felder: list[FeldDefinition] = Field(min_length=1)
     konsens: bool = Field(
         default=False,
@@ -340,7 +347,8 @@ def vorschlag_erzeugen(anfrage: Anfrage):
             nachbarfelder=[f.model_dump(exclude_none=True)
                            for f in anfrage.nachbarfelder or []] or None,
             regelfall=anfrage.regelfall,
-            entschieden=anfrage.entschieden)
+            entschieden=anfrage.entschieden,
+            suchtext=(anfrage.suchtext or "").strip() or None)
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.
