@@ -7,8 +7,6 @@ import yaml
 WURZEL = Path(__file__).resolve().parents[3]
 K8S = WURZEL / "k8s"
 GEHEIM = "mleuv-secret"
-# sealed-secret.yaml entsteht erst mit dem ersten Versiegeln (HOSTING.md, Abschnitt 3).
-NICHT_IM_REPO = {"secrets/sealed-secret.yaml"}
 
 
 def _dateien():
@@ -27,7 +25,7 @@ def test_jede_ressource_steht_in_der_kustomization():
     gelistet = set(yaml.safe_load((K8S / "kustomization.yaml").read_text())["resources"])
     vorhanden = {str(p.relative_to(K8S)) for p in _dateien()
                  if p.name not in {"kustomization.yaml", "example-secret.yaml"}}
-    assert vorhanden == gelistet - NICHT_IM_REPO
+    assert vorhanden == gelistet
 
 
 def test_jeder_geheimschluessel_steht_im_beispiel():
