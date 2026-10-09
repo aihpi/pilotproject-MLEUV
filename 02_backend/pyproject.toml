@@ -1,0 +1,58 @@
+[project]
+name = "mleuv-wissensdienst"
+version = "0.1.0"
+description = "Python-Dienst des Richtlinien-Assistenten: Aufbereitung, Suche, Vorschlag, Richtlinientext, Messung."
+# 3.12, weil die Spark-Pakete es verlangen.
+requires-python = ">=3.12"
+dependencies = [
+    "litellm>=1.50",
+    "qdrant-client>=1.12",
+    "docling>=2.0",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "fastembed>=0.4",
+    # Aus Spark (EUPL-1.2), nicht auf PyPI. Woher, steht unter [tool.uv.sources].
+    "bmds-prompt-loader",
+    "bmds-prompt-security",
+    # Die HTTP-Naht zum Frontend (src/api.py). Fehlte einmal, obwohl der Dienst ohne sie nicht
+    # startet; ein frischer Klon kam bis zum ersten Aufruf und dann nicht weiter.
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    # Rohtext ohne Layoutanalyse: der Rückfall in ingest.py, wenn docling ein Dokument verliert,
+    # und das Zerlegen im Prüf-Modus. Kommt als Abhängigkeit von docling mit, wird hier aber
+    # unmittelbar benutzt und gehört deshalb genannt.
+    "pypdfium2>=4.0",
+    "python-docx>=1.1",
+    # Kommen über docling. Nur hier genannt, damit sie unter Linux aus dem CPU-Index kommen
+    # (siehe unten); uv beachtet Quellen nur für direkte Abhängigkeiten.
+    "torch",
+    "torchvision",
+]
+
+[dependency-groups]
+# Tests: uv run pytest -q (aus 02_backend). Laufen ohne Netz, Modell und Qdrant.
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+# Kein installierbares Paket, nur die Umgebung für src/.
+package = false
+
+[tool.uv.sources]
+bmds-prompt-loader = { git = "https://gitlab.opencode.de/bmds/planungs-und-genehmigungsbeschleunigung/spark-api.git", tag = "v0.3", subdirectory = "03-shared-services/prompt-loader" }
+bmds-prompt-security = { git = "https://gitlab.opencode.de/bmds/planungs-und-genehmigungsbeschleunigung/spark-api.git", tag = "v0.3", subdirectory = "03-shared-services/prompt-security" }
+# Unter Linux die CPU-Fassung: ohne den Index kämen die CUDA-Pakete mit, mehrere GB, und hier
+# rechnet nichts auf einer GPU. macOS bekommt torch ohnehin ohne CUDA von PyPI.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+# prompt-security liest seine Version aus git (hatch-vcs) und findet sie nicht, wenn es aus
+# einem Unterordner gebaut wird. Die Version ist der Tag oben.
+[tool.uv.extra-build-variables]
+bmds-prompt-security = { SETUPTOOLS_SCM_PRETEND_VERSION = "0.3" }
