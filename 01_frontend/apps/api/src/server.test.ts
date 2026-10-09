@@ -171,3 +171,168 @@ describe("Prüfung und Vermerk wachsen mit", () => {
     expect(r.json().message).toContain("Prüfvermerk");
   });
 });
+
+describe("Chat-Übergabe: vom Vorschlag ins Feld", () => {
+  // Der teuerste Befund des Durchlaufs vom 18.09.2026: Die Bearbeiterin nannte Fördersatz,
+  // Finanzierungsart und Form in einem Satz, in den Feldern kam nichts davon an. Die
+  // Prüfregeln dazu waren vorhanden und einzeln getestet — sie schlugen nicht an, weil ihre
+  // Eingangsgrößen leer blieben. Kein Test deckte den WEG der Angabe ins Feld ab.
+  it("schreibt bestätigte Vorschläge in die Abschnitte", async () => {
+    const d = await neuerEntwurf();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/confirm`,
+      payload: {
+        proposals: [
+          { sectionId: "5", fieldId: "fundingRate", value: 90, confidence: 0.9, evidence: "" },
+          { sectionId: "5", fieldId: "financingType", value: "share", confidence: 0.9, evidence: "" },
+        ],
+      },
+    });
+    expect(r.statusCode).toBe(200);
+    const felder = r.json().draft.sections["5"].fields;
+    expect(felder.fundingRate.value).toBe(90);
+    expect(felder.fundingRate.confirmedByUser).toBe(true);
+    expect(felder.financingType.value).toBe("share");
+  });
+
+  it("übernimmt den Titel auch in den Entwurf selbst", async () => {
+    // Der Titel steht doppelt: als Feld in Baustein 0 und als Name des Entwurfs in der
+    // Übersicht. Wird nur das Feld gesetzt, heißt der Entwurf weiter „Neue Förderrichtlinie".
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/confirm`,
+      payload: {
+        proposals: [{ sectionId: "0", fieldId: "title", value: "RL Katzen", confidence: 1, evidence: "" }],
+      },
+    });
+    const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}` });
+    expect(r.json().title).toBe("RL Katzen");
+  });
+
+  it("löst die fachlichen Prüfungen aus, sobald die Werte da sind", async () => {
+    // Genau die Kette, die am 18.09.2026 riss: Angabe → Feld → Prüfregel → Vermerk.
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/confirm`,
+      payload: {
+        proposals: [
+          { sectionId: "3", fieldId: "recipients", value: ["municipal"], confidence: 1, evidence: "" },
+          { sectionId: "5", fieldId: "fundingRate", value: 90, confidence: 1, evidence: "" },
+        ],
+      },
+    });
+    const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/vermerk` });
+    const regeln = r.json().eintraege.map((v: { regel: string }) => v.regel);
+    expect(regeln).toContain("kommunaler_hoechstsatz");
+  });
+});
+
+describe("Überspringen", () => {
+  it("stellt dieselbe Frage nicht erneut", async () => {
+    // Vorher gab die Route nur `ok` zurück: der Kasten schloss sich, die Stufe galt weiter
+    // als unerledigt, und die Frage kam wieder. Wer ein Pflichtfeld im Gespräch nicht füllen
+    // konnte, saß fest.
+    const d = await neuerEntwurf();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/reject`, payload: {},
+    });
+    expect(r.statusCode).toBe(200);
+    const nachher = await app.inject({ method: "GET", url: `/api/drafts/${d.id}` });
+    expect(nachher.json().uebersprungeneStufen?.length).toBeGreaterThan(0);
+  });
+
+  it("bestätigt dabei nichts", async () => {
+    // Übersprungen ist die FRAGE, nicht die Angabe. Die Gesamtprüfung muss sie weiter
+    // anmahnen — sonst verschwindet eine Lücke durch einen Klick.
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/reject`, payload: {},
+    });
+    const r = await app.inject({ method: "POST", url: `/api/drafts/${d.id}/validate` });
+    expect(r.json().valid).toBe(false);
+  });
+});
+
+describe("Prüfvermerk: begründen und bestätigen", () => {
+  // Zwei getrennte Schritte, mit Absicht: das Fachreferat begründet, jemand anderes liest
+  // gegen. Unter dem Anschreiben ans MdFE steht die Unterschrift einer Person.
+  const mitVermerk = async () => {
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/extractions/x/confirm`,
+      payload: {
+        proposals: [
+          { sectionId: "3", fieldId: "recipients", value: ["municipal"], confidence: 1, evidence: "" },
+          { sectionId: "5", fieldId: "fundingRate", value: 90, confidence: 1, evidence: "" },
+        ],
+      },
+    });
+    const v = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/vermerk` });
+    return { id: d.id, eintrag: v.json().eintraege[0] };
+  };
+
+  it("sperrt das Bestätigen, solange keine Begründung gespeichert ist", async () => {
+    const { id, eintrag } = await mitVermerk();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${id}/vermerk/${eintrag.id}/bestaetigen`,
+    });
+    expect(r.statusCode).toBe(409);
+  });
+
+  it("weist eine leere Begründung ab", async () => {
+    const { id, eintrag } = await mitVermerk();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${id}/vermerk/${eintrag.id}/begruendung`,
+      payload: { begruendung: "   " },
+    });
+    expect(r.statusCode).toBe(400);
+  });
+
+  it("führt den Eintrag über begründet zu bestätigt", async () => {
+    const { id, eintrag } = await mitVermerk();
+    const b = await app.inject({
+      method: "POST", url: `/api/drafts/${id}/vermerk/${eintrag.id}/begruendung`,
+      payload: { begruendung: "Die Gemeinden sind haushaltssicherungspflichtig." },
+    });
+    expect(b.json().status).toBe("beantwortet");
+    const c = await app.inject({
+      method: "POST", url: `/api/drafts/${id}/vermerk/${eintrag.id}/bestaetigen`,
+    });
+    expect(c.json().status).toBe("bestaetigt");
+    const sicht = await app.inject({ method: "GET", url: `/api/drafts/${id}/vermerk` });
+    expect(sicht.json().offen).toBe(0);
+  });
+});
+
+describe("Export", () => {
+  it("gibt ohne erzeugten Text die Zusammenstellung der Angaben aus", async () => {
+    // Ohne Richtlinientext bleibt nur die Sammlung der Felder. Sie wird als solche
+    // überschrieben, damit niemand sie für eine Richtlinie hält.
+    const d = await neuerEntwurf();
+    const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/export` });
+    expect(r.statusCode).toBe(200);
+    // Eine Word-Datei beginnt als ZIP-Archiv mit „PK".
+    expect(r.rawPayload.subarray(0, 2).toString()).toBe("PK");
+  });
+
+  it("hängt den Dateinamen an den Titel, nicht an die UUID", async () => {
+    // Vorher hieß die Datei `richtlinie-<UUID>.docx` — technisch eindeutig und im
+    // Downloadordner unbrauchbar.
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "PATCH", url: `/api/drafts/${d.id}`, payload: { title: "RL Katzenkastration" },
+    });
+    const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/export` });
+    expect(r.headers["content-disposition"]).toContain("Katzenkastration");
+    expect(r.headers["content-disposition"]).not.toContain(d.id);
+  });
+
+  it("gibt den Prüfvermerk als eigene Datei aus", async () => {
+    // Zwei Dateien, mit Absicht: die Richtlinie wird veröffentlicht, das Anschreiben geht
+    // ans Finanzministerium.
+    const d = await neuerEntwurf();
+    const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/export/vermerk` });
+    expect(r.statusCode).toBe(200);
+    expect(r.rawPayload.subarray(0, 2).toString()).toBe("PK");
+  });
+});

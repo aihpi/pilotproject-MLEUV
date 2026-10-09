@@ -8,6 +8,7 @@ import {
   validateDraft,
   type ChatReply,
   type FieldProposal,
+  type Fundstelle,
   type FieldValue,
   type FundingProfile,
   type RichtlinieDraft,
@@ -374,9 +375,14 @@ export const staticApi = {
   },
   // Die Attrappe schlägt nichts vor: ein erfundener Vorschlag sähe aus wie ein echter, und
   // genau diese Verwechslung hat die Redaktionsansicht schon einmal erzeugt.
-  abschnittsvorschlag: async () => ({
+  abschnittsvorschlag: async (): Promise<{
+    proposals: FieldProposal[];
+    hinweis: string;
+    fundstellen?: Fundstelle[];
+  }> => ({
     proposals: [],
     hinweis: "Ohne laufenden Vorschlagsdienst gibt es keine Vorschläge.",
+    fundstellen: [],
   }),
   // Ohne laufenden Dienst gibt es keine Vorbilder — erfundene wären das Gegenteil dessen,
   // wofür sie da sind.

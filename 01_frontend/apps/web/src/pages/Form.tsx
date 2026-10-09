@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   dokumentLink,
+  dokumentUrl,
+  type Fundstelle,
   feldLeer,
   fieldVisible,
   sections,
@@ -287,6 +289,10 @@ export function SectionPage() {
    * durch einen Klick verlieren.
    */
   const [vorschlagHinweis, setVorschlagHinweis] = useState("");
+  // Was die Suche zu diesem Baustein gefunden hat — unabhängig davon, ob es in einen Wert
+  // eingeflossen ist. Ohne diese Liste war nicht zu erkennen, ob ein mageres Ergebnis an der
+  // Suche lag oder daran, dass das Modell den Musterbaustein vorzog.
+  const [fundstellen, setFundstellen] = useState<Fundstelle[]>([]);
   /**
    * Die Vorschläge des letzten Laufs, nach Feld — bis zum Speichern am Feld ausgewiesen.
    *
@@ -311,6 +317,7 @@ export function SectionPage() {
       // mit — die führt React aber später aus, und die Meldung las ihn, solange er noch auf
       // null stand. Ergebnis: „nichts geändert" über zwei frisch gesetzten Häkchen.
       const aktuell = werteRef.current;
+      setFundstellen(r.fundstellen ?? []);
       const neueFelder = r.proposals.filter((p) =>
         feldLeer((aktuell[p.fieldId] ?? null) as FieldValue["value"]),
       );
@@ -428,6 +435,18 @@ export function SectionPage() {
           title="Vorschlag"
         >
           <p>{vorschlagHinweis}</p>
+          {/*
+            Die einzelnen Fundstellen stehen AM FELD, zu dem gesucht wurde — siehe weiter
+            unten. Hier bleibt nur die Auskunft, dass gar nichts gefunden wurde: Dass die
+            Suche nichts fand, ist etwas anderes als dass das Modell nichts übernahm, und
+            diese Unterscheidung gehört an den Abschnitt, nicht an ein einzelnes Feld.
+          */}
+          {fundstellen.length === 0 && !vorschlag.isError && (
+            <p>
+              Im Korpus wurde zu diesem Baustein nichts Vergleichbares gefunden. Der
+              Vorschlag stützt sich allein auf die Musterbausteine.
+            </p>
+          )}
         </Alert>
       )}
       <form
@@ -449,6 +468,53 @@ export function SectionPage() {
               Die Marke steht UNTER der Beschriftung, nicht darüber: oben sah sie aus, als
               gehörte sie zum vorigen Feld.
             */
+            /*
+              Was die Suche ZU DIESEM FELD gefunden hat — unabhängig davon, ob daraus ein
+              Vorschlag wurde. Am Feld und nicht in einem Block über dem Formular: Eine
+              gemeinsame Liste ließ nicht erkennen, welche Stelle welches Feld belegen soll,
+              und Baustein 5 hat elf Felder.
+
+              Steht hier etwas und im Feld trotzdem kein Vorschlag, ist das eine Auskunft:
+              Der Korpus hat eine vergleichbare Stelle, das Modell hat sie nicht verwertet.
+            */
+            const gefunden = fundstellen.filter((f) => f.feld === field.id);
+            const korpus = gefunden.length ? (
+              <details className="feld-marke">
+                <summary>
+                  {gefunden.length === 1
+                    ? "1 vergleichbare Stelle im Korpus"
+                    : `${gefunden.length} vergleichbare Stellen im Korpus`}
+                </summary>
+                <ul>
+                  {gefunden.map((f) => {
+                    const url = dokumentUrl(f.datei ?? undefined, f.seite ?? undefined);
+                    return (
+                      <li key={f.text}>
+                        {url ? (
+                          <a
+                            href={url}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setBeleg({ url, titel: f.text });
+                            }}
+                          >
+                            {f.text}
+                          </a>
+                        ) : (
+                          f.text
+                        )}
+                        {/*
+                          Die tragenden Sätze gleich mit. Eine Fundstelle, von der nur die
+                          Adresse dasteht, muss man aufschlagen, um sie zu verwerfen — und
+                          verworfen wird der größere Teil.
+                        */}
+                        {f.zitat && <blockquote>{f.zitat}</blockquote>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            ) : null;
             const p = vorausgefuellt[field.id];
             const marke = p ? (
               <p className="feld-marke">
@@ -493,6 +559,7 @@ export function SectionPage() {
                     error={error}
                   />
                   {marke}
+                  {korpus}
                   {field.help && (
                     <p id={`${field.id}-help`} className="help">
                       {field.help}
@@ -512,6 +579,7 @@ export function SectionPage() {
                   {field.required && <span aria-hidden="true"> *</span>}
                 </label>
                 {marke}
+                {korpus}
                 {field.help && (
                   <p id={`${field.id}-help`} className="help">
                     {field.help}

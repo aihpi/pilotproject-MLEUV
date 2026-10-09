@@ -345,6 +345,24 @@ export function dokumentUrl(
   return `${DOKUMENT_BASIS}/dokument/${encodeURIComponent(datei)}${seite ? `#page=${seite}` : ""}`;
 }
 
+/**
+ * Eine Stelle, die die Suche geliefert hat.
+ *
+ * Getrennt von `FieldProposal`: Eine Fundstelle gehört zur SUCHE, nicht zu einem Wert. Sie
+ * steht auch dann da, wenn aus ihr kein Vorschlag wurde — dass die Suche nichts fand, ist
+ * eine andere Auskunft als dass das Modell nichts übernahm.
+ */
+export type Fundstelle = {
+  text: string;
+  datei: string | null;
+  seite: number | null;
+  /** Zu welchem Zielfeld diese Stelle gesucht wurde. */
+  feld?: string | null;
+  feld_label?: string | null;
+  /** Die tragenden Sätze, zum Verwerfen ohne Aufschlagen. */
+  zitat?: string | null;
+};
+
 export function dokumentLink(p: FieldProposal): string | null {
   return dokumentUrl(p.belegdatei, p.belegseite);
 }
@@ -1379,6 +1397,39 @@ export function musterbausteinText(nummer: string | null | undefined): string {
  * `gesucht` sind die Felder, die gerade gefüllt werden sollen. Ohne Angabe gelten alle noch
  * nicht bestätigten des Abschnitts.
  */
+/**
+ * Die Felder, die einen Förderfall mit einem anderen vergleichbar machen.
+ *
+ * Gesucht wird nicht irgendeine Stelle zum Thema, sondern eine, aus der sich etwas ableiten
+ * lässt — also eine unter ähnlichen Bedingungen. Für einen Fördersatz ist die wichtigste
+ * Bedingung, ob die Empfangenden Kommunen sind; die steht aber in Abschnitt 3, nicht in
+ * Abschnitt 5. Ein Suchtext allein aus den Feldern DIESES Abschnitts schließt also gerade
+ * das aus, was den Fall vergleichbar macht.
+ *
+ * Bewusst kurz gehalten: je mehr Bedingungen in die Anfrage wandern, desto mehr ähnelt sie
+ * wieder dem ganzen Chatverlauf, der am Anfang das Problem war.
+ */
+const RAHMENBEDINGUNGEN: { sectionId: SectionId; fieldId: string }[] = [
+  { sectionId: "1", fieldId: "legalBasis" },
+  { sectionId: "3", fieldId: "recipients" },
+  { sectionId: "5", fieldId: "financingType" },
+  { sectionId: "5", fieldId: "financingForm" },
+];
+
+/** Die Randbedingungen des Entwurfs als Text, ohne die des gefragten Abschnitts. */
+export function rahmenbedingungen(d: RichtlinieDraft, ausser?: SectionId): string {
+  const teile: string[] = [];
+  for (const { sectionId, fieldId } of RAHMENBEDINGUNGEN) {
+    if (sectionId === ausser) continue;
+    const feld = d.sections[sectionId]?.fields[fieldId];
+    if (!feld?.confirmedByUser || feldLeer(feld.value ?? null)) continue;
+    teile.push(feldwertText(sectionId, fieldId, feld.value));
+  }
+  // Die Finanzierungsquelle steht nicht in einem Feld, sondern im Profil.
+  teile.push(d.profile.gak ? "Bund-Land-Finanzierung nach GAK" : "reine Landesmittel");
+  return teile.filter(Boolean).join(", ");
+}
+
 export function suchtextFuer(
   d: RichtlinieDraft,
   nr: SectionId,
@@ -1397,8 +1448,31 @@ export function suchtextFuer(
     }
   }
   for (const f of gesucht ?? []) offen.push(f.label);
-  // Die Gesuchten zuerst: sie sind die Frage, die bestätigten Werte nur der Zusammenhang.
-  return [offen.join(", "), bestaetigt.join(". ")].filter(Boolean).join(". ");
+  // Die Gesuchten zuerst: sie sind die Frage. Dann die Randbedingungen, die den Fall
+  // vergleichbar machen, dann der Zusammenhang aus diesem Abschnitt.
+  return [offen.join(", "), suchkontextFuer(d, nr)].filter(Boolean).join(". ");
+}
+
+/**
+ * Der Zusammenhang OHNE die gesuchten Felder — Randbedingungen und schon Bestätigtes.
+ *
+ * Getrennt, weil der Dienst je Feld einzeln sucht und dafür den Feldnamen selbst davorsetzt.
+ * Eine gemeinsame Anfrage für alle offenen Felder eines Abschnitts stellt mehrere Fragen auf
+ * einmal, und was zurückkommt, beantwortet bestenfalls eine davon: Bei der Beurteilung am
+ * 08.10.2026 begründete das prüfende Modell JEDE der 22 verworfenen Stellen mit demselben
+ * Muster — „regelt die Finanzierungsart, aber nicht den Höchstbetrag". Richtiger Abschnitt,
+ * falsches Feld.
+ */
+export function suchkontextFuer(d: RichtlinieDraft, nr: SectionId): string {
+  const def = sections.find((s) => s.id === nr);
+  if (!def) return "";
+  const bestaetigt: string[] = [];
+  for (const f of def.fields) {
+    const feld = d.sections[nr]?.fields[f.id];
+    if (feld?.confirmedByUser && !feldLeer(feld.value ?? null))
+      bestaetigt.push(`${f.label}: ${feldwertText(nr, f.id, feld.value)}`);
+  }
+  return [rahmenbedingungen(d, nr), bestaetigt.join(". ")].filter(Boolean).join(". ");
 }
 
 export function feldLeer(wert: FieldValue["value"]): boolean {

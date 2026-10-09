@@ -50,7 +50,7 @@ class TestVorgabeAusDerUmgebung:
         monkeypatch.setattr(retrieval, "HOLDOUT_DATEIEN", ["vorgabe.pdf"])
         gesehen = {}
         monkeypatch.setattr(retrieval, "_gueltig_filter",
-                            lambda a, b=None, c=None: gesehen.update(dateien=c))
+                            lambda *a, **k: gesehen.update(dateien=a[2]))
         monkeypatch.setattr(retrieval, "_c", lambda: (_ for _ in ()).throw(RuntimeError("stop")))
         try:
             retrieval.hybrid_search("x")
@@ -63,7 +63,7 @@ class TestVorgabeAusDerUmgebung:
         monkeypatch.setattr(retrieval, "HOLDOUT_DATEIEN", ["vorgabe.pdf"])
         gesehen = {}
         monkeypatch.setattr(retrieval, "_gueltig_filter",
-                            lambda a, b=None, c=None: gesehen.update(dateien=c))
+                            lambda *a, **k: gesehen.update(dateien=a[2]))
         monkeypatch.setattr(retrieval, "_c", lambda: (_ for _ in ()).throw(RuntimeError("stop")))
         try:
             retrieval.hybrid_search("x", ohne_dateien=[])

@@ -36,10 +36,13 @@ import protokoll
 import satzfilter
 import musterbausteine
 from anfrage import suche
+from retrieval import hybrid_search
 from rag_query import bloecke_bilden
 from llm import chat
+import profilfilter
 from config import (BASE, TOP_K, KONSENS_LAEUFE, KONSENS_SCHWELLE,
-                    KONSENS_TEMPERATUR_FELD, HOLDOUT_DATEIEN)
+                    KONSENS_TEMPERATUR_FELD, HOLDOUT_DATEIEN, ABSCHNITTSBINDUNG,
+                    FELDBINDUNG)
 
 loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 
@@ -296,9 +299,139 @@ _UEBERSCHRIFT = {
 }
 
 
+def ebenen_fuer(gak=False, beihilfe=False):
+    """Welche Rechtsebenen für diesen Entwurf überhaupt einschlägig sind.
+
+    Landesrecht immer: VV und VVG zu § 44 LHO, ANBest, die Grundsätze für Förderrichtlinien
+    und die bestehenden Landesrichtlinien.
+
+    Bundesrecht nur bei GAK-Kofinanzierung — der Rahmenplan bindet dann, sonst gilt er nicht.
+    EU-Recht nur bei Beihilfebezug: AGVO, De-minimis und die Leitlinien greifen nur, wenn die
+    Förderung überhaupt eine Beihilfe ist.
+
+    Der Anlass ist gemessen: Bei der Beurteilung der Formular-Fundstellen am 08.10.2026 wurden
+    24 von 66 Stellen als unbrauchbar eingestuft, und die Begründungen nannten durchgehend ein
+    fremdes Förderregime — Binnenmarktvereinbarkeit, GAP-Strategieplan, AgrarGVO — für eine
+    Tierschutzrichtlinie aus reinen Landesmitteln. Der Korpus führt 818 Chunks auf Landesebene
+    und 4692 auf Bundes- und EU-Ebene; ohne Eingrenzung sucht das Werkzeug zu 85 Prozent im
+    Unzutreffenden.
+
+    Großzügig im Zweifel: Wer nichts angibt, bekommt nur Landesrecht — aber `gak` und
+    `beihilfe` kommen aus bestätigten Angaben des Entwurfs, nicht aus einer Vermutung.
+    """
+    ebenen = ["Land"]
+    if gak:
+        ebenen.append("Bund")
+    if beihilfe:
+        ebenen.append("EU")
+    return ebenen
+
+
+# Wie viele Stellen je ZIELFELD geholt werden. Klein, weil es mehrere Felder sind — die
+# Summe soll nicht größer werden als die eine Anfrage vorher.
+TREFFER_JE_FELD = 3
+
+# Wie lang das Zitat einer Fundstelle in der Oberfläche höchstens ist. Es soll zum Verwerfen
+# reichen, nicht zum Lesen — wer mehr will, schlägt das Dokument auf.
+ZITAT_ZEICHEN = 400
+
+
+def ist_belegsatz(text):
+    """Taugt dieser Textrest als Fundstelle — oder ist es ein Tabellen- oder Verzeichnisrest?
+
+    Gegenstück zu `istBelegSatz` in packages/shared, wo es seit dem 29.09.2026 für das
+    Belegzitat eines Vorschlags gilt. Die Fundstellenliste der Oberfläche ging daran vorbei,
+    und prompt stand unter „Kriterien für die Erfolgskontrolle" ein eingelesenes
+    Inhaltsverzeichnis: „1.1, Zuwendungszweck, Rechtsgrundlage = Zuwendungszweck. 1.1, 2 = 2."
+
+    Das Gleichheitszeichen ist das Erkennungsmerkmal: Es trennt in der eingelesenen Tabelle
+    Zelle von Zelle und kommt in Rechtstext praktisch nicht vor.
+    """
+    t = (text or "").strip()
+    if len(t) < 40 or "=" in t or t.endswith(".."):
+        return False
+    return bool(re.search(r"[.!?][)\"\u201d\u00bb]?$", t)) or len(t) >= 120
+
+
+def belege_je_feld(felder, kontext, abschnitt_nr, uhr=None, zaehler=None, **filter_args):
+    """Je Zielfeld eine eigene Suche. Ergibt (bloecke, metas) wie `belege_holen`.
+
+    Eine gemeinsame Anfrage für alle offenen Felder eines Abschnitts stellt mehrere Fragen auf
+    einmal — „Konkretisierung der Zielgruppe, Ausgeschlossene Gruppen, Weiterleitung an
+    Dritte" — und was zurückkommt, beantwortet bestenfalls eine davon. Bei der Beurteilung der
+    Formular-Fundstellen am 08.10.2026 begründete das prüfende Modell ALLE 22 verworfenen
+    Stellen mit demselben Muster: „regelt die Finanzierungsart, aber nicht den Höchstbetrag",
+    „handelt von Zuwendungsvoraussetzungen, aber nicht von ausgeschlossenen Gruppen".
+    Richtiger Abschnitt, falsches Feld. Die Abschnittsbindung kann das nicht auflösen: Baustein
+    5 hat elf Felder und ist für alle elf derselbe Baustein.
+
+    Ohne Reranking je Teilanfrage. Es ist ein Modellaufruf, und bei bis zu elf Feldern wären
+    das elf — die Zusammenführung leistet hier, was der Reranker leisten soll: Jedes Feld
+    bekommt seine eigene Trefferliste, statt um Plätze in einer gemeinsamen zu konkurrieren.
+
+    Der Satzfilter läuft je Feld mit dem FELDNAMEN als Anliegen. Dasselbe Argument: Er wählt
+    die tragenden Sätze aus einem Block, und welche tragen, hängt an der Frage.
+    """
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=min(len(felder), 6)) as pool:
+        listen = list(pool.map(
+            lambda f: hybrid_search(f"{f.get('label') or f.get('id')}. {kontext}".strip(),
+                                    top_k=TREFFER_JE_FELD, rerank=False, **filter_args),
+            felder))
+    if uhr is not None:
+        uhr["belege_suche"] = round(time.monotonic() - t0, 1)
+
+    t0 = time.monotonic()
+    alle, metas, gesehen, beurteilt, ohne_satz = [], [], set(), 0, 0
+    for feld, treffer in zip(felder, listen):
+        bloecke = bloecke_bilden(treffer)
+        if not bloecke:
+            continue
+        bloecke, m = satzfilter.filtern(feld.get("label") or feld.get("id"), bloecke)
+        metas += m
+        for b in bloecke:
+            if b["gefiltert"]:
+                beurteilt += 1
+                if not b["indizes"]:
+                    ohne_satz += 1
+            # Ein Block ohne gewählten Satz belegt nichts — wie in `belege_holen`.
+            if b["gefiltert"] and not b["indizes"]:
+                continue
+            # Und ein Tabellen- oder Verzeichnisrest belegt auch nichts, so lang er ist.
+            if not ist_belegsatz(b.get("kurz") or b.get("roh")):
+                continue
+            pid = (b["punkt"].payload or {}).get("parent_id")
+            if pid in gesehen:
+                continue
+            gesehen.add(pid)
+            # Woraufhin diese Stelle gefunden wurde. Ohne die Angabe steht in der Oberfläche
+            # eine Liste, der nicht anzusehen ist, welches Feld sie belegen soll.
+            b["feld"] = feld.get("id")
+            b["feld_label"] = feld.get("label")
+            alle.append(b)
+    if uhr is not None:
+        uhr["belege_satzfilter"] = round(time.monotonic() - t0, 1)
+    if zaehler is not None:
+        zaehler["gefunden"] = sum(len(t) for t in listen)
+        zaehler["beurteilt"] = beurteilt
+        zaehler["verworfen"] = beurteilt - len(alle)
+        if beurteilt:
+            zaehler["verwurfsquote"] = round(ohne_satz / beurteilt, 2)
+    # Neu durchnummerieren: Die Kennungen sind das, worauf das Modell im Prompt zeigt, und sie
+    # müssen über die zusammengeführte Liste eindeutig sein.
+    for i, b in enumerate(alle, 1):
+        b["id"] = f"{i:04d}"
+    return alle, metas
+
+
 def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
-                 ohne_dateien=None, zaehler=None):
+                 ohne_dateien=None, zaehler=None, nur_baustein=None, nur_quellen=None):
     """Belegstellen zum Anliegen: Hybrid-Suche, dann Satzfilter. Nur Nachweis, keine Werte.
+
+    `nur_baustein`: nur Fundstellen aus diesem Baustein anderer Richtlinien, siehe
+    `config.ABSCHNITTSBINDUNG`.
+
+    `nur_quellen`: nur Fundstellen aus diesen Richtlinien, siehe `profilfilter`.
 
     `uhr`: optionales Wörterbuch, in das die Teilzeiten geschrieben werden. Die beiden
     Schritte sind sehr verschieden teuer — die Suche stellt mehrere Teilanfragen mit je einem
@@ -316,7 +449,8 @@ def belege_holen(eingabe, abschnitt_nr, top_k=TOP_K, uhr=None, nur_arten=None,
     """
     t0 = time.monotonic()
     treffer = suche(eingabe, abschnitt_nr=abschnitt_nr, top_k=top_k,
-                    nur_arten=nur_arten, ohne_dateien=ohne_dateien)
+                    nur_arten=nur_arten, ohne_dateien=ohne_dateien,
+                    nur_baustein=nur_baustein, nur_quellen=nur_quellen)
     bloecke = bloecke_bilden(treffer)
     if uhr is not None:
         uhr["belege_suche"] = round(time.monotonic() - t0, 1)
@@ -643,7 +777,8 @@ _KEINE_EINGABE = "(Die Bearbeiterin hat zu diesem Abschnitt noch nichts angegebe
 
 def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True,
                 konsens=False, mit_belegen=True, abfrageart=None, ohne_dateien=None,
-                nachbarfelder=None, regelfall=False, entschieden=None, suchtext=None):
+                nachbarfelder=None, regelfall=False, entschieden=None, suchtext=None,
+                abschnittsbindung=None, profil=None, suchkontext=None, feldbindung=None):
     """Vorschläge je Zielfeld.
 
     felder: [{"id", "label", "kind", "options"?, "help"?}] — vom Aufrufer, siehe Modulkopf.
@@ -665,6 +800,12 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
     abfrageart: Sorte der Abfrage nach dem Prozessmodell, siehe `ABFRAGEARTEN`. Schränkt den
         sichtbaren Korpusausschnitt ein und steht im Nachweis, damit die Oberfläche einen
         Vorschlag nicht wie einen Fund darstellt.
+    abschnittsbindung: nur Fundstellen aus demselben Baustein. Ohne Angabe gilt
+        `config.ABSCHNITTSBINDUNG`; der Schalter ist da, um beide Seiten zu messen.
+    profil: die BESTÄTIGTEN Werte des Entwurfs als {Formularfeld: Wert}, für den Abgleich mit
+        den Steckbriefen der Korpusrichtlinien — siehe `profilfilter`. Ohne Angabe oder bei zu
+        wenig festgelegten Werten findet kein Abgleich statt und es wird im ganzen Korpus
+        gesucht.
 
     Zu `mit_belegen`: die Suche kostet rund die Hälfte der Antwortzeit, und ob sie beim
     FORMULIEREN etwas beiträgt, ist offen. Der Wert entsteht aus Musterbaustein und
@@ -689,15 +830,43 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
                          f"bekannt sind {sorted(ABFRAGEARTEN)}")
     nur_arten = ABFRAGEARTEN.get(abfrageart)
 
+    # Unsere Abschnittsnummer IST der Baustein — 0, 9 und 10 tragen keine Nummer und damit
+    # auch keine Entsprechung im Korpus; dort bleibt die Suche ungebunden.
+    bindung = ABSCHNITTSBINDUNG if abschnittsbindung is None else abschnittsbindung
+    nur_baustein = abschnitt_nr if (bindung and 1 <= (abschnitt_nr or 0) <= 8) else None
+
+    # Stufe 2: Nur Richtlinien, deren festgelegte Werte zum Entwurf passen. Greift erst, wenn
+    # genug festgelegt ist — `passende_quellen` gibt sonst die leere Menge zurück, und die
+    # bedeutet „kein Abgleich möglich", nicht „keine passt". Beides zu verwechseln hieße, bei
+    # einem frischen Entwurf jede Fundstelle zu unterdrücken.
+    quellen, profiltreffer = profilfilter.passende_quellen(profil or {})
+    nur_quellen = sorted(quellen) or None
+
+    # Stufe 3: je Zielfeld eine eigene Suche. Braucht den Kontext OHNE die Feldnamen — die
+    # setzt `belege_je_feld` selbst davor. Fehlt er, bleibt es bei der gemeinsamen Anfrage.
+    je_feld = (FELDBINDUNG if feldbindung is None else feldbindung) and suchkontext is not None
+
     suchzaehler = {}
-    if mit_belegen:
+    if mit_belegen and je_feld:
+        bloecke, metas = belege_je_feld(
+            felder, suchkontext, abschnitt_nr, uhr=uhr, zaehler=suchzaehler,
+            nur_arten=nur_arten, ohne_dateien=ohne_dateien, nur_baustein=nur_baustein,
+            nur_quellen=nur_quellen)
+    elif mit_belegen:
         bloecke, metas = belege_holen(suchtext or eingabe, abschnitt_nr, top_k, uhr=uhr,
                                       nur_arten=nur_arten, ohne_dateien=ohne_dateien,
-                                      zaehler=suchzaehler)
+                                      zaehler=suchzaehler, nur_baustein=nur_baustein,
+                                      nur_quellen=nur_quellen)
     else:
         bloecke, metas = [], []
+    # Nach Zielfeld gruppiert, wenn je Feld gesucht wurde. Eine flache Liste zwänge das
+    # Modell, für jedes Feld alle Stellen durchzugehen — und genau dabei greift es zur
+    # erstbesten, die thematisch passt.
     belege = "\n\n".join(
-        f"[{b['fundstelle']}]\n{b.get('kurz') or b['roh']}" for b in bloecke)
+        (f"[{b['fundstelle']}]"
+         + (f" — zu „{b['feld_label']}“" if b.get("feld_label") else "")
+         + f"\n{b.get('kurz') or b['roh']}")
+        for b in bloecke)
 
     # Die Belegstellen sind Fremdtext im Prompt — dieselbe Absicherung wie in rag_query.
     # Ohne Belege steht dort nicht „keine Fundstellen" (das liest sich wie ein Fehlschlag der
@@ -858,7 +1027,21 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
         # einen Torso nicht von einer gegen den vollen Korpus unterscheiden.
         "ausgeblendete_dateien": (HOLDOUT_DATEIEN if ohne_dateien is None
                                   else list(ohne_dateien)),
-        "fundstellen": [b["fundstelle"] for b in bloecke],
+        # Mit Datei und Seite, nicht nur als Text: Eine Fundstelle, die man nicht aufschlagen
+        # kann, ist eine Behauptung. Nachprüfen kann sie sonst nur, wer den Datenordner kennt.
+        "fundstellen": [{
+            "text": b["fundstelle"],
+            "datei": (b["punkt"].payload or {}).get("quelle"),
+            "seite": ((b["punkt"].payload or {}).get("seiten") or [None])[0],
+            "feld": b.get("feld"),
+            "feld_label": b.get("feld_label"),
+            # Die vom Satzfilter gewählten Sätze, nicht der ganze Block. Eine Fundstelle, von
+            # der man nur die Adresse sieht, muss man aufschlagen, um sie zu verwerfen.
+            "zitat": ((b.get("kurz") or b.get("roh") or "").strip()[:ZITAT_ZEICHEN] or None),
+        } for b in bloecke],
+        # Wonach Stufe 2 eingegrenzt hat. Ohne diese Angabe wäre ein mageres Ergebnis nicht
+        # von einem leeren Korpus zu unterscheiden.
+        "profilquellen": sorted(profiltreffer, key=lambda q: -profiltreffer[q]),
         # Der zusammengesetzte Belegtext, damit Aufrufer die Abschreibprüfung wiederholen
         # können, ohne Suche und Satzfilter ein zweites Mal laufen zu lassen — das kostet
         # sonst doppelt Zeit und doppelt Modellaufrufe (in der Feld-Eval beobachtet).

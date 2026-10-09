@@ -116,7 +116,8 @@ def _llm_konsens(query, points, top_k, laeufe=None, schwelle=None):
     return [points[i] for i in gewaehlt[:top_k]]
 
 
-def _gueltig_filter(nur_aktuell, nur_arten=None, ohne_dateien=None):
+def _gueltig_filter(nur_aktuell, nur_arten=None, ohne_dateien=None, nur_ebenen=None,
+                    nur_baustein=None, nur_quellen=None):
     """Abgelöste Fassungen ausschließen, wahlweise auf Arten einschränken, Dateien ausblenden.
 
     must_not für den Status: Chunks ohne status-Feld (Altbestand vor Einführung der
@@ -143,6 +144,20 @@ def _gueltig_filter(nur_aktuell, nur_arten=None, ohne_dateien=None):
     if ohne_dateien:
         bedingungen.append(("must_not", models.FieldCondition(
             key="quelle", match=models.MatchAny(any=list(ohne_dateien)))))
+    if nur_ebenen:
+        bedingungen.append(("must", models.FieldCondition(
+            key="rechtsebene", match=models.MatchAny(any=list(nur_ebenen)))))
+    if nur_baustein is not None:
+        bedingungen.append(("must", models.FieldCondition(
+            key="baustein", match=models.MatchValue(value=int(nur_baustein)))))
+    if nur_quellen is not None:
+        # Entweder eine der passenden Richtlinien ODER die Mustervorlage. Die Vorlage bleibt
+        # immer zulässig: Sie ist kein Vergleichsfall, sondern der Satzrahmen, und ohne sie
+        # bliebe bei einem engen Abgleich gar nichts übrig.
+        bedingungen.append(("must", models.Filter(should=[
+            models.FieldCondition(key="quelle", match=models.MatchAny(any=list(nur_quellen))),
+            models.FieldCondition(key="art", match=models.MatchValue(value="muster")),
+        ])))
     if not bedingungen:
         return None
     return models.Filter(
@@ -152,11 +167,31 @@ def _gueltig_filter(nur_aktuell, nur_arten=None, ohne_dateien=None):
 
 
 def hybrid_search(query, top_k=TOP_K, rerank=True, nur_aktuell=NUR_AKTUELL, modus="hybrid",
-                  nur_arten=None, ohne_dateien=None):
+                  nur_arten=None, ohne_dateien=None, nur_ebenen=None, nur_baustein=None,
+                  nur_quellen=None):
     """modus: hybrid (dense+BM25 via RRF) | dense | bm25 — die Einzelmodi dienen dem Vergleich in der Eval.
 
     rerank: True/„rang" (ein Lauf, Rangfolge) | „konsens" (Mehrheitsentscheid) | False (aus).
     nur_arten: Dokumentarten, auf die eingeschränkt wird, z. B. ["richtlinie", "rahmenplan"].
+    nur_baustein: Nur Stellen aus diesem Baustein unserer Struktur (1 bis 8). Das Feld tragen
+        nur Richtlinien und Muster, siehe `bausteine_schreiben.py`.
+
+        Eine Regelung aus einem anderen Abschnitt hilft beim Ausfüllen nicht, so verwandt sie
+        klingt: Im Durchlauf vom 08.10.2026 kam zu „Förderausschlüsse" eine Liste nicht
+        förderfähiger KOSTEN aus einer fremden Richtlinie — dieselben Wörter, anderer Begriff,
+        anderer Abschnitt.
+    nur_ebenen: Rechtsebenen, auf die eingeschränkt wird — "Land", "Bund", "EU".
+
+        Der Korpus trägt 2554 EU-Chunks, 2138 des Bundes und 818 des Landes. Für eine reine
+        Landesförderung sind damit 85 Prozent des Bestands nicht einschlägig, und sie werden
+        trotzdem durchsucht. Bei der Beurteilung der Formular-Fundstellen am 08.10.2026 kamen
+        daher Binnenmarktvereinbarkeit, GAP-Strategieplan und AgrarGVO als Treffer für eine
+        Tierschutzrichtlinie aus Landesmitteln.
+    nur_quellen: Nur Stellen aus diesen Quelldateien — plus der Mustervorlage, immer.
+
+        Welche Richtlinien das sind, entscheidet `profilfilter`: die, deren festgelegte Werte
+        mit denen des Entwurfs zusammengehen. Eine Richtlinie mit Festbetragsfinanzierung
+        steht zur Anteilfinanzierung im richtigen Abschnitt und hilft trotzdem nicht.
     ohne_dateien: Quelldateien, die für diese Suche nicht existieren. Ohne Angabe gilt
         HOLDOUT_DATEIEN aus der Umgebung — siehe config.
     """
@@ -164,7 +199,8 @@ def hybrid_search(query, top_k=TOP_K, rerank=True, nur_aktuell=NUR_AKTUELL, modu
         ohne_dateien = HOLDOUT_DATEIEN
     cand = max(top_k * 4, 20)  # mehr Kandidaten holen, dann herunter-reranken
     # schon im Prefetch, sonst verdrängen veraltete oder artfremde Treffer die gesuchten
-    filt = _gueltig_filter(nur_aktuell, nur_arten, ohne_dateien)
+    filt = _gueltig_filter(nur_aktuell, nur_arten, ohne_dateien, nur_ebenen,
+                           nur_baustein, nur_quellen)
     if modus == "dense":
         res = _c().query_points(collection_name=COLLECTION, query=embed(query)[0], using="dense",
                                 query_filter=filt, limit=cand, with_payload=True).points

@@ -94,6 +94,19 @@ class Anfrage(BaseModel):
         description="Schon bestätigte Werte desselben Abschnitts als [{label, wert}]. "
                     "Vorgabe, nicht Vorschlag: an ihnen richtet sich das Modell aus, statt "
                     "jedes Feld für sich zu raten.")
+    suchkontext: str | None = Field(
+        default=None,
+        description="Der Zusammenhang OHNE die gesuchten Feldnamen — Randbedingungen und "
+                    "schon Bestätigtes. Liegt er vor, sucht der Dienst JE ZIELFELD einzeln "
+                    "und setzt den Feldnamen selbst davor. Ohne ihn bleibt es bei einer "
+                    "gemeinsamen Anfrage für alle Felder des Abschnitts.")
+    profil: dict[str, str | list[str] | None] | None = Field(
+        default=None,
+        description="Die BESTÄTIGTEN Werte des Entwurfs als {Formularfeld: Wert}, für den "
+                    "Abgleich mit den Steckbriefen der Korpusrichtlinien. Gesucht wird dann "
+                    "nur in Richtlinien, deren festgelegte Werte zusammenpassen, plus der "
+                    "Mustervorlage. Ohne Angabe oder bei weniger als zwei vergleichbaren "
+                    "Feldern findet kein Abgleich statt.")
     nachbarfelder: list[FeldDefinition] | None = Field(
         default=None,
         description="Die übrigen Felder desselben Abschnitts, die in einer ANDEREN Anfrage "
@@ -123,6 +136,24 @@ class Vorschlag(BaseModel):
     konfidenz: float | None = None
 
 
+class Fundstelle(BaseModel):
+    """Eine Stelle, die die Suche geliefert hat — mit Datei und Seite zum Aufschlagen.
+
+    Bis zum 08.10.2026 nur ein Zitiertext. Die Oberfläche konnte daraus keinen Verweis bauen,
+    und nachprüfen konnte eine Fundstelle damit nur, wer den Datenordner auswendig kennt.
+    """
+    text: str
+    datei: str | None = None
+    seite: int | None = None
+    # Zu welchem Zielfeld diese Stelle gesucht wurde. Ohne die Angabe steht in der Oberfläche
+    # eine Liste, der nicht anzusehen ist, welches Feld sie belegen soll.
+    feld: str | None = None
+    feld_label: str | None = None
+    # Die tragenden Sätze. Ohne sie muss jede Fundstelle aufgeschlagen werden, um sie zu
+    # verwerfen — und verworfen wird der größere Teil.
+    zitat: str | None = None
+
+
 class Nachweis(BaseModel):
     """Was der Prüfvermerk und die Fehlersuche brauchen — nicht die Oberfläche.
 
@@ -136,7 +167,10 @@ class Nachweis(BaseModel):
     # Messung gegen einen Holdout von einer gegen den vollen Korpus nicht zu
     # unterscheiden.
     ausgeblendete_dateien: list[str] = []
-    fundstellen: list[str] = []
+    fundstellen: list[Fundstelle] = []
+    # Welche Richtlinien der Profilabgleich übrig ließ. Ohne diese Angabe ist ein mageres
+    # Ergebnis nicht von einem leeren Korpus zu unterscheiden.
+    profilquellen: list[str] = []
     musterbausteine: list[str] = []
     prompts: list[str] = []
     befunde: list[str] = []
@@ -315,6 +349,10 @@ class Vorbild(BaseModel):
     text: str
     datei: str | None = None
     seite: int | None = None
+    # Zu welchem Zielfeld diese Stelle gesucht wurde. Ohne die Angabe steht in der Oberfläche
+    # eine Liste, der nicht anzusehen ist, welches Feld sie belegen soll.
+    feld: str | None = None
+    feld_label: str | None = None
 
 
 @app.post("/begruendung", response_model=list[Vorbild])
@@ -348,6 +386,8 @@ def vorschlag_erzeugen(anfrage: Anfrage):
                            for f in anfrage.nachbarfelder or []] or None,
             regelfall=anfrage.regelfall,
             entschieden=anfrage.entschieden,
+            profil=anfrage.profil,
+            suchkontext=anfrage.suchkontext,
             suchtext=(anfrage.suchtext or "").strip() or None)
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,

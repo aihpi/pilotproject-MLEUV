@@ -77,8 +77,49 @@ def kern(text):
     return re.sub(r"\s+", " ", _BALLAST.sub(" ", rest)).strip()
 
 
+# Wie viele Mustersätze als eigene Teilanfrage mitlaufen.
+#
+# Drei. Jede Teilanfrage kostet ein Embedding und ein Reranking; mehr als drei verdoppeln die
+# Antwortzeit, ohne die Trefferliste zu verbreitern — RRF führt ohnehin zusammen.
+MUSTERSAETZE_ALS_ANFRAGE = 3
+
+# Ab welcher Länge ein Mustersatz als Suchtext taugt. Kürzere sind Gliederungsüberschriften.
+MUSTERSATZ_MINDESTLAENGE = 80
+
+
+def _mustersaetze(text, abschnitt_nr):
+    """Mustersätze des Abschnitts, die zum Anliegen passen — als zusätzliche Suchtexte.
+
+    Der Grund ist eine Messung vom 07.10.2026: Bei den Gold-Fundstellen, die unter zwanzig
+    Kandidaten fehlten, lag die Wortüberschneidung zwischen Frage und Fundstelle im MEDIAN
+    bei null. Die Frage nennt den Zweck („ab welchem Wert ist zu inventarisieren"), die
+    Fundstelle die Voraussetzung („deren Wert … übersteigt") — kein tragendes Wort gemeinsam.
+    Weder BM25 noch die Einbettung überbrücken das.
+
+    Der Mustersatz dagegen ist in derselben Sprache verfasst wie die Rechtsstelle, die er
+    meint — er ist nach ihr gebaut. Mit ihm zu suchen ist die Idee hinter HyDE, nur ohne
+    deren Risiko: Der hypothetische Text wird nicht erzeugt, sondern aus der Vorlage genommen.
+
+    Ausgewählt nach Wortüberschneidung mit dem Anliegen, damit nicht alle dreizehn Mustersätze
+    eines Abschnitts mitlaufen.
+    """
+    import musterbausteine
+    bausteine = musterbausteine.laden().get(abschnitt_nr) or []
+    saetze = [(b.get("text") or "").strip() for b in bausteine]
+    saetze = [s for s in saetze if len(s) >= MUSTERSATZ_MINDESTLAENGE]
+    if not saetze:
+        return []
+    gesucht = {w.lower() for w in re.findall(r"\w{5,}", text)}
+    if not gesucht:
+        return saetze[:MUSTERSAETZE_ALS_ANFRAGE]
+    bewertet = sorted(
+        saetze,
+        key=lambda s: -len(gesucht & {w.lower() for w in re.findall(r"\w{5,}", s)}))
+    return bewertet[:MUSTERSAETZE_ALS_ANFRAGE]
+
+
 def anfragen(text, abschnitt_nr=None):
-    """Teilanfragen: Basisangaben, Kern des Anliegens, dann die Themen des Abschnitts."""
+    """Teilanfragen: Basisangaben, Kern des Anliegens, Abschnittsthemen, Mustersätze."""
     vorspann, _ = zerlegen(text)
     liste = []
     if len(vorspann) > 5:
@@ -90,6 +131,7 @@ def anfragen(text, abschnitt_nr=None):
             liste.append(f"{vorspann} {k}"[:300])  # Basisangaben und Anliegen zusammen
     for thema in ABSCHNITT_THEMEN.get(abschnitt_nr or 0, []):
         liste.append(thema)
+    liste += _mustersaetze(text, abschnitt_nr)
     return liste or [text]
 
 

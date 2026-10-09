@@ -1,6 +1,7 @@
 import type {
   ChatReply,
   FieldProposal,
+  Fundstelle,
   FundingProfile,
   RichtlinieDraft,
   SectionData,
@@ -93,7 +94,7 @@ const serverApi = {
     ),
   // Vorschläge für einen Abschnitt, aus dem Formular heraus — derselbe Dienst wie im Chat.
   abschnittsvorschlag: (id: string, nr: string) =>
-    request<{ proposals: FieldProposal[]; hinweis: string }>(
+    request<{ proposals: FieldProposal[]; hinweis: string; fundstellen?: Fundstelle[] }>(
       `/api/drafts/${id}/abschnitt/${nr}/vorschlag`,
       { method: "POST" },
     ),

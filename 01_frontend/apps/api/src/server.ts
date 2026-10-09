@@ -15,6 +15,7 @@ import {
   feldwertAusVorschlag,
   feldwertText,
   suchtextFuer,
+  suchkontextFuer,
   freigabeGueltig,
   naechsteFrage,
   nextChatStage,
@@ -299,6 +300,16 @@ app.get("/api/drafts/:id/vermerk", async (req) => {
  */
 const VORSCHLAG_URL = process.env.VORSCHLAG_URL ?? "http://127.0.0.1:8000";
 
+/** Eine Stelle, die die Suche geliefert hat — mit Datei und Seite zum Aufschlagen. */
+export type Fundstelle = {
+  text: string;
+  datei: string | null;
+  seite: number | null;
+  feld?: string | null;
+  feld_label?: string | null;
+  zitat?: string | null;
+};
+
 type DienstVorschlag = {
   feld: string; label: string;
   wert: string | number | boolean | string[] | null;
@@ -307,6 +318,23 @@ type DienstVorschlag = {
   musterbaustein: string | null; begruendung: string | null; konfidenz: number | null;
   belegdatei: string | null; belegseite: number | null;
 };
+
+/**
+ * Die Felder, über die der Dienst den Entwurf mit den Korpusrichtlinien abgleicht.
+ *
+ * Nur Felder, bei denen beide Seiten dasselbe meinen und deren Wert eine RANDBEDINGUNG ist:
+ * Wer anteilig als Zuschuss an Kommunen fördert, lernt von einer Richtlinie, die das auch
+ * tut, und nicht von einer mit Festbetrag an Einzelunternehmen. Fördersatz und Höchstbetrag
+ * stehen bewusst nicht dabei — nach denen wird gesucht, an ihnen wird nicht abgeglichen.
+ */
+const PROFILFELDER = [
+  "legalBasis",
+  "financingType",
+  "financingForm",
+  "recipients",
+  "payment",
+  "eligibleBasis",
+] as const;
 
 async function holeVorschlaege(
   sectionId: string,
@@ -324,7 +352,9 @@ async function holeVorschlaege(
   // Womit im Korpus GESUCHT wird, falls das etwas anderes sein soll als `eingabe`.
   // Siehe `suchtextFuer`: beim Knopf im Formular sind die beiden verschieden.
   suchtext?: string,
-): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean }> {
+  profil?: Record<string, unknown>,
+  suchkontext?: string,
+): Promise<{ vorschlaege: DienstVorschlag[]; vorbild: boolean; fundstellen: Fundstelle[] }> {
   // Zeitlimit: eine Anfrage dauert derzeit rund eine Minute (Suche, Satzfilter, Vorschlag —
   // drei Modellrunden). Ohne Limit hinge die Verbindung im Fehlerfall endlos.
   const abbruch = AbortSignal.timeout(180_000);
@@ -338,6 +368,8 @@ async function holeVorschlaege(
     body: JSON.stringify({
       abschnitt_nr: Number(sectionId), eingabe, felder, abfrageart, regelfall,
       suchtext: suchtext?.trim() || undefined,
+      profil: profil && Object.keys(profil).length ? profil : undefined,
+      suchkontext: suchkontext ?? undefined,
       entschieden: entschieden.length ? entschieden : undefined,
       nachbarfelder: nachbarfelder.length ? nachbarfelder : undefined,
     }),
@@ -346,13 +378,19 @@ async function holeVorschlaege(
   if (!res.ok) throw new Error(`Vorschlagsdienst: HTTP ${res.status}`);
   const daten = (await res.json()) as {
     vorschlaege: DienstVorschlag[];
-    nachweis?: { abfrageart?: string | null };
+    nachweis?: { abfrageart?: string | null; fundstellen?: Fundstelle[] };
   };
   // Die Sorte kommt aus der ANTWORT zurück und wird nicht aus der Anfrage übernommen: was
   // der Dienst tatsächlich gesehen hat, weiß nur er.
+  //
+  // Und die Fundstellen der SUCHE, nicht nur die an einem Vorschlag zitierte. Sie blieben
+  // bis hierher im Dienst liegen: die Bearbeiterin sah nur, was in einen Wert eingeflossen
+  // ist, nie, was das Werkzeug überhaupt gefunden hat. Damit war weder zu beurteilen, ob die
+  // Suche taugt, noch ob der Vorschlag die beste der gefundenen Stellen genommen hat.
   return {
     vorschlaege: daten.vorschlaege ?? [],
     vorbild: daten.nachweis?.abfrageart === "vorschlagen",
+    fundstellen: daten.nachweis?.fundstellen ?? [],
   };
 }
 
@@ -559,7 +597,9 @@ async function vorschlaegeFuer(
   regelfall = false,
   entschieden: { label: string; wert: string }[] = [],
   suchtext?: string,
-): Promise<{ proposals: FieldProposal[]; geliefert: DienstVorschlag[] }> {
+  profil?: Record<string, unknown>,
+  suchkontext?: string,
+): Promise<{ proposals: FieldProposal[]; geliefert: DienstVorschlag[]; fundstellen: Fundstelle[] }> {
   let proposals: FieldProposal[] = [];
     // Zwei Anfragen statt einer, weil die Abfragesorte am Feld hängt und nicht am Abschnitt:
     // beim ÜBERNEHMEN ist eine Fundstelle ein Nachweis, beim VORSCHLAGEN ein Vorbild aus
@@ -586,8 +626,10 @@ async function vorschlaegeFuer(
               regelfall,
               entschieden,
               suchtext,
+              profil,
+              suchkontext,
             )
-          : Promise.resolve({ vorschlaege: [], vorbild: false }),
+          : Promise.resolve({ vorschlaege: [], vorbild: false, fundstellen: [] }),
       ),
     );
     const geliefert = [...uebernahme!.vorschlaege, ...vorschlag!.vorschlaege];
@@ -627,7 +669,12 @@ async function vorschlaegeFuer(
           ...(beleg && v.fundstelle ? { vorbild: true } : {}),
         };
       });
-  return { proposals, geliefert };
+  // Beide Anfragen suchen getrennt; doppelte Stellen sind dieselbe Fundstelle.
+  const alle = [...uebernahme!.fundstellen, ...vorschlag!.fundstellen];
+  const fundstellen = alle.filter(
+    (f, i) => alle.findIndex((x) => x.text === f.text) === i,
+  );
+  return { proposals, geliefert, fundstellen };
 }
 
 /**
@@ -641,7 +688,14 @@ async function vorschlaegeFuer(
  * Datumsangaben eine Minute auf ein Modell zu warten wäre Unfug; sie sich vorschlagen zu
  * LASSEN, wenn man unsicher ist, ist es nicht.
  *
- * Als Eingabe dient, was im Chat schon gesagt wurde. Ist dort nichts, bleibt der Regelfall
+ * Als Eingabe dient, was im Chat gesagt UND was im Formular bestätigt wurde. Der Chat allein
+ * reichte nicht: Wer einen Abschnitt im Formular ausfüllt und im nächsten den Knopf drückt,
+ * bekam „nicht durch Ihre Angaben gedeckt" — der Dienst hatte die Angaben nie gesehen. Das
+ * Formular deckt elf Bausteine ab, das Gespräch sechs; ab dort war der Chatverlauf leer und
+ * jede Angabe der Bearbeiterin für den Vorschlag verloren.
+ *
+ * Nur BESTÄTIGTE Werte, und nur aus anderen Abschnitten: die des eigenen gehen als
+ * `entschieden` mit, wo sie Vorgabe sind statt Angabe. Ist beides leer, bleibt der Regelfall
  * aus den Musterbausteinen — und der wird als solcher ausgewiesen, nicht als Deckung.
  */
 app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
@@ -693,9 +747,24 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
   }
 
   try {
-    const { proposals, geliefert } = await vorschlaegeFuer(
+    // Was in anderen Abschnitten bestätigt ist, mit Beschriftung — sonst steht dort ein
+    // nackter Wert, aus dem weder das Modell noch der Prüfvermerk ablesen kann, wozu er
+    // gehört. Die Beschriftung ist zugleich die Stelle, die als Deckung zitiert wird.
+    const ausFormular = sections
+      .filter((s) => s.id !== nr)
+      .flatMap((s) =>
+        s.fields.flatMap((f) => {
+          const feld = d.sections[s.id]?.fields[f.id];
+          if (!feld?.confirmedByUser || feldLeer(feld.value ?? null)) return [];
+          const text = feldwertText(s.id, f.id, feld.value);
+          return text ? [`${f.label}: ${text}`] : [];
+        }),
+      );
+    const eingabe = [...(d.chatVerlauf ?? []), ...ausFormular].join("\n\n");
+
+    const { proposals, geliefert, fundstellen } = await vorschlaegeFuer(
       def.id,
-      (d.chatVerlauf ?? []).join("\n\n"),
+      eingabe,
       targets,
       // Beim Knopf im Formular ist der Regelfall das Gewünschte. Die Bearbeiterin hat ihn
       // gedrückt, weil sie etwas vorgelegt bekommen will — und sieht am Feld, dass der Wert
@@ -713,6 +782,18 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
       // Gesucht wird mit dem Abschnitt und den gefragten Feldern, nicht mit dem ganzen
       // Verlauf — siehe `suchtextFuer`.
       suchtextFuer(d, def.id, targets),
+      // Und die Randbedingungen des Entwurfs: Gesucht wird dann nur noch in Richtlinien, die
+      // dieselben getroffen haben. Eine Richtlinie mit Festbetrag an Einzelunternehmen steht
+      // zur Anteilfinanzierung an Kommunen im richtigen Abschnitt und taugt trotzdem nicht
+      // zum Vergleich.
+      Object.fromEntries(
+        PROFILFELDER.flatMap((id) =>
+          werte[id] === undefined || feldLeer(werte[id] as never) ? [] : [[id, werte[id]]],
+        ),
+      ),
+      // Derselbe Zusammenhang ohne die Feldnamen: Der Dienst sucht je Zielfeld einzeln und
+      // setzt den Namen selbst davor — siehe `suchkontextFuer`.
+      suchkontextFuer(d, def.id),
     );
     const offen = geliefert
       .filter((v) => v.status === "unklar")
@@ -723,6 +804,9 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
     const wiederholt = proposals.filter((p) => istWiederholung(p.value, d, p.sectionId));
     return {
       proposals: proposals.filter((p) => !wiederholt.includes(p)),
+      // Alles, was die Suche zu diesem Baustein gefunden hat — auch das, was in keinen Wert
+      // eingeflossen ist. Ohne diese Liste war die Suche für die Bearbeiterin unsichtbar.
+      fundstellen,
       hinweis:
         (offen.length ? `Ohne Vorschlag geblieben: ${offen.join(", ")}. ` : "") +
         (wiederholt.length

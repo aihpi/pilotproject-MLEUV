@@ -69,6 +69,29 @@ SATZFILTER_TEMPERATUR = float(os.getenv("SATZFILTER_TEMPERATUR", "0"))
 SATZFILTER_MAX_ZEICHEN = int(os.getenv("SATZFILTER_MAX_ZEICHEN", "20000"))  # je Stapel
 SATZFILTER_MAX_BLOECKE = int(os.getenv("SATZFILTER_MAX_BLOECKE", "5"))      # je Stapel
 
+# Abschnittsbindung: Beim Ausfüllen eines Bausteins nur Fundstellen aus demselben Baustein
+# anderer Richtlinien — Nummer 5 zu Nummer 5, Verfahren zu Verfahren.
+#
+# Grund ist eine wiederkehrende Beobachtung aus den Durchläufen: Die Suche findet Textstellen,
+# die thematisch passen, aber eine andere Frage beantworten. Zu den FÖRDERAUSSCHLÜSSEN (B2,
+# ausgeschlossene Maßnahmen) kam eine Stelle über nicht förderfähige KOSTEN (B5) — dieselben
+# Wörter, ein anderer Begriff. Semantisch ist das nicht zu trennen, über die Gliederung schon.
+#
+# Nur im Vorschlagspfad. Chat und Prüfmodus brauchen den GAK-Rahmenplan und das EU-Beihilfe-
+# recht als Maßstab; die tragen keinen Baustein und fielen sonst heraus.
+# ABSCHNITTSBINDUNG=false schaltet ab — für den Vergleich in der Messung.
+ABSCHNITTSBINDUNG = os.getenv("ABSCHNITTSBINDUNG", "true").lower() == "true"
+
+# Feldbindung: je ZIELFELD eine eigene Suche statt einer gemeinsamen je Abschnitt.
+#
+# Die Abschnittsbindung löst das Problem nicht, das sie lösen sollte: Baustein 5 hat elf
+# Felder, und eine Stelle zur Finanzierungsart beantwortet die Frage nach dem Höchstbetrag
+# nicht. Alle 22 am 08.10.2026 verworfenen Fundstellen wurden mit genau diesem Muster
+# begründet — richtiger Abschnitt, falsches Feld.
+#
+# FELDBINDUNG=false schaltet auf die gemeinsame Anfrage zurück — für den Vergleich.
+FELDBINDUNG = os.getenv("FELDBINDUNG", "true").lower() == "true"
+
 # Gültigkeit: kuratierte Liste abgelöster Dokumente (siehe korpus_status.yaml).
 # NUR_AKTUELL=false schaltet den Filter ab — für den Vergleich in der Eval.
 STATUS_FILE = os.path.join(BASE, "korpus_status.yaml")
