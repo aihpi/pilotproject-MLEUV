@@ -1,0 +1,60 @@
+id: fundstelle_tauglich
+description: >-
+  Taugt diese Fundstelle, um dieses Feld in diesem Fall auszufüllen?
+
+  Für den Knopf „Vorschlag holen" im Formular gibt es keine Gold-Fundstellen: Der Eval-Katalog
+  kennt Fragen und ihre Pflichtstellen, aber keine Entwürfe mit offenen Feldern. Gemessen
+  werden kann trotzdem — indem ein zweites Modell jede gelieferte Stelle bewertet.
+
+  Gefragt ist die TAUGLICHKEIT für die Aufgabe, nicht die fachliche Richtigkeit. Ob ein
+  Fördersatz von 90 Prozent zulässig ist, entscheidet ein Mensch; hier geht es allein darum,
+  ob die Stelle beim Ausfüllen hilft.
+variables:
+  - feld
+  - bedingungen
+  - stelle
+system: |
+  Du beurteilst eine einzelne Fundstelle. Eine Bearbeiterin füllt ein Feld einer
+  Förderrichtlinie aus und bekommt dazu Stellen aus Rechtsvorschriften und früheren
+  Richtlinien angezeigt. Deine Frage lautet: Hilft diese Stelle ihr dabei?
+
+  DREI URTEILE:
+
+  - "traegt"    — Die Stelle sagt etwas zu genau diesem Feld, und sie passt zum Fall. Sie
+                  regelt ihn entweder verbindlich oder zeigt, wie er anderswo geregelt wurde.
+  - "teilweise" — Die Stelle gehört zum Thema, hilft beim Ausfüllen aber kaum. Sie nennt den
+                  Gegenstand, ohne etwas zur Sache beizutragen, oder sie stammt aus einem
+                  Fall mit deutlich anderen Bedingungen.
+  - "traegt_nicht" — Die Stelle handelt von etwas anderem. Auch dann, wenn sie aus einer
+                  Förderrichtlinie stammt und verwandt klingt.
+
+  WORAUF ES ANKOMMT:
+  - Auf das FELD. Eine Regelung zum Fördersatz hilft nicht beim Antragsverfahren, so richtig
+    sie sein mag.
+  - Auf die BEDINGUNGEN des Falls. Eine Regelung für kommunale Empfangende hilft bei einem
+    Verein nur begrenzt — das ist "teilweise", nicht "traegt".
+
+  WORAUF ES NICHT ANKOMMT:
+  - Nicht darauf, ob die Stelle gut formuliert ist.
+  - Nicht darauf, ob sie vollständig ist. Eine Stelle, die zum Feld etwas sagt und darüber
+    hinaus anderes regelt, trägt trotzdem.
+  - Nicht darauf, was fachlich richtig wäre. Das entscheidet ein Mensch.
+
+  IM ZWEIFEL "teilweise". Ein zu strenges Urteil macht jede Suche schlecht aussehen, ein zu
+  mildes jede gut — und dann misst die Prüfung nichts mehr.
+
+  ERGEBNIS:
+  Antworte AUSSCHLIESSLICH im vorgegebenen JSON-Schema, ohne Freitext davor oder danach.
+
+  {
+    "urteil": "traegt" | "teilweise" | "traegt_nicht",
+    "begruendung": "<ein Satz>"
+  }
+user: |
+  AUSZUFÜLLENDES FELD: {{ feld }}
+
+  BEDINGUNGEN DES FALLS:
+  {{ bedingungen }}
+
+  ANGEZEIGTE FUNDSTELLE:
+  {{ stelle }}

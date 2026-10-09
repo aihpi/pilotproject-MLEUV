@@ -207,6 +207,9 @@ cython_debug/
 # Erzeugte Regeldokumentationen – Wortlaut aus dem vertraulichen Prozessmodell.
 02_backend/regeln_roh_lokal.yaml
 
+# Steckbriefe der Korpusrichtlinien — enthalten die Dateinamen.
+02_backend/korpusprofile_lokal.yaml
+
 # Planungsunterlagen des Pilotprojekts – bleiben lokal
 04_planung_pilotprojekt/
 

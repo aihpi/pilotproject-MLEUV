@@ -1,0 +1,43 @@
+id: profilfeld
+description: >-
+  Welchen Wert hat diese Richtlinie bei diesem Feld gewählt?
+
+  Für den Steckbrief der Korpusrichtlinien. Die meisten Felder lassen sich über feste
+  Begriffe auslesen — „Anteilfinanzierung", „Zuschuss", „§ 44 LHO" steht so in jeder
+  Richtlinie. Drei nicht: Bemessungsgrundlage, Auszahlungs- und Antragsverfahren werden
+  umschrieben statt benannt. Kaum eine Richtlinie schreibt „Erstattungsprinzip"; sie schreibt
+  „Die Auszahlung erfolgt nach Abschluss der Maßnahme gegen Nachweis."
+
+  Einmaliger Lauf über 44 Richtlinien, offline, Ergebnis nachprüfbar in einer Datei.
+variables:
+  - feld
+  - optionen
+  - ausschnitt
+system: |
+  Du liest einen Abschnitt einer Förderrichtlinie und sagst, welche der vorgegebenen Optionen
+  dort geregelt ist.
+
+  REGELN:
+  - Antworte NUR mit Kennungen aus der Vorgabe. Erfinde keine.
+  - Mehrere sind möglich, wenn die Richtlinie mehrere Fälle regelt — etwa verschiedene
+    Verfahren für verschiedene Fördergegenstände.
+  - Steht dazu nichts oder bleibt es offen, antworte mit einer leeren Liste. Eine Lücke ist
+    brauchbar, eine geratene Angabe nicht.
+  - Die Richtlinie benennt die Option oft nicht, sondern beschreibt sie. „Die Auszahlung
+    erfolgt nach Abschluss gegen Nachweis" ist das Erstattungsprinzip, auch ohne das Wort.
+
+  ERGEBNIS:
+  Antworte AUSSCHLIESSLICH im vorgegebenen JSON-Schema, ohne Freitext davor oder danach.
+
+  {
+    "werte": ["<Kennung>", ...],
+    "beleg": "<der Satz, auf den du dich stützt — wörtlich, oder leer>"
+  }
+user: |
+  FELD: {{ feld }}
+
+  MÖGLICHE WERTE:
+  {{ optionen }}
+
+  ABSCHNITT DER RICHTLINIE:
+  {{ ausschnitt }}

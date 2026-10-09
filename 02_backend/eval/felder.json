@@ -1,0 +1,242 @@
+{
+ "title": {
+  "label": "Titel der Förderrichtlinie",
+  "kind": "text",
+  "abschnitt": 0
+ },
+ "preamble": {
+  "label": "Präambel",
+  "kind": "textarea",
+  "abschnitt": 0
+ },
+ "goal": {
+  "label": "Förderziel",
+  "kind": "textarea",
+  "abschnitt": 1
+ },
+ "purpose": {
+  "label": "Zuwendungszweck",
+  "kind": "textarea",
+  "abschnitt": 1
+ },
+ "legalBasis": {
+  "label": "Rechtsgrundlage",
+  "kind": "radio",
+  "abschnitt": 1
+ },
+ "gakBasis": {
+  "label": "GAK-Rahmenplanbereich",
+  "kind": "text",
+  "abschnitt": 1
+ },
+ "stateAidBasis": {
+  "label": "Beihilferechtliche Rechtsgrundlage",
+  "kind": "textarea",
+  "abschnitt": 1
+ },
+ "subject": {
+  "label": "Gegenstand der Förderung",
+  "kind": "textarea",
+  "abschnitt": 2
+ },
+ "successCriteria": {
+  "label": "Kriterien für die Erfolgskontrolle",
+  "kind": "textarea",
+  "abschnitt": 2
+ },
+ "exclusions": {
+  "label": "Förderausschlüsse",
+  "kind": "textarea",
+  "abschnitt": 2
+ },
+ "recipients": {
+  "label": "Zuwendungsempfänger",
+  "kind": "checkbox",
+  "abschnitt": 3
+ },
+ "recipientDetails": {
+  "label": "Konkretisierung der Zielgruppe",
+  "kind": "textarea",
+  "abschnitt": 3
+ },
+ "recipientExclusions": {
+  "label": "Ausgeschlossene Gruppen",
+  "kind": "textarea",
+  "abschnitt": 3
+ },
+ "forwarding": {
+  "label": "Weiterleitung an Dritte",
+  "kind": "radio",
+  "abschnitt": 3
+ },
+ "forwardingRules": {
+  "label": "Bedingungen der Weiterleitung",
+  "kind": "textarea",
+  "abschnitt": 3
+ },
+ "requirements": {
+  "label": "Zuwendungsvoraussetzungen",
+  "kind": "textarea",
+  "abschnitt": 4
+ },
+ "area": {
+  "label": "Gebietskulisse",
+  "kind": "text",
+  "abschnitt": 4
+ },
+ "selectionCriteria": {
+  "label": "Auswahl- und Wertungskriterien",
+  "kind": "textarea",
+  "abschnitt": 4
+ },
+ "aidRegime": {
+  "label": "Beihilferechtliche Einordnung",
+  "kind": "checkbox",
+  "abschnitt": 4
+ },
+ "financingType": {
+  "label": "Finanzierungsart",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "economicInterest": {
+  "label": "Wirtschaftliches Interesse der Zuwendungsempfangenden?",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "fixedAmount": {
+  "label": "Festbetrag in Euro",
+  "kind": "number",
+  "abschnitt": 5
+ },
+ "financingForm": {
+  "label": "Finanzierungsform",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "eligibleBasis": {
+  "label": "Bemessungsgrundlage",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "eligibleCosts": {
+  "label": "Zuwendungsfähige Ausgaben oder Kosten",
+  "kind": "textarea",
+  "abschnitt": 5
+ },
+ "fundingRate": {
+  "label": "Fördersatz in Prozent",
+  "kind": "number",
+  "abschnitt": 5
+ },
+ "maximum": {
+  "label": "Höchstbetrag in Euro",
+  "kind": "number",
+  "abschnitt": 5
+ },
+ "ownContribution": {
+  "label": "Eigenanteil erforderlich?",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "minimum": {
+  "label": "Bagatellgrenze in Euro",
+  "kind": "number",
+  "abschnitt": 5
+ },
+ "cumulation": {
+  "label": "Kumulierung mit anderen Fördermitteln",
+  "kind": "radio",
+  "abschnitt": 5
+ },
+ "ancillary": {
+  "label": "Allgemeine Nebenbestimmungen",
+  "kind": "radio",
+  "abschnitt": 6
+ },
+ "auditRights": {
+  "label": "Prüfberechtigte Stellen",
+  "kind": "checkbox",
+  "abschnitt": 6
+ },
+ "purposeBindingYears": {
+  "label": "Zweckbindungsfrist in Jahren",
+  "kind": "number",
+  "abschnitt": 6
+ },
+ "inventory": {
+  "label": "Inventarisierungspflicht",
+  "kind": "radio",
+  "abschnitt": 6
+ },
+ "genderEquality": {
+  "label": "Bestimmung zur Geschlechtergleichstellung",
+  "kind": "radio",
+  "abschnitt": 6
+ },
+ "otherConditions": {
+  "label": "Weitere fachliche Nebenbestimmungen",
+  "kind": "textarea",
+  "abschnitt": 6
+ },
+ "authority": {
+  "label": "Bewilligungsbehörde",
+  "kind": "text",
+  "abschnitt": 7
+ },
+ "selection": {
+  "label": "Antragsauswahl",
+  "kind": "radio",
+  "abschnitt": 7
+ },
+ "earlyStart": {
+  "label": "Vorzeitiger Vorhabenbeginn",
+  "kind": "radio",
+  "abschnitt": 7
+ },
+ "applicationProcedure": {
+  "label": "Antragsverfahren",
+  "kind": "radio",
+  "abschnitt": 7
+ },
+ "applicationDeadline": {
+  "label": "Antragsfrist",
+  "kind": "date",
+  "abschnitt": 7
+ },
+ "payment": {
+  "label": "Anforderungs- und Auszahlungsverfahren",
+  "kind": "radio",
+  "abschnitt": 7
+ },
+ "applicationType": {
+  "label": "Verfahrensart",
+  "kind": "radio",
+  "abschnitt": 7
+ },
+ "validFrom": {
+  "label": "Inkrafttreten",
+  "kind": "date",
+  "abschnitt": 8
+ },
+ "validUntil": {
+  "label": "Außerkrafttreten",
+  "kind": "date",
+  "abschnitt": 8
+ },
+ "heading": {
+  "label": "Abschnittsüberschrift",
+  "kind": "text",
+  "abschnitt": 9
+ },
+ "other": {
+  "label": "Weitere Inhalte",
+  "kind": "textarea",
+  "abschnitt": 9
+ },
+ "closing": {
+  "label": "Schlussformel, Ort und Datum",
+  "kind": "textarea",
+  "abschnitt": 10
+ }
+}

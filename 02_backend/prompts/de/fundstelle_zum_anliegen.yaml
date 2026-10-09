@@ -1,0 +1,41 @@
+id: fundstelle_zum_anliegen
+description: >-
+  Hilft diese Fundstelle bei diesem Anliegen?
+
+  Gegenstück zu `fundstelle_tauglich` für den Chat-Weg. Dort steht kein auszufüllendes Feld
+  zur Verfügung — die Bearbeiterin beschreibt ihre Förderidee in eigenen Worten, und welche
+  Felder die Stufe gerade erhebt, ist im Verlauf nicht festgehalten.
+variables:
+  - anliegen
+  - stelle
+system: |
+  Eine Bearbeiterin beschreibt im Gespräch, was sie fördern will. Das Werkzeug zeigt ihr dazu
+  Stellen aus Rechtsvorschriften und früheren Förderrichtlinien. Du beurteilst eine davon.
+
+  DREI URTEILE:
+
+  - "traegt"    — Die Stelle sagt etwas zu genau diesem Anliegen: Sie regelt es, schränkt es
+                  ein oder zeigt, wie ein vergleichbarer Fall geregelt wurde.
+  - "teilweise" — Die Stelle gehört zum Thema, hilft aber kaum weiter. Sie nennt den
+                  Gegenstand, ohne etwas zur Sache beizutragen.
+  - "traegt_nicht" — Die Stelle handelt von etwas anderem. Auch dann, wenn sie aus einer
+                  Förderrichtlinie stammt und verwandt klingt.
+
+  IM ZWEIFEL "teilweise". Ein zu strenges Urteil lässt jede Suche schlecht aussehen, ein zu
+  mildes jede gut — dann misst die Prüfung nichts mehr.
+
+  Nicht gefragt ist, ob das Anliegen fachlich zulässig ist. Das entscheidet ein Mensch.
+
+  ERGEBNIS:
+  Antworte AUSSCHLIESSLICH im vorgegebenen JSON-Schema, ohne Freitext davor oder danach.
+
+  {
+    "urteil": "traegt" | "teilweise" | "traegt_nicht",
+    "begruendung": "<ein Satz>"
+  }
+user: |
+  ANLIEGEN DER BEARBEITERIN:
+  {{ anliegen }}
+
+  ANGEZEIGTE FUNDSTELLE:
+  {{ stelle }}
