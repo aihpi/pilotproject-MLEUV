@@ -8,6 +8,8 @@ Die Gegenprüfung ist der eigentliche Gegenstand. Sie ist die Stelle, an der ein
 dazugedichteter Satz auffällt — und dazugedichtete Sätze sind in einem Rechtstext der
 teuerste Fehler, den dieses Werkzeug machen kann.
 """
+import pytest
+
 import richtlinie
 
 
@@ -554,3 +556,37 @@ class TestFehlalarmeAus24092026:
         werte = [{"feld": "ancillary", "wert": "anbest-p-g"}]
         text = "Der Landesrechnungshof ist zur Prüfung berechtigt."
         assert len(richtlinie.pruefe_fehlende_werte(text, felder, werte)) == 1
+
+
+class TestRedaktionshinweise:
+    """Anweisungen der Vorlage sind kein Richtlinientext — siehe `REDAKTIONSHINWEIS`."""
+
+    # Die Marken, nicht der Wortlaut der Vorlage: Geprüft wird das Erkennungsmerkmal, und
+    # der Scan gegen die vertraulichen Quellen soll an den Testdaten nicht anschlagen.
+    @pytest.mark.parametrize("text", [
+        "Nennung von Ausschlusstatbeständen - Doppelförderung mit anderen Programmen",
+        "Beispielsweise auch: - Mietkosten, Bewirtungskosten, Portogebühren",
+        "Variante 1: Die Steuer bleibt außer Betracht, wenn ein Abzug möglich ist.",
+        "Vom Fachreferat noch zu bestimmende Einzelheiten",
+        "Förderfähig sind (bspw.): - Sachkosten der Durchführung",
+        "Folgende Varianten des Verfahrens sind zu unterscheiden:",
+    ])
+    def test_vorlagenrest_wird_erkannt(self, text):
+        assert richtlinie.ist_redaktionshinweis(text)
+
+    @pytest.mark.parametrize("text", [
+        "Nicht gefördert werden Maßnahmen, die vor Antragstellung begonnen wurden.",
+        "Gefördert wird beispielsweise die Kastration freilebender Katzen.",
+        "Die Untergrenze der Förderung liegt bei 2.500 Euro je Einzelfall.",
+        "Die Zuwendung wird als Anteilfinanzierung in Form eines Zuschusses gewährt.",
+        "",
+    ])
+    def test_echter_richtliniensatz_bleibt(self, text):
+        """Kein Fehlalarm: Jeder Treffer verwirft einen Vorschlag."""
+        assert not richtlinie.ist_redaktionshinweis(text)
+
+    def test_im_fertigen_text_gemeldet(self):
+        befunde = richtlinie.pruefe_text(
+            "Ausgeschlossen sind Mietkosten. Vom Fachreferat noch zu bestimmende "
+            "Einzelheiten.", [], "")
+        assert any("Redaktionshinweis" in b for b in befunde)

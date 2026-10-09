@@ -4,6 +4,8 @@ Jeder Test hier hängt an einem Fehler, der beim Bauen wirklich passiert ist. Di
 der Vorschläge selbst prüft das nicht — dafür braucht es ein Modell, und das ist Sache der
 Eval.
 """
+import pytest
+
 import vorschlag
 
 
@@ -461,3 +463,78 @@ class TestBelegMitPlatzhalter:
                      "Die ggf. erforderlichen Unterlagen sind nachzureichen.",
                      "Zuwendungsempfangende nach Nummer 2.1 erhalten bis zu 800 000 Euro."):
             assert not vorschlag._NOCH_PLATZHALTER.search(text), text
+
+
+class TestTitelUebernehmen:
+    """Ein selbst geschriebener Titel wird nicht umformuliert — siehe `titel_aus_eingabe`."""
+
+    @pytest.mark.parametrize("zeile", [
+        "Richtlinie des Ministeriums für Landwirtschaft, Umwelt und Verbraucherschutz über "
+        "die Gewährung von Zuwendungen zur Kastration freilebender Katzen",
+        "Förderrichtlinie der Landesregierung über die Gewährung von Zuwendungen für den "
+        "Wegebau im ländlichen Raum",
+    ])
+    def test_titel_wird_erkannt(self, zeile):
+        assert vorschlag.titel_aus_eingabe(zeile) == zeile
+
+    @pytest.mark.parametrize("text", [
+        "Wir wollen weniger freilebende Katzen. Gefördert wird die Kastration.",
+        "Katzenkastration Brandenburg",
+        "Richtlinie",
+        "",
+    ])
+    def test_kein_titel_kein_eingriff(self, text):
+        assert vorschlag.titel_aus_eingabe(text) is None
+
+    def test_aus_mehreren_zeilen(self):
+        """Der Chatverlauf kommt als mehrere Zeilen; die Titelzeile steht irgendwo darin."""
+        eingabe = ("Wir fördern Tierschutz.\n"
+                   "Richtlinie des Ministeriums für Umwelt über die Gewährung von "
+                   "Zuwendungen zur Kastration freilebender Katzen\n"
+                   "Anteilfinanzierung.")
+        assert vorschlag.titel_aus_eingabe(eingabe).startswith("Richtlinie des Ministeriums")
+
+    def test_endpunkt_faellt_weg(self):
+        zeile = ("Richtlinie des Ministeriums für Umwelt über die Gewährung von Zuwendungen "
+                 "zur Kastration freilebender Katzen.")
+        assert not vorschlag.titel_aus_eingabe(zeile).endswith(".")
+
+
+class TestZitatBilden:
+    """Das Zitat einer Fundstelle soll zum Verwerfen reichen und nicht verwirren."""
+
+    def test_ueberhang_in_den_naechsten_abschnitt_faellt_weg(self):
+        """Ein Chunk endet nicht an der Abschnittsgrenze — siehe `_NAECHSTER_PUNKT`."""
+        t = ("Juristische Personen des privaten Rechts und deren Zusammenschlüsse, "
+             "Naturschutzverbände und Vereine, Stiftungen - 4 Zuwendungsvoraussetzungen "
+             "- 4.1 Die Vorhaben dürfen der Erreichung der Ziele nicht entgegenstehen")
+        assert vorschlag.zitat_bilden(t).endswith("Stiftungen")
+
+    def test_eine_aufzaehlung_bleibt_ganz(self):
+        """Wer mit einem Gliederungspunkt beginnt, IST eine Aufzählung."""
+        t = ("- 2.1 Regionalmanagement zur Initiierung regionaler Entwicklungsprozesse "
+             "- 2.2 Umsetzung nicht-investiver Vorhaben "
+             "- 2.3 Nationale Kooperationen lokaler Aktionsgruppen")
+        assert vorschlag.zitat_bilden(t) == t
+
+    def test_aufzaehlung_ohne_strich(self):
+        t = ("5.4.1 Angerechnet werden die Aufwendungen des Vorhabens, dazu gehören "
+             "5.4.2 Entgelte für externe Begutachtung")
+        assert vorschlag.zitat_bilden(t) == t
+
+    def test_kurzer_text_bleibt(self):
+        assert vorschlag.zitat_bilden("Die Untergrenze liegt bei 500 Euro.") == \
+            "Die Untergrenze liegt bei 500 Euro."
+
+    def test_an_der_satzgrenze_gekuerzt(self):
+        t = ("Erster Satz zur Sache. " * 30).strip()
+        kurz = vorschlag.zitat_bilden(t, zeichen=100)
+        assert len(kurz) <= 100 and kurz.endswith(".")
+
+    def test_ohne_satzgrenze_mit_auslassung(self):
+        kurz = vorschlag.zitat_bilden("Wort " * 60, zeichen=80)
+        assert kurz.endswith("…") and len(kurz) <= 82
+
+    def test_leer_ergibt_none(self):
+        assert vorschlag.zitat_bilden("") is None
+        assert vorschlag.zitat_bilden(None) is None
