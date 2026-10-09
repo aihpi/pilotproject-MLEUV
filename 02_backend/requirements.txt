@@ -4,8 +4,10 @@ docling>=2.0
 python-dotenv>=1.0
 pyyaml>=6.0
 fastembed>=0.4
-bmds-prompt-loader
-bmds-prompt-security
+# Aus Spark (EUPL-1.2), nicht auf PyPI. prompt-security liest seine Version aus git und findet
+# sie im Unterordner nicht; deshalb beim Installieren SETUPTOOLS_SCM_PRETEND_VERSION=0.3 setzen.
+bmds-prompt-loader @ git+https://gitlab.opencode.de/bmds/planungs-und-genehmigungsbeschleunigung/spark-api.git@v0.3#subdirectory=03-shared-services/prompt-loader
+bmds-prompt-security @ git+https://gitlab.opencode.de/bmds/planungs-und-genehmigungsbeschleunigung/spark-api.git@v0.3#subdirectory=03-shared-services/prompt-security
 
 # Die HTTP-Naht zum Frontend (src/api.py). Fehlte hier, obwohl der Dienst ohne sie nicht
 # startet — ein frischer Klon kam bis zum ersten Aufruf und dann nicht weiter.

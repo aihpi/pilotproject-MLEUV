@@ -64,7 +64,6 @@ Die beteiligten Dateien:
 | `01_frontend/Dockerfile.web`, `01_frontend/nginx.conf` | Image `web`: Vite-Build hinter nginx |
 | `01_frontend/Dockerfile.api` | Image `api`: der Node-Dienst |
 | `02_backend/Dockerfile` | Image `backend`: der Python-Dienst |
-| `02_backend/vendor/` | Spark-Pakete, die nicht auf PyPI liegen |
 | `.github/workflows/docker-publish.yml` | baut die drei Images bei jedem Push auf `main` und schreibt den neuen Tag nach `k8s/` |
 | `k8s/` | die Kubernetes-Manifeste, gelesen von Argo CD |
 | `k8s/secrets/` | Zugangsdaten: Beispiel, versiegelte Fassung, Skript zum Versiegeln |
@@ -79,8 +78,6 @@ zur gehosteten Instanz.
   [`kubeseal`](https://github.com/bitnami-labs/sealed-secrets). Das braucht nur eine Person.
 - **Einen Schlüssel für den AI Hub.** Am besten ein eigener für die Instanz, mit Budget: alle,
   die sie nutzen, verbrauchen davon.
-- **Die Spark-Pakete** `bmds-prompt-loader` und `bmds-prompt-security` in `02_backend/vendor/`.
-  Ohne sie baut das Backend-Image nicht (siehe `02_backend/vendor/README.md`).
 - **Die vertraulichen Daten** aus einer lokalen Installation, die funktioniert (Abschnitt 7).
 - **Einen Eintrag in Caddy** für `mleuv.aisc.hpi.de`.
 
@@ -283,7 +280,7 @@ Der Prototyp ist für einen Nutzer auf `127.0.0.1` gebaut ([infrastruktur.md](in
 | --- | --- |
 | Argo CD meldet einen Fehler beim Vergleich, `sealed-secret.yaml` fehlt | Abschnitt 3: versiegeln und committen. |
 | Backend-Pod hängt in `CreateContainerConfigError` | `AI_HUB_API_KEY` fehlt im Secret. `kubectl describe pod -n mleuv -l app=mleuv-backend` nennt ihn. |
-| GitHub Actions: Backend-Build scheitert an `bmds-prompt-loader` | Die Spark-Pakete fehlen in `02_backend/vendor/`. |
+| GitHub Actions: Backend-Build scheitert an `bmds-prompt-loader` oder `bmds-prompt-security` | Die Pakete kommen aus Spark auf gitlab.opencode.de (`requirements.txt`). Ist das Projekt erreichbar und der Tag `v0.3` noch da? |
 | Vorschläge ohne Satzrahmen, `/gesundheit` meldet `"vorlage_eingelesen": false` | `musterbausteine_lokal.yaml` fehlt auf dem Volume (Abschnitt 7.1). |
 | Vorschläge ohne Fundstellen | Der Index ist leer (Abschnitt 7.2). |
 | 504 im Browser bei langen Läufen | Ein Zeitlimit vor nginx. In Caddy kein `timeout` für `reverse_proxy` setzen. |

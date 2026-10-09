@@ -44,7 +44,8 @@ unten müssen deshalb von Hand ergänzt werden.
 ```bash
 # 1 Einrichten
 cd 02_backend && docker compose up -d
-python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate
+SETUPTOOLS_SCM_PRETEND_VERSION=0.3 pip install -r requirements.txt   # Grund: requirements.txt
 cp .env.example .env
 ```
 

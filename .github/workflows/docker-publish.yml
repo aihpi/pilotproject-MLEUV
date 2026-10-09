@@ -11,7 +11,6 @@ on:
       - 02_backend/Dockerfile
       - 02_backend/.dockerignore
       - 02_backend/requirements.txt
-      - 02_backend/vendor/**
       - 02_backend/src/**
       - 02_backend/prompts/**
       - 02_backend/korpus_register.yaml

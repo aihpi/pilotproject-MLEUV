@@ -2,8 +2,10 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# docling renders PDF pages and needs these at import time.
+# docling renders PDF pages and needs the two libraries at import time. git fetches the Spark
+# packages, see requirements.txt.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
@@ -13,14 +15,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 WORKDIR /app
 
 # torch comes in through docling. The CPU index keeps the CUDA wheels (several GB) out of the
-# image; nothing here runs on a GPU. vendor/ holds the Spark packages that are not on PyPI
-# (bmds-prompt-loader, bmds-prompt-security), see vendor/README.md.
+# image; nothing here runs on a GPU. The Spark package bmds-prompt-security takes its version
+# from git and cannot find it when installed from a subdirectory, hence the pretend version
+# (the tag pinned in requirements.txt).
 COPY requirements.txt ./
-COPY vendor/ vendor/
-RUN uv pip install --system --no-cache \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION=0.3 uv pip install --system --no-cache \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     --index-strategy unsafe-best-match \
-    --find-links vendor \
     -r requirements.txt
 
 COPY src/ src/
