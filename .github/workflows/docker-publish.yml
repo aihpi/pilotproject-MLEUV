@@ -32,6 +32,9 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # One failing image should not cancel the others. The deploy job still needs all three,
+      # so k8s/ only gets new tags once every image has been built.
+      fail-fast: false
       matrix:
         include:
           - name: web
