@@ -288,6 +288,15 @@ export interface FieldProposal {
    * gegengeprüft. `belegzitat` mit `fundstelle` weist die Regel nach, nach der formuliert
    * wurde. `musterbaustein` nennt den Satzrahmen aus der Musterrichtlinie.
    */
+  /**
+   * Gerechnet statt vorgeschlagen — kein Modell beteiligt.
+   *
+   * Die Schlussformel wird aus Titel und Baustein 8 zusammengesetzt. Ohne diese Marke zeigte
+   * die Oberfläche „Aus dem Regelfall abgeleitet, bitte besonders prüfen" — eine Warnung vor
+   * einer Vermutung, wo gar keine vorliegt. Wer sie dreimal zu Unrecht liest, liest sie beim
+   * vierten Mal nicht mehr.
+   */
+  berechnet?: boolean;
   deckung?: string;
   belegzitat?: string;
   fundstelle?: string;
@@ -1154,6 +1163,9 @@ export function naechsteFrage(draft: RichtlinieDraft, ohne?: string): string {
  * Behörde, die niemand genannt hat — die Unterschriftszeile einer Richtlinie ist der letzte
  * Ort für eine Vermutung.
  */
+/** Die Linie, auf der bei der Ausfertigung das Datum eingetragen wird. */
+const AUSFERTIGUNGSLUECKE = "__________";
+
 export function schlussformel(draft: RichtlinieDraft): string | null {
   const titel = String(draft.sections["0"]?.fields["title"]?.value ?? draft.title ?? "");
   // „Richtlinie des Ministeriums für X über die Gewährung …" — der Name endet vor dem
@@ -1175,10 +1187,15 @@ export function schlussformel(draft: RichtlinieDraft): string | null {
   // „Potsdam, den" ohne Datum ist deshalb kein Mangel, sondern die richtige Form eines
   // unterschriftsreifen Entwurfs. Ein Datum, das wir raten, wäre der schlechtere Zustand:
   // es sähe fertig aus.
+  //
+  // Die Lücke bekommt eine Linie, weil sie sonst wie ein Fehler aussieht: Im Durchlauf vom
+  // 09.10.2026 endete der Vorschlag mit „Potsdam, den" und brach scheinbar ab. Die Linie ist
+  // die übliche Form einer Stelle, die bei der Unterschrift ausgefüllt wird — und sie löst
+  // den Platzhalter-Wächter nicht aus, der auf „XX" und spitze Klammern sieht.
 
   // Potsdam als Sitz der Landesregierung. Steht so in jeder Landesrichtlinie; ein eigenes
   // Feld dafür wäre eine Frage, die nie eine andere Antwort hat.
-  return ["Potsdam, den", ministerium, "Im Auftrag"].join("\n");
+  return [`Potsdam, den ${AUSFERTIGUNGSLUECKE}`, ministerium, "Im Auftrag"].join("\n");
 }
 
 /**
@@ -1921,6 +1938,39 @@ export function pruefeBaustein6(draft: RichtlinieDraft): Pruefergebnis[] {
       });
   }
 
+  // Wer ANBest-P oder ANBest-G wählt, hat die Inventarisierung schon mitgewählt.
+  //
+  // Nummer 4 ANBest-P und ANBest-G verpflichten die Zuwendungsempfangenden, beschaffte
+  // Gegenstände ab einem Anschaffungswert von 800 Euro zu inventarisieren. Die Richtlinie
+  // kann davon abweichen — dann ist das aber eine Entscheidung und gehört begründet, nicht
+  // als stilles „Nein" in ein Auswahlfeld.
+  //
+  // Der Anlass ist gemessen: Im Durchlauf vom 08.10.2026 schlug das Werkzeug in EINEM Aufruf
+  // ANBest-P und „Inventarisierungspflicht: Nein" vor, mit dem Mustersatz zur 800-Euro-Grenze
+  // als Fundstelle daneben. Zwei Vorschläge derselben Antwort, die sich widersprechen — und
+  // keine Regel, die das bemerkt hätte.
+  const inventar = draft.sections["6"]?.fields["inventory"]?.value;
+  if (typeof nebenbestimmungen === "string" && nebenbestimmungen && inventar === "no")
+    raus.push({
+      befund: {
+        sectionId: "6", fieldId: "inventory", severity: "warning",
+        regel: "inventarisierung_gegen_anbest",
+        rechtsstelle: "Nummer 4 ANBest-P und ANBest-G",
+        message:
+          "Die gewählten Allgemeinen Nebenbestimmungen verlangen die Inventarisierung " +
+          "beschaffter Gegenstände ab 800 Euro Anschaffungswert. Ein Verzicht darauf weicht " +
+          "von ihnen ab und ist zu begründen.",
+      },
+      vermerk: {
+        adressat: "pruefvermerk", sectionId: "6", regel: "inventarisierung_gegen_anbest",
+        rechtsstelle: "Nummer 4 ANBest-P und ANBest-G",
+        beurteilung:
+          "Inventarisierungspflicht abgewählt, obwohl die gewählten Allgemeinen " +
+          "Nebenbestimmungen sie ab 800 Euro Anschaffungswert verlangen.",
+        status: "offen",
+      },
+    });
+
   // Die Prüfrechte erst ab hier — und nur sie hängen daran, dass etwas angegeben ist.
   //
   // Dieser Ausstieg stand bis zum 24.09.2026 ganz oben in der Funktion und übersprang damit
@@ -2247,12 +2297,295 @@ export function pruefeBeihilfegrundlage(draft: RichtlinieDraft): Pruefergebnis[]
   }];
 }
 
+/**
+ * Die Höchstbeträge der De-minimis-Verordnungen.
+ *
+ * Aus dem Korpus belegt, nicht gesetzt: Die allgemeine Verordnung (EU) 2023/2831 nennt
+ * 300 000 Euro in drei Jahren — so in der Musterrichtlinie, in der VV Vertragsnaturschutz
+ * Wald, in der RL Jagdabgabe und in der Muster-Bescheinigung. Die Agrar-De-minimis-Verordnung
+ * nennt 50 000 Euro, im Verordnungstext selbst.
+ *
+ * Das Formular unterscheidet die beiden nicht — es kennt eine Option „De-minimis". Welche
+ * Verordnung gilt, hängt am Sektor und entscheidet das Fachreferat. Deshalb zwei Stufen:
+ * über 300 000 ist es in jedem Fall zu viel, über 50 000 nur dann, wenn die Agrarverordnung
+ * einschlägig ist — und das ist eine Frage, kein Befund.
+ */
+const DE_MINIMIS_ALLGEMEIN_EUR = 300_000;
+const DE_MINIMIS_AGRAR_EUR = 50_000;
+
+/**
+ * Beihilferechtliche Obergrenzen gegen den angegebenen Höchstbetrag halten.
+ *
+ * Vier Regeln des Prozessmodells verlangen dasselbe (M28, M38, M51, M57): Die Festlegung der
+ * Förderhöchstsätze hat die Schranken des Beihilferechts zu beachten. Geprüft wurde bisher
+ * nur, ob der Fördersatz über 100 Prozent liegt und ob der kommunale Höchstsatz eingehalten
+ * ist — die beihilferechtliche Grenze kannte das Werkzeug nicht.
+ *
+ * Für die AGVO steht hier KEINE Zahl. Ihre Beihilfeintensitäten hängen am einschlägigen
+ * Artikel und schwanken zwischen den Fördertatbeständen; im Korpus steht keine allgemeine
+ * Grenze, und eine geratene wäre schlimmer als keine. Geprüft wird dort nur, dass überhaupt
+ * eine Obergrenze angegeben ist.
+ */
+export function pruefeBeihilfegrenzen(draft: RichtlinieDraft): Pruefergebnis[] {
+  const raus: Pruefergebnis[] = [];
+  const regime = draft.sections["4"]?.fields["aidRegime"]?.value;
+  if (!Array.isArray(regime) || !regime.length) return raus;
+  const hoechst = draft.sections["5"]?.fields["maximum"]?.value;
+  const betrag = typeof hoechst === "number" ? hoechst : null;
+
+  if (regime.includes("de-minimis")) {
+    if (betrag !== null && betrag > DE_MINIMIS_ALLGEMEIN_EUR)
+      raus.push({
+        befund: {
+          sectionId: "5", fieldId: "maximum", severity: "error",
+          regel: "de_minimis_hoechstbetrag",
+          rechtsstelle: "Artikel 3 Absatz 2 Verordnung (EU) 2023/2831",
+          message:
+            `Der Höchstbetrag von ${betrag.toLocaleString("de-DE")} Euro übersteigt die ` +
+            `De-minimis-Grenze von ${DE_MINIMIS_ALLGEMEIN_EUR.toLocaleString("de-DE")} Euro ` +
+            `je Unternehmen in drei Jahren.`,
+        },
+      });
+    else if (betrag !== null && betrag > DE_MINIMIS_AGRAR_EUR)
+      raus.push({
+        befund: {
+          sectionId: "5", fieldId: "maximum", severity: "warning",
+          regel: "de_minimis_agrar_pruefen",
+          rechtsstelle: "Artikel 3 Absatz 2 der Agrar-De-minimis-Verordnung",
+          message:
+            `Für Beihilfen im Agrarsektor gilt eine De-minimis-Grenze von ` +
+            `${DE_MINIMIS_AGRAR_EUR.toLocaleString("de-DE")} Euro in drei Jahren. Der ` +
+            `angegebene Höchstbetrag liegt darüber — bitte prüfen, welche Verordnung gilt.`,
+        },
+      });
+  }
+
+  // Freistellung ohne Obergrenze: Die Intensität steht im einschlägigen Artikel, hier fehlt
+  // jede Angabe, an der sie sich messen ließe.
+  const satz = draft.sections["5"]?.fields["fundingRate"]?.value;
+  const freistellung = regime.includes("agvo") || regime.includes("agrar-gvo");
+  if (freistellung && betrag === null && typeof satz !== "number")
+    raus.push({
+      befund: {
+        sectionId: "5", fieldId: "maximum", severity: "warning",
+        regel: "freistellung_ohne_obergrenze",
+        rechtsstelle: "AGVO bzw. AgrarGVO, einschlägiger Artikel",
+        message:
+          "Bei einer Förderung nach AGVO oder AgrarGVO ist die zulässige Beihilfeintensität " +
+          "des einschlägigen Artikels einzuhalten. Weder Fördersatz noch Höchstbetrag sind " +
+          "angegeben — damit lässt sich das nicht beurteilen.",
+      },
+    });
+  return raus;
+}
+
+/**
+ * Ob überhaupt eine Beihilfe vorliegt, ist immer zu prüfen (M18).
+ *
+ * Das Prozessmodell notiert dazu: „ist immer gegeben (Art. 107 ist immer zu prüfen)". Das
+ * Werkzeug hat die Frage bisher nur beantwortet, wenn jemand eine Grundlage eingetragen hat —
+ * wer das Feld leer ließ, bekam gar nichts. Ein nicht geprüfter Beihilfebezug ist aber der
+ * teurere Fehler: Er führt zur Rückforderung, nicht zu einer Nachfrage.
+ *
+ * Kein Befund, wenn das Fachreferat die Frage verneint hat — dafür ist `stateAid` im Profil da.
+ */
+export function pruefeBeihilfepruefung(draft: RichtlinieDraft): Pruefergebnis[] {
+  if (!draft.profile.stateAid) return [];
+  const grundlage = draft.sections["1"]?.fields["stateAidBasis"]?.value;
+  const regime = draft.sections["4"]?.fields["aidRegime"]?.value;
+  const hatGrundlage = typeof grundlage === "string" && grundlage.trim().length > 0;
+  const hatRegime = Array.isArray(regime) && regime.length > 0;
+  if (hatGrundlage || hatRegime) return [];
+  return [{
+    befund: {
+      sectionId: "4", fieldId: "aidRegime", severity: "warning",
+      regel: "beihilfepruefung_fehlt",
+      rechtsstelle: "Artikel 107 AEUV",
+      message:
+        "Der Entwurf ist als beihilferelevant gekennzeichnet, nennt aber weder eine " +
+        "beihilferechtliche Grundlage noch eine Einordnung. Ob eine Beihilfe vorliegt, ist " +
+        "in jedem Verfahren zu prüfen.",
+    },
+  }];
+}
+
+/**
+ * Bemessungsgrundlage und Finanzierungsart müssen zusammenpassen (M54, M60).
+ *
+ * Die Festbetragsfinanzierung fördert mit einem festen Betrag — eine Spitzabrechnung der
+ * tatsächlich entstandenen Kosten widerspricht ihr. Umgekehrt braucht die Anteilfinanzierung
+ * eine Bezugsgröße, an der der Anteil bemessen wird; feste Beträge sind keine.
+ *
+ * Ziff. 2.2.3 und 2.3 der VV zu § 44 LHO. Das Prozessmodell führt beides als eigene
+ * Prüfpunkte, geprüft wurde bisher keiner von beiden.
+ */
+export function pruefeBemessungsgrundlage(draft: RichtlinieDraft): Pruefergebnis[] {
+  const art = draft.sections["5"]?.fields["financingType"]?.value;
+  const grundlage = draft.sections["5"]?.fields["eligibleBasis"]?.value;
+  if (typeof art !== "string" || typeof grundlage !== "string" || !art || !grundlage)
+    return [];
+  const feste = grundlage.startsWith("fixed");
+  const spitz = grundlage.startsWith("actual");
+  if (art === "fixed" && spitz)
+    return [{
+      befund: {
+        sectionId: "5", fieldId: "eligibleBasis", severity: "warning",
+        regel: "bemessung_passt_nicht_zur_finanzierungsart",
+        rechtsstelle: "Ziff. 2.2.3 der VV zu § 44 LHO",
+        message:
+          "Die Festbetragsfinanzierung gewährt einen festen Betrag. Eine Spitzabrechnung " +
+          "der tatsächlich entstandenen Ausgaben passt dazu nicht — in Betracht kommen " +
+          "feste Beträge.",
+      },
+    }];
+  if (art === "share" && feste)
+    return [{
+      befund: {
+        sectionId: "5", fieldId: "eligibleBasis", severity: "warning",
+        regel: "bemessung_passt_nicht_zur_finanzierungsart",
+        rechtsstelle: "Ziff. 2.2.1 und 2.3 der VV zu § 44 LHO",
+        message:
+          "Die Anteilfinanzierung bemisst die Zuwendung als Anteil der zuwendungsfähigen " +
+          "Ausgaben. Feste Beträge geben dafür keine Bezugsgröße her.",
+      },
+    }];
+  return [];
+}
+
+/**
+ * Im Pilotumfang gibt es nur die Projektförderung (M20, M29).
+ *
+ * Das Prozessmodell hält fest: „Hier nur Projektförderung" und „Es ist immer eine
+ * Projektförderung unter Ziffer 5.1 anzugeben". Die institutionelle Förderung nach Ziff. 2.1
+ * der VV zu § 44 LHO ist etwas anderes — sie deckt den Betrieb einer Einrichtung und hat
+ * eigene Regeln, die dieses Werkzeug nicht kennt.
+ *
+ * Erkannt wird sie an der Vollfinanzierung ohne wirtschaftliches Interesse: Das ist die
+ * Konstellation, in der eine institutionelle Förderung verdeckt entsteht.
+ */
+export function pruefeZuwendungsart(draft: RichtlinieDraft): Pruefergebnis[] {
+  if (draft.profile.fundingType === "project") return [];
+  return [{
+    befund: {
+      sectionId: "5", fieldId: "financingType", severity: "warning",
+      regel: "nur_projektfoerderung",
+      rechtsstelle: "Ziff. 2.1 der VV zu § 44 LHO",
+      message:
+        "Das Werkzeug deckt im Pilotumfang nur die Projektförderung ab. Für eine " +
+        "institutionelle Förderung gelten eigene Regeln, die hier nicht geprüft werden.",
+    },
+  }];
+}
+
+/**
+ * Weiterleitung an Dritte zieht eine eigene Prüfung nach sich (M26).
+ *
+ * Das Prozessmodell notiert: „wenn LHO, dann Weiterleitung erlaubt? Dann Prüfung nach …".
+ * Gemeint ist Nummer 12 der VV zu § 44 LHO — wer weiterleitet, muss die Weitergabe in der
+ * Richtlinie regeln: an wen, zu welchem Zweck, mit welchen Pflichten. Ohne diese Regeln ist
+ * die Weiterleitung zugelassen, aber nicht bestimmt.
+ */
+export function pruefeWeiterleitung(draft: RichtlinieDraft): Pruefergebnis[] {
+  const erlaubt = draft.sections["3"]?.fields["forwarding"]?.value;
+  if (erlaubt !== "yes") return [];
+  const regeln = draft.sections["3"]?.fields["forwardingRules"]?.value;
+  if (typeof regeln === "string" && regeln.trim().length > 0) return [];
+  return [{
+    befund: {
+      sectionId: "3", fieldId: "forwardingRules", severity: "error",
+      regel: "weiterleitung_ohne_regeln",
+      rechtsstelle: "Nummer 12 der VV zu § 44 LHO",
+      message:
+        "Die Weiterleitung an Dritte ist zugelassen, aber nicht geregelt. Anzugeben sind " +
+        "der Kreis der Letztempfangenden, der Zweck der Weitergabe und die Pflichten, die " +
+        "die Zuwendungsempfangenden weiterzugeben haben.",
+    },
+  }];
+}
+
+/**
+ * Der vorzeitige Vorhabenbeginn ist eine Abweichung und gehört begründet (M22).
+ *
+ * Variante 1 ist der Grundsatz des § 44 LHO: gefördert wird nur, was noch nicht begonnen hat.
+ * Variante 2 lässt den Beginn mit der Antragstellung zu, ohne Genehmigung — das ist die
+ * Ausnahme, und sie steht dem Grundsatz der Erforderlichkeit entgegen: Wer ohne Zuwendung
+ * anfängt, zeigt, dass er sie nicht braucht.
+ */
+export function pruefeVorhabenbeginn(draft: RichtlinieDraft): Pruefergebnis[] {
+  const wahl = draft.sections["7"]?.fields["earlyStart"]?.value;
+  if (wahl !== "variant-2") return [];
+  return [{
+    befund: {
+      sectionId: "7", fieldId: "earlyStart", severity: "warning",
+      regel: "vorzeitiger_beginn_ohne_genehmigung",
+      rechtsstelle: "Ziff. 1.3 der VV zu § 44 LHO",
+      message:
+        "Der Beginn mit der Antragstellung ohne Genehmigung weicht vom Grundsatz ab, dass " +
+        "nur noch nicht begonnene Vorhaben gefördert werden. Die Abweichung ist zu begründen.",
+    },
+    vermerk: {
+      adressat: "pruefvermerk", sectionId: "7",
+      regel: "vorzeitiger_beginn_ohne_genehmigung",
+      rechtsstelle: "Ziff. 1.3 der VV zu § 44 LHO",
+      beurteilung:
+        "Vorhabenbeginn mit Antragstellung zugelassen, ohne Genehmigung des vorzeitigen " +
+        "Vorhabenbeginns.",
+      status: "offen",
+    },
+  }];
+}
+
+/**
+ * Beihilfen über 100 000 Euro sind zu veröffentlichen (M49).
+ *
+ * Das Prozessmodell nennt bei den zu beachtenden Vorschriften ausdrücklich die
+ * „europarechtlichen Veröffentlichungspflichten". Sie treffen nicht das Verfahren, sondern
+ * die Richtlinie: Wer eine Einzelbeihilfe oberhalb der Schwelle zulässt, muss sie in der
+ * Transparenzdatenbank veröffentlichen, und darauf ist in Baustein 7 hinzuweisen.
+ *
+ * Die Schwelle steht in der AGVO und in den Agrarbeihilfevorschriften bei 100 000 Euro.
+ * Geprüft wird deshalb nur, wo eine Freistellung gewählt UND ein Höchstbetrag darüber
+ * angegeben ist — ohne Höchstbetrag ist nichts zu messen.
+ */
+const VEROEFFENTLICHUNG_AB_EUR = 100_000;
+
+export function pruefeVeroeffentlichung(draft: RichtlinieDraft): Pruefergebnis[] {
+  const regime = draft.sections["4"]?.fields["aidRegime"]?.value;
+  if (!Array.isArray(regime) || !regime.some((r) => r === "agvo" || r === "agrar-gvo"))
+    return [];
+  const hoechst = draft.sections["5"]?.fields["maximum"]?.value;
+  if (typeof hoechst !== "number" || hoechst <= VEROEFFENTLICHUNG_AB_EUR) return [];
+  const vorschriften = draft.sections["6"]?.fields["otherConditions"]?.value;
+  if (typeof vorschriften === "string" && /ver(ö|oe)ffentlich|transparenz/i.test(vorschriften))
+    return [];
+  return [{
+    befund: {
+      sectionId: "6", fieldId: "otherConditions", severity: "warning",
+      regel: "veroeffentlichungspflicht_fehlt",
+      rechtsstelle: "Artikel 9 AGVO bzw. Artikel 9 AgrarGVO",
+      message:
+        `Bei Einzelbeihilfen über ${VEROEFFENTLICHUNG_AB_EUR.toLocaleString("de-DE")} Euro ` +
+        "bestehen europarechtliche Veröffentlichungspflichten. In den Zuwendungsbestimmungen " +
+        "ist darauf hinzuweisen.",
+    },
+  }];
+}
+
 export function pruefeFachlich(draft: RichtlinieDraft): Pruefergebnis[] {
   const rgl = draft.sections["1"]?.fields["legalBasis"]?.value;
   const immer = [
     ...pruefeZuwendungsform(draft),
     ...pruefeEmpfaengerkreis(draft),
     ...pruefeBeihilfegrundlage(draft),
+    // Die Regeln des Prozessmodells, die bis zum 09.10.2026 nur dort standen und nirgends
+    // geprüft wurden — siehe 02_backend/regeln.yaml.
+    ...pruefeBeihilfegrenzen(draft),
+    ...pruefeBeihilfepruefung(draft),
+    ...pruefeVeroeffentlichung(draft),
+    ...pruefeBemessungsgrundlage(draft),
+    ...pruefeZuwendungsart(draft),
+    ...pruefeWeiterleitung(draft),
+    ...pruefeVorhabenbeginn(draft),
   ];
   if (typeof rgl === "string" && rgl !== "" && rgl !== "lho44")
     return [...immer, {
