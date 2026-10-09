@@ -28,6 +28,7 @@ import statistics
 import unicodedata
 from collections import defaultdict
 
+from ingest import saeubern
 from retrieval import hybrid_search
 from config import BASE, TOP_K
 
@@ -36,7 +37,15 @@ HOLDOUT = os.path.join(BASE, "eval", "holdout.jsonl")
 
 
 def norm(s):
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", s or "")).strip()
+    """Vergleichsform für Ankerzitat und Chunk-Text.
+
+    Mit `saeubern` aus dem Einlesen, und das ist nicht optional: Seit die weichen
+    Trennstriche aus dem Index genommen sind, steht dort „querschnittsorientierte", im
+    Ankerzitat aber weiter „querschnittsorien\xad tierte". 16 der 118 Anker tragen so ein
+    Zeichen. Ohne dieselbe Reinigung auf beiden Seiten vergleicht die Messung zwei
+    verschiedene Texte und meldet einen Fehlschlag, wo die Stelle gefunden wurde.
+    """
+    return re.sub(r"\s+", " ", saeubern(unicodedata.normalize("NFC", s or ""))).strip()
 
 
 def laden(pfad):

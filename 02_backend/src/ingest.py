@@ -85,6 +85,40 @@ def build_chunker():
     return HybridChunker(tokenizer=HuggingFaceTokenizer(tokenizer=tok, max_tokens=max_tokens))
 
 
+# Satzzeichen, die der Blocksatz der EU-Texte im Wort hinterlässt.
+#
+# Weicher Trennstrich (U+00AD) und unsichtbare Fugenzeichen: im PDF nicht zu sehen, im
+# extrahierten Text mitten im Wort. „wett\xadbewerblichen" ist für BM25 kein Wort, sondern
+# zwei Bruchstücke — der Chunk fällt aus der lexikalischen Hälfte der Suche heraus. NFC
+# entfernt sie nicht; sie sind gültige Zeichen, nur eben keine Buchstaben.
+#
+# MIT dem folgenden Leerraum, und das ist nicht nebensächlich: An einem Zeilenumbruch steht
+# „Laub\xad baumanteil". Nur das Zeichen zu entfernen ergäbe „Laub baumanteil" — das Wort
+# bliebe zerbrochen, nur anders. Ein weicher Trennstrich markiert immer eine Trennstelle
+# INNERHALB eines Wortes; was danach kommt, gehört ans Vorige.
+_WEICH = re.compile(r"[\u00ad\u200b\u2060]\s*")
+
+# Mehrfacher Leerraum, ebenfalls aus dem Blocksatz. Harmloser als der Trennstrich, aber er
+# bläht die Tokenfolge und verschiebt Fenstergrenzen.
+_LEERRAUM = re.compile(r"[ \t\u00a0\u2009\u202f]{2,}")
+
+
+def saeubern(text):
+    """Extraktionsartefakte entfernen, bevor eingebettet und indiziert wird.
+
+    Gemessen am 06.10.2026 über den bestehenden Index: 25 Prozent aller Chunks trugen einen
+    weichen Trennstrich im Wort, 63 Prozent doppelte Leerzeichen. Betroffen vor allem die
+    EU-Verordnungen und die GAK-Förderbereiche — also genau die Dokumente, in denen die
+    Retrieval-Messung ihre Pflicht-Fundstellen am häufigsten verfehlte.
+
+    Bewusst konservativ: nur Zeichen, die keinen Bedeutungsgehalt tragen. Zeilenumbrüche
+    bleiben, Bindestriche zwischen Wörtern bleiben, Gliederungsnummern bleiben. Was der Text
+    AUSSAGT, ändert sich nicht — nur, wie er in Token zerfällt.
+    """
+    text = _WEICH.sub("", text or "")
+    return _LEERRAUM.sub(" ", text)
+
+
 def embed_batch(texts, retries=4):
     for attempt in range(retries):
         try:
@@ -203,7 +237,7 @@ def main():
             continue
 
         chunks = [c for c in chunker.chunk(doc) if (c.text or "").strip()]
-        subs = [unicodedata.normalize("NFC", c.text.strip()) for c in chunks]
+        subs = [saeubern(unicodedata.normalize("NFC", c.text.strip())) for c in chunks]
         headings = [" > ".join(getattr(c.meta, "headings", None) or []) for c in chunks]
         seiten = [pages_of(c) for c in chunks]
 
