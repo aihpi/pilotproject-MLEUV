@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mleuv
+
+resources:
+  - namespace.yaml
+  - secrets/sealed-secret.yaml
+  - qdrant/pvc.yaml
+  - qdrant/deployment.yaml
+  - qdrant/service.yaml
+  - backend/configmap.yaml
+  - backend/pvc.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+  - api/pvc.yaml
+  - api/deployment.yaml
+  - api/service.yaml
+  - web/deployment.yaml
+  - web/service.yaml

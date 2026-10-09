@@ -1,24 +1,21 @@
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
+# Confidential: the corpus and everything derived from it stays out of the image.
+# In the cluster it lives on the volume at /data (see Dockerfile).
+data/
+.data/
+*_lokal.yaml
+.env
+*.bak
+
+# Not needed to run the service.
+eval/
+tests/
+README.md
+Dockerfile
+docker-compose.yml
 
 __pycache__/
 *.pyc
-*.pyo
 .pytest_cache/
-.coverage
-.cache/
-.git/
-.gitignore
-README.md
-*.log
-
-env/
-venv/
 .venv/
-node_modules/
-
-.DS_Store
-Thumbs.db
+venv/
+*.log

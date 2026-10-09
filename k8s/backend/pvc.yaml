@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mleuv-daten
+  labels:
+    app: mleuv-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # The confidential corpus (PDFs), the *_lokal.yaml files, verweise.json, the run log and
+      # the model caches of docling and fastembed. Copied in by hand, see HOSTING.md.
+      storage: 20Gi

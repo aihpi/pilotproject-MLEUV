@@ -219,3 +219,7 @@ cython_debug/
 
 # Laufzeitdaten des Vorschlagsdienstes: Qdrant-Index und Protokoll
 02_backend/.data/
+
+# Plaintext credentials of the hosted instance, only k8s/secrets/sealed-secret.yaml is committed
+k8s/secrets/secret.yaml
+*-cert.pem

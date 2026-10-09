@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mleuv-backend
+  labels:
+    app: mleuv-backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 1
+  # mleuv-daten is ReadWriteOnce, see the note in k8s/qdrant/deployment.yaml.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mleuv-backend
+  template:
+    metadata:
+      labels:
+        app: mleuv-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/aihpi/pilotproject-mleuv/backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: mleuv-backend-config
+          env:
+            # Not optional. Without it the service starts and every suggestion fails at the
+            # model with a 401. This way the pod names the missing key.
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mleuv-secret
+                  key: AI_HUB_API_KEY
+          volumeMounts:
+            - name: daten
+              mountPath: /data
+          startupProbe:
+            httpGet:
+              path: /gesundheit
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /gesundheit
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /gesundheit
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+          # Sized for the ingest as well, which runs in this pod (kubectl exec, see HOSTING.md)
+          # and keeps docling's layout models in memory. Serving alone needs far less.
+          resources:
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+      volumes:
+        - name: daten
+          persistentVolumeClaim:
+            claimName: mleuv-daten

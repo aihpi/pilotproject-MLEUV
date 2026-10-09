@@ -1,0 +1,25 @@
+# The Node service (drafts, chat stages, Word export) for the hosted instance.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci
+
+COPY . .
+RUN npm run build -w @richtlinie/shared \
+    && npm run build -w @richtlinie/api \
+    && npm prune --omit=dev
+
+ENV NODE_ENV=production
+
+# The service keeps its drafts in data/drafts.json relative to its working directory. In the
+# cluster a volume is mounted at /app/apps/api/data.
+WORKDIR /app/apps/api
+
+EXPOSE 4317
+
+CMD ["node", "dist/server.js"]

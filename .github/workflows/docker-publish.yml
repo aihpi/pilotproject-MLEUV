@@ -1,0 +1,118 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    # Only what ends up in an image. A docs change would otherwise build identical images and bump
+    # every tag under k8s/, which shows the ArgoCD app OutOfSync for nothing.
+    paths:
+      - 01_frontend/**
+      - 02_backend/Dockerfile
+      - 02_backend/.dockerignore
+      - 02_backend/requirements.txt
+      - 02_backend/vendor/**
+      - 02_backend/src/**
+      - 02_backend/prompts/**
+      - 02_backend/korpus_register.yaml
+      - 02_backend/korpus_status.yaml
+      - .github/workflows/docker-publish.yml
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # Written out instead of ${{ github.repository }}: the repository name has capitals, and image
+  # names on GHCR must be lowercase.
+  IMAGE_PREFIX: ghcr.io/aihpi/pilotproject-mleuv
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: web
+            context: ./01_frontend
+            file: ./01_frontend/Dockerfile.web
+          - name: api
+            context: ./01_frontend
+            file: ./01_frontend/Dockerfile.api
+          - name: backend
+            context: ./02_backend
+            file: ./02_backend/Dockerfile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # One cache per image, otherwise the three builds evict each other's layers.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # All three images are built from the same commit, so every manifest gets the same tag.
+      - name: Update K8s manifests with the new image tags
+        run: |
+          SHA_TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          echo "Updating K8s manifests to tag: ${SHA_TAG}"
+          grep -rl "image: ${IMAGE_PREFIX}/" k8s \
+            | xargs --no-run-if-empty sed -i -E "s|image: (${IMAGE_PREFIX}/[a-z]+):.*|image: \1:${SHA_TAG}|"
+
+      - name: Commit and push manifest changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --exit-code k8s/; then
+            echo "No changes to K8s manifests."
+          else
+            git add k8s/
+            git commit -m "Update k8s image tags to $(echo ${{ github.sha }} | cut -c1-7) [skip ci]"
+            git push
+          fi

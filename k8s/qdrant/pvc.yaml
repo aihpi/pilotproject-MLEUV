@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mleuv-qdrant-storage
+  labels:
+    app: mleuv-qdrant
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # The index of the corpus: 64 documents, about 4,900 chunks with 4096-dimensional vectors
+      # and their parent chunks as payload. Well under 1 GB today.
+      storage: 10Gi

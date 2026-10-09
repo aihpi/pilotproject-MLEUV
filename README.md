@@ -25,7 +25,8 @@ entscheidet nichts: jeder Vorschlag wird bestätigt, geändert oder verworfen.
   dem Cluster des AI Service Centre.
 
 Bedienung Schritt für Schritt: **[handbuch.md](handbuch.md)**. Aufbau, Dienste und
-Datenflüsse: **[infrastruktur.md](infrastruktur.md)**.
+Datenflüsse: **[infrastruktur.md](infrastruktur.md)**. Als Live-Demo auf dem Cluster des AISC:
+**[HOSTING.md](HOSTING.md)**.
 
 ## Setup and Installation
 

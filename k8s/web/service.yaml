@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mleuv-web
+  labels:
+    app: mleuv-web
+spec:
+  # Caddy, outside the cluster, terminates TLS, asks for the password and proxies to this, as
+  # for sentra.
+  type: LoadBalancer
+  selector:
+    app: mleuv-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

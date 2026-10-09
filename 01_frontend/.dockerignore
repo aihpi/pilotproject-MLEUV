@@ -5,3 +5,5 @@ coverage
 .env
 *.log
 .DS_Store
+# Drafts of a local run; the hosted instance keeps its own on a volume.
+apps/api/data/*.json

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mleuv-entwuerfe
+  labels:
+    app: mleuv-api
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # data/drafts.json, one JSON file with every draft.
+      storage: 1Gi

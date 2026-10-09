@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mleuv-qdrant
+  labels:
+    app: mleuv-qdrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  # One ReadWriteOnce volume: RollingUpdate would start the new pod before the old one released
+  # the disk and hang on the multi-attach (sentra #197).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mleuv-qdrant
+  template:
+    metadata:
+      labels:
+        app: mleuv-qdrant
+    spec:
+      containers:
+        - name: qdrant
+          # Pinned, unlike the local docker-compose.yml: a newer Qdrant can change the storage
+          # format, and the index on the volume has to survive an image pull.
+          image: qdrant/qdrant:v1.19.1
+          ports:
+            - containerPort: 6333
+              name: http
+            - containerPort: 6334
+              name: grpc
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6333
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: mleuv-qdrant-storage
