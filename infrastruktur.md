@@ -320,7 +320,7 @@ Steht dort `false`, fehlt `musterbausteine_lokal.yaml`; dann einmal
 ## Prüfen und Messen
 
 ```bash
-cd 02_backend && pytest -q        # tests/rag (Adressierung, Anfrage, Satzfilter, Holdout)
+cd 02_backend && uv run pytest -q # tests/rag (Adressierung, Anfrage, Satzfilter, Holdout)
                                   # tests/tool (Vorschlag, Musterbausteine, Prüfmodus, Richtlinie)
                                   # läuft ohne Netz, Modell und Qdrant
 python src/eval.py                # Retrieval gegen Gold-Anker

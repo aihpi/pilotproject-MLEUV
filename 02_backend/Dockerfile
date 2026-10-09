@@ -3,26 +3,31 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1
 
 # docling renders PDF pages and needs the two libraries at import time. git fetches the Spark
-# packages, see requirements.txt.
+# packages, see [tool.uv.sources] in pyproject.toml.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+# Pinned: [tool.uv.extra-build-variables] in pyproject.toml needs a recent uv.
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/
 
 WORKDIR /app
 
-# torch comes in through docling. The CPU index keeps the CUDA wheels (several GB) out of the
-# image; nothing here runs on a GPU. The Spark package bmds-prompt-security takes its version
-# from git and cannot find it when installed from a subdirectory, hence the pretend version
-# (the tag pinned in requirements.txt).
-COPY requirements.txt ./
-RUN SETUPTOOLS_SCM_PRETEND_VERSION=0.3 uv pip install --system --no-cache \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
-    --index-strategy unsafe-best-match \
-    -r requirements.txt
+# The Python of the image, not one uv would download. Bytecode compiled once at build time
+# instead of on every start.
+ENV UV_PYTHON_DOWNLOADS=never \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+# Exactly what uv.lock says, without the dev group. torch comes from the CPU index there.
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev --no-cache
+
+# python, uvicorn and the scripts in src/ run from the project environment, also through
+# kubectl exec (HOSTING.md).
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ src/
 COPY prompts/ prompts/

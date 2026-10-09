@@ -280,7 +280,7 @@ Der Prototyp ist für einen Nutzer auf `127.0.0.1` gebaut ([infrastruktur.md](in
 | --- | --- |
 | Argo CD meldet einen Fehler beim Vergleich, `sealed-secret.yaml` fehlt | Abschnitt 3: versiegeln und committen. |
 | Backend-Pod hängt in `CreateContainerConfigError` | `AI_HUB_API_KEY` fehlt im Secret. `kubectl describe pod -n mleuv -l app=mleuv-backend` nennt ihn. |
-| GitHub Actions: Backend-Build scheitert an `bmds-prompt-loader` oder `bmds-prompt-security` | Die Pakete kommen aus Spark auf gitlab.opencode.de (`requirements.txt`). Ist das Projekt erreichbar und der Tag `v0.3` noch da? |
+| GitHub Actions: Backend-Build scheitert an `bmds-prompt-loader` oder `bmds-prompt-security` | Die Pakete kommen aus Spark auf gitlab.opencode.de (`[tool.uv.sources]` in `02_backend/pyproject.toml`). Ist das Projekt erreichbar und der Tag `v0.3` noch da? |
 | Vorschläge ohne Satzrahmen, `/gesundheit` meldet `"vorlage_eingelesen": false` | `musterbausteine_lokal.yaml` fehlt auf dem Volume (Abschnitt 7.1). |
 | Vorschläge ohne Fundstellen | Der Index ist leer (Abschnitt 7.2). |
 | 504 im Browser bei langen Läufen | Ein Zeitlimit vor nginx. In Caddy kein `timeout` für `reverse_proxy` setzen. |

@@ -6,8 +6,8 @@ Ziel dieses ersten Standes: ein RAG-Aufruf für einen Abschnitt läuft end-to-en
 
 ```bash
 cd 02_backend
-python3 -m venv .venv && source .venv/bin/activate
-SETUPTOOLS_SCM_PRETEND_VERSION=0.3 pip install -r requirements.txt   # Grund: requirements.txt
+uv sync                   # Umgebung in .venv, genau nach uv.lock
+source .venv/bin/activate # oder jedem Befehl unten `uv run` voranstellen
 cp .env.example .env      # dann .env ausfüllen
 ```
 
