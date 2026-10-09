@@ -1,0 +1,347 @@
+# Die Prüfregeln des Prozessmodells — welche umgesetzt sind und welche nicht.
+#
+# ERZEUGT aus `regeln_roh_lokal.yaml` (nicht im Repo, Wortlaut aus dem vertraulichen
+# Prozessmodell) mit einer Zuordnung von Hand. Hier steht KEIN Wortlaut aus dem Modell,
+# sondern die destillierte Regel: Rechtsstelle, Schwellenwert, Zielfeld und die Kennung der
+# Prüfung, die sie umsetzt. Rechtsstellen sind öffentliches Recht.
+#
+# `id` ist die laufende Nummer im Rohauszug — darüber ist jeder Eintrag auf das
+# Modellelement zurückzuführen, ohne dass dessen Bezeichnung hier stehen muss.
+#
+# status:
+#   umgesetzt       eine Prüfung in packages/shared trägt sie, `umgesetzt_als` nennt sie
+#   teilweise       die Prüfung greift, deckt aber nicht den ganzen Regelgehalt
+#   offen           keine Prüfung vorhanden
+#   zurueckgestellt bewusst nicht gebaut, `grund` sagt warum
+#   kein_pruefpunkt ein Prozess- oder Texteintragungsschritt, nichts zu prüfen
+#
+# Zweck: Das Prozessmodell ist die maßgebliche Quelle der Fachlogik. Ohne diese Übersicht
+# weiß niemand, welche seiner Regeln das Werkzeug kennt — die Prüfungen standen bis zum
+# 09.10.2026 nur im Code, ohne Rückbezug auf das Modell.
+
+regeln:
+- id: M01
+  regel: Rechtsgrundlage nachschlagen
+  status: kein_pruefpunkt
+- id: M02
+  regel: Voraussetzungen im Korpus suchen
+  status: kein_pruefpunkt
+- id: M03
+  regel: Bemessungsgrundlagen früherer Verfahren suchen
+  status: kein_pruefpunkt
+- id: M04
+  regel: Rechtsgrundlage zurückgeben
+  status: kein_pruefpunkt
+- id: M05
+  regel: Feldvorschlag erzeugen
+  status: kein_pruefpunkt
+- id: M06
+  regel: Empfängerkreis aus dem GAK-Rahmenplan übernehmen
+  status: zurueckgestellt
+  grund: GAK, außerhalb des Landesumfangs (Entscheidung 09.10.2026)
+  zielfeld: recipients
+- id: M07
+  regel: Voraussetzungen aus der Rechtsgrundlage ziehen
+  status: kein_pruefpunkt
+- id: M08
+  regel: Fördergegenstand aus dem GAK-Rahmenplan übernehmen
+  status: zurueckgestellt
+  grund: GAK, außerhalb des Landesumfangs (Entscheidung 09.10.2026)
+  zielfeld: subject
+- id: M09
+  regel: Empfängerkreis abfragen
+  status: umgesetzt
+  zielfeld: recipients
+  umgesetzt_als: vvg_ausserhalb_pilot
+- id: M10
+  regel: Fachliche Ausschlüsse ergänzen
+  status: kein_pruefpunkt
+  zielfeld: exclusions
+- id: M11
+  regel: Fördergegenstand eingeben
+  status: kein_pruefpunkt
+  zielfeld: subject
+- id: M12
+  regel: Bagatellgrenze berechnen
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 1.5 VV zu § 44 LHO
+  schwelle_eur:
+  - 2500
+  zielfeld: minimum
+  umgesetzt_als: bagatellgrenze
+- id: M13
+  regel: Form der Zuwendung an der Rechtsgrundlage ausrichten
+  status: umgesetzt
+  zielfeld: financingForm
+  umgesetzt_als: form_passt_nicht_zur_rechtsgrundlage
+- id: M14
+  regel: Finanzierungsart auswählen
+  status: kein_pruefpunkt
+  zielfeld: financingType
+- id: M15
+  regel: Vorschlag für fachliche Ausschlüsse
+  status: kein_pruefpunkt
+  zielfeld: exclusions
+- id: M16
+  regel: Bemessungsgrundlage im Gespräch erfassen
+  status: kein_pruefpunkt
+  zielfeld: eligibleBasis
+- id: M17
+  regel: Vorschlag für Voraussetzungen
+  status: kein_pruefpunkt
+  zielfeld: requirements
+- id: M18
+  regel: Beihilferechtliche Prüfung ist immer erforderlich
+  status: umgesetzt
+  umgesetzt_als: beihilfepruefung_fehlt
+  zielfeld: stateAidBasis
+  umgesetzt_als: beihilfegrundlage_ohne_unionsrecht
+- id: M19
+  regel: Rechtsgrundlage auswählen
+  status: umgesetzt
+  rechtsstellen:
+  - § 44 LHO
+  - § 53 LHO
+  zielfeld: legalBasis
+  umgesetzt_als: form_passt_nicht_zur_rechtsgrundlage
+- id: M20
+  regel: Nur Projektförderung im Pilotumfang
+  status: umgesetzt
+  umgesetzt_als: nur_projektfoerderung
+- id: M21
+  regel: Prüfrechte eintragen
+  status: umgesetzt
+  zielfeld: auditRights
+  umgesetzt_als: pruefrechte_unvollstaendig
+- id: M22
+  regel: Vorzeitiger Vorhabenbeginn
+  status: umgesetzt
+  umgesetzt_als: vorzeitiger_beginn_ohne_genehmigung
+  zielfeld: earlyStart
+- id: M23
+  regel: Fördergegenstand aus dem GAK-Rahmenplan
+  status: zurueckgestellt
+  grund: GAK, außerhalb des Landesumfangs (Entscheidung 09.10.2026)
+  zielfeld: subject
+- id: M24
+  regel: Zuwendungszweck eintragen
+  status: kein_pruefpunkt
+  zielfeld: purpose
+- id: M25
+  regel: Antragsauswahl festlegen
+  status: umgesetzt
+  zielfeld: selection
+  umgesetzt_als: auswahlkriterien_fehlen
+- id: M26
+  regel: Weiterleitung an Dritte prüfen
+  status: umgesetzt
+  umgesetzt_als: weiterleitung_ohne_regeln
+  rechtsstellen:
+  - § 44 LHO
+  zielfeld: forwarding
+- id: M27
+  regel: Finanzierungsquelle aus der Rechtsgrundlage ableiten
+  status: umgesetzt
+  zielfeld: auditRights
+  umgesetzt_als: pruefrechte_bund_ohne_bundesmittel
+- id: M28
+  regel: Höhe der Zuwendung, Schranken aus GAK und Beihilferecht
+  status: teilweise
+  umgesetzt_als: de_minimis_hoechstbetrag
+  grund: Der Teil zu den Schranken des GAK-Rahmenplans ist zurückgestellt (Entscheidung 09.10.2026)
+  zielfeld: fundingRate
+  umgesetzt_als: hoehe_unbestimmt
+- id: M29
+  regel: Zuwendungsart als Projektförderung ausweisen
+  status: umgesetzt
+  umgesetzt_als: nur_projektfoerderung
+- id: M30
+  regel: Fehlbedarfsfinanzierung
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 2.2.2 der VV zu § 44 LHO
+  zielfeld: financingType
+  umgesetzt_als: fehlbedarf_ohne_hoechstbetrag
+- id: M31
+  regel: Geltungsdauer der Landesförderung
+  status: umgesetzt
+  zielfeld: validUntil
+  umgesetzt_als: geltungsdauer
+- id: M32
+  regel: Entscheidung für feste Beträge
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 2.3 und 2.3.1 der VV zu § 44 LHO
+  zielfeld: eligibleBasis
+  umgesetzt_als: feste_betraege_folgen
+- id: M33
+  regel: Spitzabrechnung oder feste Beträge
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 2.3 und 2.3.1 der VV zu § 44 LHO
+  zielfeld: eligibleBasis
+  umgesetzt_als: feste_betraege_folgen
+- id: M34
+  regel: Verwendungsnachweisverfahren eintragen
+  status: kein_pruefpunkt
+- id: M35
+  regel: Geltungsdauer höchstens drei Jahre
+  status: umgesetzt
+  rechtsstellen:
+  - Anlage 19 zu VV Nr. 14.2.1
+  - § 44 LHO
+  zielfeld: validUntil
+  umgesetzt_als: geltungsdauer
+- id: M36
+  regel: VVG oder VV je Empfängerkreis
+  status: umgesetzt
+  zielfeld: recipients
+  umgesetzt_als: vvg_ausserhalb_pilot
+- id: M37
+  regel: Vollfinanzierung
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 2.4 der VV zu § 44 LHO
+  - § 44 LHO
+  - Ziff. 2.5 der VV zu § 44 LHO
+  zielfeld: financingType
+  umgesetzt_als: vollfinanzierung
+- id: M38
+  regel: Förderhöchstsätze und Beihilfeintensität
+  status: teilweise
+  umgesetzt_als: de_minimis_hoechstbetrag
+  grund: Der Teil zu den Schranken des GAK-Rahmenplans ist zurückgestellt (Entscheidung 09.10.2026)
+  schwelle_prozent:
+  - 100
+  zielfeld: fundingRate
+  umgesetzt_als: foerdersatz_ueber_hundert
+- id: M39
+  regel: Vorgaben der GAK-Fördermaßnahme beachten
+  status: zurueckgestellt
+  grund: GAK, außerhalb des Landesumfangs (Entscheidung 09.10.2026)
+  zielfeld: fundingRate
+- id: M40
+  regel: Entscheidung für Spitzabrechnung
+  status: kein_pruefpunkt
+  zielfeld: eligibleBasis
+- id: M41
+  regel: Bewilligungsverfahren
+  status: umgesetzt
+  zielfeld: selection
+  umgesetzt_als: auswahlkriterien_fehlen
+- id: M42
+  regel: VVG oder VV zu § 44 LHO
+  status: umgesetzt
+  zielfeld: recipients
+  umgesetzt_als: vvg_ausserhalb_pilot
+- id: M43
+  regel: Erstattungsverfahren eintragen
+  status: kein_pruefpunkt
+  zielfeld: payment
+- id: M44
+  regel: Anwendbarkeit der VV
+  status: umgesetzt
+  zielfeld: recipients
+  umgesetzt_als: empfaengerkreis_gemischt
+- id: M45
+  regel: Fachliche Begründung gegenüber dem MdFE — kein eigener Prüfpunkt, sondern der Adressat
+    mehrerer Prüfungen (Bagatellgrenze, Vollfinanzierung, kommunaler Höchstsatz, Geltungsdauer)
+  status: umgesetzt
+- id: M46
+  regel: Sonstige Zuwendungsbestimmungen
+  status: umgesetzt
+  zielfeld: ancillary
+  umgesetzt_als: nebenbestimmungen_empfaengerkreis
+- id: M47
+  regel: Antragsverfahren eintragen
+  status: kein_pruefpunkt
+  zielfeld: applicationProcedure
+- id: M48
+  regel: Anforderungs- und Auszahlungsverfahren
+  status: umgesetzt
+  rechtsstellen:
+  - § 44 LHO
+  zielfeld: payment
+  umgesetzt_als: digital_nur_erstattung
+- id: M49
+  regel: Europarechtliche Veröffentlichungspflichten
+  status: umgesetzt
+  umgesetzt_als: veroeffentlichungspflicht_fehlt
+  rechtsstellen:
+  - § 44 LHO
+- id: M50
+  regel: Vorschussprinzip eintragen
+  status: kein_pruefpunkt
+  zielfeld: payment
+- id: M51
+  regel: Förderhöchstsätze
+  status: teilweise
+  umgesetzt_als: freistellung_ohne_obergrenze
+  grund: Der Teil zu den Schranken des GAK-Rahmenplans ist zurückgestellt (Entscheidung 09.10.2026)
+  zielfeld: fundingRate
+  umgesetzt_als: kommunaler_hoechstsatz
+- id: M52
+  regel: Einschränkung der Finanzierungsart durch GAK
+  status: zurueckgestellt
+  grund: GAK, außerhalb des Landesumfangs (Entscheidung 09.10.2026)
+  zielfeld: financingType
+- id: M53
+  regel: Verwendungsnachweisverfahren
+  status: kein_pruefpunkt
+- id: M54
+  regel: Festbetragsfinanzierung
+  status: umgesetzt
+  umgesetzt_als: bemessung_passt_nicht_zur_finanzierungsart
+  rechtsstellen:
+  - Ziff. 2.2.3 der VV zu § 44 LHO
+  zielfeld: fixedAmount
+- id: M55
+  regel: Prüfung der Bagatellgrenze
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 1.5 VV zu § 44 LHO
+  schwelle_eur:
+  - 2500
+  zielfeld: minimum
+  umgesetzt_als: bagatellgrenze
+- id: M56
+  regel: Prüfung der Finanzierungsart
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 2.2.1 der VV zu § 44 LHO
+  - Ziff. 2.4 der VV zu § 44 LHO
+  - Ziff. 2.2.3 der VV zu § 44 LHO
+  zielfeld: financingType
+  umgesetzt_als: vollfinanzierung
+- id: M57
+  regel: Förderhöchstsätze
+  status: teilweise
+  umgesetzt_als: de_minimis_agrar_pruefen
+  grund: Der Teil zu den Schranken des GAK-Rahmenplans ist zurückgestellt (Entscheidung 09.10.2026)
+  rechtsstellen:
+  - § 44 LHO
+  zielfeld: maximum
+  umgesetzt_als: grenzen_widerspruch
+- id: M58
+  regel: Bagatellgrenze entspricht der LHO
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 1.5 der VV zu § 44 LHO
+  zielfeld: minimum
+  umgesetzt_als: bagatellgrenze
+- id: M59
+  regel: Bagatellgrenze weicht von der LHO ab
+  status: umgesetzt
+  rechtsstellen:
+  - Ziff. 1.5 der VV zu § 44 LHO
+  - § 44 LHO
+  schwelle_eur:
+  - 2500
+  zielfeld: minimum
+  umgesetzt_als: bagatellgrenze
+- id: M60
+  regel: Prüfung der Bemessungsgrundlage
+  status: umgesetzt
+  umgesetzt_als: bemessung_passt_nicht_zur_finanzierungsart
+  zielfeld: eligibleBasis

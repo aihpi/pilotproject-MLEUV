@@ -33,12 +33,14 @@ from bmds_prompt_loader import PromptLoader
 from bmds_prompt_security import sanitize_and_wrap
 
 import protokoll
+import richtlinie
 import satzfilter
 import musterbausteine
 from anfrage import suche
 from retrieval import hybrid_search
 from rag_query import bloecke_bilden
 from llm import chat
+import deckung
 import profilfilter
 from config import (BASE, TOP_K, KONSENS_LAEUFE, KONSENS_SCHWELLE,
                     KONSENS_TEMPERATUR_FELD, HOLDOUT_DATEIEN, ABSCHNITTSBINDUNG,
@@ -207,7 +209,13 @@ def _rahmen_text(bausteine):
         return "(keine Musterbausteine vorhanden — Vorlage nicht eingelesen)"
     teile = []
     for t in bausteine:
-        block = f"[Musterbaustein {t['nummer']}]\n{t['text']}"
+        # Ohne die Anweisungen der Vorlage: Was das Modell nicht sieht, schreibt es nicht ab.
+        # Der Wächter in `_pruefen` fängt den Fall hinterher ab und lässt das Feld leer —
+        # hier wird er unwahrscheinlich, ohne die Regelung im selben Eintrag zu verlieren.
+        text = richtlinie.ohne_redaktionshinweise(t["text"])
+        if not text:
+            continue
+        block = f"[Musterbaustein {t['nummer']}]\n{text}"
         if t.get("hinweis"):
             block += f"\nHinweis an den Ersteller: {t['hinweis']}"
         teile.append(block)
@@ -334,6 +342,47 @@ TREFFER_JE_FELD = 3
 # Wie lang das Zitat einer Fundstelle in der Oberfläche höchstens ist. Es soll zum Verwerfen
 # reichen, nicht zum Lesen — wer mehr will, schlägt das Dokument auf.
 ZITAT_ZEICHEN = 400
+
+# Der Anfang des nächsten Gliederungspunkts, der am Ende eines Blocks klebt.
+#
+# Ein Chunk endet nicht an der Abschnittsgrenze. Im Durchlauf vom 08.10.2026 stand unter
+# „Zuwendungsempfänger" ein Zitat, das mit der Empfängerliste begann und mit „- 4
+# Zuwendungsvoraussetzungen - 4.1 Die Vorhaben dürfen …" endete — die Überschrift des
+# FOLGENDEN Abschnitts samt erstem Satz. Wer das liest, hält die Stelle für unsauber, obwohl
+# die Suche richtig lag.
+_NAECHSTER_PUNKT = re.compile(r"[-–]\s*\d+(?:\.\d+)*\s+[A-ZÄÖÜ]")
+
+# Ab welchem Anteil des Textes ein Gliederungspunkt als Überhang gilt.
+#
+# Unterschieden wird an zwei Merkmalen. Eine Fundstelle, die SELBST eine nummerierte
+# Aufzählung ist, beginnt mit einem Gliederungspunkt — dort wird nichts geschnitten, sonst
+# bliebe vom Fund die erste Zeile übrig. Beginnt sie mit Fließtext und kommt in der zweiten
+# Hälfte ein Punkt, ist das der nächste Abschnitt, der am Chunk klebt.
+UEBERHANG_AB = 0.5
+
+
+def zitat_bilden(text, zeichen=ZITAT_ZEICHEN):
+    """Den Blocktext auf ein lesbares Zitat kürzen — an einer Satzgrenze, ohne Überhang.
+
+    Zuerst der angefangene nächste Gliederungspunkt am Ende, dann die Länge: an der letzten
+    Satzgrenze davor, damit das Zitat nicht mitten im Wort abbricht. Gibt es keine, wird hart
+    geschnitten und mit Auslassung gekennzeichnet — ein sichtbar gekürztes Zitat ist ehrlicher
+    als eines, das vollständig aussieht.
+    """
+    t = " ".join(str(text or "").split())
+    beginnt_mit_punkt = bool(_NAECHSTER_PUNKT.match(t) or re.match(r"\s*\d+(?:\.\d+)*\s", t))
+    if not beginnt_mit_punkt:
+        for m in _NAECHSTER_PUNKT.finditer(t):
+            if m.start() >= len(t) * UEBERHANG_AB:
+                t = t[:m.start()].strip(" -–,;")
+                break
+    if len(t) <= zeichen:
+        return t or None
+    schnitt = t[:zeichen]
+    satzende = max(schnitt.rfind(". "), schnitt.rfind("! "), schnitt.rfind("? "))
+    if satzende >= zeichen // 2:
+        return schnitt[:satzende + 1]
+    return schnitt.rsplit(" ", 1)[0] + " …"
 
 
 def ist_belegsatz(text):
@@ -576,6 +625,65 @@ def _abstimmen(laeufe_daten, felder, laeufe, schwelle):
     return heraus, befunde
 
 
+def _deckungen_nachpruefen(vorschlaege, uhr=None):
+    """Stützt die angegebene Stelle den Wert wirklich? — NICHT im Einsatz, siehe unten.
+
+    Gebaut am 09.10.2026 gegen drei Fehler des Durchlaufs vom Vortag und am selben Tag wieder
+    ausgehängt, weil das bewertende Modell sie nicht findet. Vorgelegt wurden ihm zwei falsche
+    Deckungen und eine richtige; es urteilte dreimal „trägt". Bei der falschen Zielgruppe
+    („Tierärztinnen und Tierärzte" als Zuwendungsempfänger, Deckung „Gefördert wird die
+    Kastration … DURCH Tierärztinnen und Tierärzte") begründete es mit „die die Kastration
+    durchführen und gefördert werden" — die zweite Hälfte hat es selbst ergänzt. Auch mit
+    Abschnittsbezug im Feldnamen blieb es bei dreimal „trägt".
+
+    Steht hier, damit der Versuch nicht ein zweites Mal gemacht wird. Wer ihn wiederholt,
+    braucht zuerst ein strengeres Urteilsverfahren — ein anderes Modell oder einen Prompt, der
+    die Richtung einer Aussage prüft („durch X" ist nicht „an X").
+
+    Der Rest der Mechanik stimmt: Urteile nebenläufig, nur für Felder mit Deckung, Ausfall des
+    Modells lässt das Etikett unverändert. Wieder einhängen heißt: diesen Aufruf hinter
+    `_doppelte_werte_verwerfen` setzen.
+    """
+    betroffen = [v for v in vorschlaege if v.get("deckung")]
+    if not betroffen:
+        return []
+    t0 = time.monotonic()
+    urteile = deckung.mehrere_beurteilen(
+        [(v["label"], v["wert"], v["deckung"]) for v in betroffen])
+    if uhr is not None:
+        uhr["deckung_pruefen"] = round(time.monotonic() - t0, 1)
+
+    befunde = []
+    for v, (urteil, warum, _) in zip(betroffen, urteile):
+        if urteil in deckung.NICHT_GEDECKT:
+            v["deckung"] = None
+            befunde.append(f"{v['feld']}: Deckung trägt den Wert nicht ({urteil}) — "
+                           f"als abgeleitet ausgewiesen. {warum}")
+    return befunde
+
+
+# Ein Titel, den die Bearbeiterin selbst geschrieben hat, wird übernommen und nicht umformuliert.
+#
+# Die Regel „WERT FORMULIEREN, NICHT ZITIEREN" im Prompt ist für Regelungstext richtig und für
+# den Titel falsch. Im Durchlauf vom 09.10.2026 gab die Bearbeiterin „Richtlinie des
+# Ministeriums … über die Gewährung von Zuwendungen zur Kastration …" wörtlich vor — also
+# genau die Form der VV zu § 44 LHO — und bekam „FÖRDERrichtlinie … ZUR Gewährung von
+# Zuwendungen FÜR Kastration" zurück. Drei Abweichungen ohne Anlass.
+#
+# Deterministisch und nicht über den Prompt: Ob eine Zeile ein Richtlinientitel ist, ist eine
+# Formfrage und keine Ermessensfrage.
+_TITELZEILE = re.compile(r"^\s*((?:Förder)?[Rr]ichtlinie\s+(?:des|der|über|zur|zum)\s.{30,400})$")
+
+
+def titel_aus_eingabe(eingabe):
+    """Die erste Zeile der Eingabe, die schon ein Richtlinientitel ist. Sonst None."""
+    for zeile in str(eingabe or "").splitlines():
+        treffer = _TITELZEILE.match(zeile.strip())
+        if treffer:
+            return treffer.group(1).strip().rstrip(".")
+    return None
+
+
 def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
     """Nachprüfungen an einem Modellvorschlag. Verändert `v` und ergänzt `befunde`."""
     befunde = []
@@ -711,6 +819,38 @@ def _pruefen(v, feld, bloecke, rahmen_text="", eingabe="", abfrageart=None):
             f"der Angabe — verworfen")
         return befunde
 
+    # Der Titel wird übernommen, nicht umformuliert — siehe `titel_aus_eingabe`.
+    if feld["id"] == "title":
+        eigener = titel_aus_eingabe(eingabe)
+        if eigener and _norm(eigener) != _norm(v.get("wert")):
+            befunde.append(f"title: Titel der Bearbeiterin wörtlich übernommen statt "
+                           f"umformuliert — {str(v.get('wert'))[:80]!r}")
+            v["wert"] = eigener
+            v["deckung"] = eigener
+            v["gedeckt_durch_eingabe"] = True
+            v["konfidenz"] = 1.0
+
+    # Redaktionshinweise der Vorlage sind kein Richtlinientext.
+    #
+    # Der Musterbaustein zu den Förderausschlüssen ist 702 Zeichen lang und mischt Anweisung,
+    # Regelung, Beispielliste, zwei Varianten und einen Platzhalter in einer Zelle. Im
+    # Durchlauf vom 08.10.2026 hat das Modell ihn dreimal abgeschrieben — als Förderausschluss
+    # standen danach Erbbauzinsen und Grunderwerbsteuer in einer Katzenrichtlinie, gefolgt
+    # von den Variantenmarken und dem Platzhalter für das Fachreferat.
+    #
+    # Verworfen und nicht abgeschnitten: Wo die Anweisung steht, ist auch der Rest ungeprüft
+    # übernommen. Ein leeres Feld mit Befund ist ehrlicher als ein halb gesäuberter Vorlagentext
+    # — zumal die Fundstelle daneben in allen drei Fällen die bessere Antwort enthielt.
+    if richtlinie.ist_redaktionshinweis(v.get("wert")):
+        befunde.append(
+            f"{feld['id']}: Redaktionshinweis der Vorlage als Wert übernommen — verworfen: "
+            f"{str(v.get('wert'))[:120]!r}")
+        v["wert"] = UNKLAR
+        v["status"] = "unklar"
+        v["konfidenz"] = 0.0
+        v["deckung"] = None
+        return befunde
+
     if v.get("belegzitat") and not _beleg_gedeckt(v["belegzitat"], bloecke, rahmen_text):
         # Wortlaut mitgeben: ohne ihn ist nicht zu unterscheiden, ob das Modell erfunden hat
         # oder aus einer anderen zulässigen Quelle zitiert.
@@ -833,7 +973,19 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
     # Unsere Abschnittsnummer IST der Baustein — 0, 9 und 10 tragen keine Nummer und damit
     # auch keine Entsprechung im Korpus; dort bleibt die Suche ungebunden.
     bindung = ABSCHNITTSBINDUNG if abschnittsbindung is None else abschnittsbindung
-    nur_baustein = abschnitt_nr if (bindung and 1 <= (abschnitt_nr or 0) <= 8) else None
+    gebunden = bindung and 1 <= (abschnitt_nr or 0) <= 8
+    nur_baustein = abschnitt_nr if gebunden else None
+
+    # Titel, Anlagen und Schlussformel (0, 9, 10) tragen in keiner Richtlinie eine Nummer.
+    # Ohne Baustein greift die Bindung nicht, und ohne sie gewinnt der Allerweltssatz: Zu
+    # „Weitere Inhalte" kam am 08.10.2026 zweimal derselbe Satz „Für die Bewilligung,
+    # Auszahlung und Abrechnung … gelten die VV zu § 44 LHO" — er steht fast wortgleich in
+    # jeder Landesrichtlinie, enthält das ganze Vokabular und sagt nichts.
+    #
+    # Für diese drei Abschnitte gibt es im Korpus keine Entsprechung. Gar keine Fundstelle ist
+    # dort die richtige Antwort, und die Oberfläche sagt das inzwischen auch.
+    if bindung and not gebunden:
+        mit_belegen = False
 
     # Stufe 2: Nur Richtlinien, deren festgelegte Werte zum Entwurf passen. Greift erst, wenn
     # genug festgelegt ist — `passende_quellen` gibt sonst die leere Menge zurück, und die
@@ -1037,7 +1189,7 @@ def vorschlagen(abschnitt_nr, eingabe, felder, top_k=TOP_K, nur_landesrecht=True
             "feld_label": b.get("feld_label"),
             # Die vom Satzfilter gewählten Sätze, nicht der ganze Block. Eine Fundstelle, von
             # der man nur die Adresse sieht, muss man aufschlagen, um sie zu verwerfen.
-            "zitat": ((b.get("kurz") or b.get("roh") or "").strip()[:ZITAT_ZEICHEN] or None),
+            "zitat": zitat_bilden(b.get("kurz") or b.get("roh")),
         } for b in bloecke],
         # Wonach Stufe 2 eingegrenzt hat. Ohne diese Angabe wäre ein mageres Ergebnis nicht
         # von einem leeren Korpus zu unterscheiden.

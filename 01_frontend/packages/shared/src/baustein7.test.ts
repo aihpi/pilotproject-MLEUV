@@ -237,3 +237,46 @@ describe("Baustein 6, Nebenbestimmungen und Empfängerkreis", () => {
     expect(regeln(mit([], "anbest-p"))).toEqual([]);
   });
 });
+
+describe("Inventarisierung gegen die ANBest", () => {
+  /*
+   * Nummer 4 ANBest-P und ANBest-G verpflichten zur Inventarisierung ab 800 Euro
+   * Anschaffungswert. Im Durchlauf vom 08.10.2026 schlug das Werkzeug in EINEM Aufruf
+   * ANBest-P und „Inventarisierungspflicht: Nein" vor — zwei Vorschläge, die sich
+   * widersprechen, und keine Regel, die es bemerkt hätte.
+   */
+  const mit = (nebenbestimmungen: string, inventar: string): RichtlinieDraft => {
+    const d = entwurf({});
+    const wert = (v: unknown) => ({
+      value: v as FieldValue["value"],
+      status: "confirmed" as const,
+      source: "user-form" as const,
+      confirmedByUser: true,
+    });
+    d.sections["6"] = {
+      fields: { ancillary: wert(nebenbestimmungen), inventory: wert(inventar) },
+    };
+    return d;
+  };
+  const regeln = (d: RichtlinieDraft) => pruefeBaustein6(d).map((e) => e.befund.regel);
+
+  it("Verzicht trotz ANBest wird gemeldet", () => {
+    expect(regeln(mit("anbest-p", "no"))).toContain("inventarisierung_gegen_anbest");
+    expect(regeln(mit("anbest-g", "no"))).toContain("inventarisierung_gegen_anbest");
+  });
+
+  it("Inventarisierung bejaht ist unauffällig", () => {
+    expect(regeln(mit("anbest-p", "yes"))).not.toContain("inventarisierung_gegen_anbest");
+  });
+
+  it("ohne Nebenbestimmungen kein Befund", () => {
+    expect(regeln(mit("", "no"))).not.toContain("inventarisierung_gegen_anbest");
+  });
+
+  it("der Befund verlangt eine Begründung im Prüfvermerk", () => {
+    const eintrag = pruefeBaustein6(mit("anbest-p", "no")).find(
+      (e) => e.befund.regel === "inventarisierung_gegen_anbest",
+    );
+    expect(eintrag?.vermerk?.adressat).toBe("pruefvermerk");
+  });
+});

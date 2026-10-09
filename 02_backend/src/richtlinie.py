@@ -52,6 +52,80 @@ loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 # Anweisung an die Bearbeiterin, die in keine Richtlinie gehört.
 PLATZHALTER = re.compile(r"X{2,}|<[^>]{2,60}>|\bggf\.|\(variabel:", re.I)
 
+# Redaktionshinweise der Musterrichtlinie — Anweisungen an die Schreiberin, kein Regelungstext.
+#
+# Die Vorlage mischt beides in EINER Zelle. Der Eintrag zu den Förderausschlüssen ist 702
+# Zeichen lang und enthält nacheinander: eine Anweisung („Nennung von Förderausschlüssen"),
+# eine echte Regelung („Doppelförderung zu anderen Förderbereichen"), eine Beispielliste
+# („Beispielsweise auch: Erbbauzinsen, Grunderwerbsteuer …"), zwei Varianten zur Auswahl und
+# einen Platzhalter für das, was das Fachreferat noch ergänzen soll.
+#
+# Im Durchlauf vom 08.10.2026 schrieb das Modell das Ganze ab — in einer Richtlinie über
+# Katzenkastration standen daraufhin Erbbauzinsen und Grunderwerbsteuer als Förderausschluss,
+# gefolgt von den Variantenmarken und dem Platzhalter für das Fachreferat.
+# Dasselbe dreimal: bei den Zuwendungsvoraussetzungen, den Ausschlüssen und den
+# zuwendungsfähigen Ausgaben.
+#
+# Abgegrenzt gegen `PLATZHALTER`: Der erkennt LÜCKEN („XX Euro"), dieser ANWEISUNGEN. Beide
+# sind Vorlagenreste, aber eine Lücke lässt sich füllen, eine Anweisung muss weg.
+#
+# Eng gefasst, weil jeder Treffer einen Vorschlag verwirft: Es sind wörtliche Wendungen der
+# Vorlage, nicht Wörter, die in einer Richtlinie vorkommen könnten. „beispielsweise" allein
+# steht in echten Richtlinien, „Beispielsweise auch:" als Listeneinleitung nicht.
+REDAKTIONSHINWEIS = re.compile(
+    r"Variante\s*\d\s*:"
+    r"|Vom Fachreferat"
+    r"|Beispielsweise auch\s*:"
+    r"|\(bspw\.\)\s*:"
+    r"|\bNennung (?:von|der)\b"
+    r"|Folgende Varianten",
+    re.I)
+
+
+def ist_redaktionshinweis(text):
+    """Enthält dieser Text eine Anweisung aus der Vorlage statt Regelungstext?"""
+    return bool(REDAKTIONSHINWEIS.search(str(text or "")))
+
+
+# Wo eine Anweisung beginnt, hört die Regelung auf. Alles ab dem Marker fällt weg; was davor
+# steht, bleibt — im Eintrag zu den Förderausschlüssen ist das „Doppelförderung zu anderen
+# Förderbereichen", die einzige echte Regelung in 702 Zeichen.
+_ANWEISUNG_AB = re.compile(
+    r"(Beispielsweise auch\s*:|\(bspw\.\)\s*:|Variante\s*\d\s*:|Vom Fachreferat"
+    r"|Folgende Varianten|Fachspezifische [A-ZÄÖÜ])", re.I)
+
+# Ab wie vielen Wörtern ein gekürzter Mustersatz noch etwas aussagt.
+REST_MINDESTWOERTER = 3
+
+# Eine einleitende Anweisung steht VORN und wird abgeschnitten, nicht der Rest dahinter.
+_ANWEISUNG_VORN = re.compile(r"^\s*Nennung (?:von|der)\s+\w+[^-–]*[-–]\s*", re.I)
+
+
+def ohne_redaktionshinweise(text):
+    """Den Mustersatz um die Anweisungen der Vorlage kürzen.
+
+    Gedacht für den Prompt: Was das Modell nicht sieht, kann es nicht abschreiben. Der
+    Wächter `ist_redaktionshinweis` fängt den Fehler hinterher ab und lässt das Feld leer;
+    hier wird er vorher unwahrscheinlich gemacht, ohne die Regelung zu verlieren, die im
+    selben Eintrag steht.
+
+    Bleibt nichts Brauchbares übrig, ergibt sich die leere Zeichenkette — dann trägt der
+    Eintrag nur eine Anweisung und gehört nicht in den Prompt.
+    """
+    roh = str(text or "")
+    if not REDAKTIONSHINWEIS.search(roh):
+        # Nichts zu kürzen. Unverändert zurück, und zwar WÖRTLICH: Sonst fiele
+        # „Zuwendungsart: Projektförderung" unter die Mindestlänge und verschwände, obwohl
+        # daran nichts auszusetzen ist.
+        return roh
+    t = _ANWEISUNG_VORN.sub("", roh).strip()
+    t = _ANWEISUNG_AB.split(t)[0].strip()
+    t = re.sub(r"\s+", " ", t).strip(" -–,;:")
+    # Was nach dem Kürzen übrig bleibt, muss noch etwas aussagen. „Zuwendungsfähig sind" ist
+    # die Einleitung der gerade entfernten Liste und als Satzrahmen nur verwirrend.
+    return t if len(t.split()) >= REST_MINDESTWOERTER else ""
+
+
 # Wo ein Satz endet — und wo eine Ordnungszahl nur so aussieht.
 #
 # Der Punkt in „31. Dezember 2031" ist kein Satzende. Ohne die Rücksicht darauf zerfiel
@@ -565,6 +639,10 @@ def pruefe_text(text, bausteine, werte, felder=None):
     offen = sorted({m.group(0) for m in PLATZHALTER.finditer(text or "")})
     if offen:
         befunde.append(f"nicht gefüllte Platzhalter: {', '.join(offen)}")
+
+    anweisungen = sorted({m.group(0) for m in REDAKTIONSHINWEIS.finditer(text or "")})
+    if anweisungen:
+        befunde.append(f"Redaktionshinweis der Vorlage im Text: {', '.join(anweisungen)}")
     return befunde
 
 

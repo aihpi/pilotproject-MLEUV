@@ -103,7 +103,11 @@ function completeDemoDraft(
           ? "Moor- und Anmoorböden innerhalb des Landes Brandenburg gemäß aktueller Moorbodenkarte."
           : "Landwirtschaftlich genutzte Flächen im Land Brandenburg außerhalb dauerhaft wasserwirtschaftlich überlasteter Teilgebiete.",
         selectionCriteria: "Bewertet werden Klimawirkung beziehungsweise Wassereinsparung, fachliche Qualität, Umsetzungsreife, Flächenwirkung und Wirtschaftlichkeit.",
-        aidRegime: ["agrar-gvo", "de-minimis"],
+        // Nur die Freistellung, nicht zusätzlich De-minimis: Die Höchstbeträge der Entwürfe
+        // (1,5 Mio. und 500 000 Euro) liegen weit über der De-minimis-Grenze von 300 000
+        // Euro in drei Jahren. Die Beispielentwürfe sollen vorbildlich sein — siehe
+        // `pruefeBeihilfegrenzen`.
+        aidRegime: ["agrar-gvo"],
       }),
       "5": confirmedFields({
         financingType: "share",
@@ -123,9 +127,11 @@ function completeDemoDraft(
         auditRights: ["lrh", "ministry"],
         purposeBindingYears: moor ? 12 : 5,
         inventory: "yes",
-        otherConditions: moor
+        otherConditions: (moor
           ? "Die geförderten Flächen und Anlagen sind zwölf Jahre zweckentsprechend zu nutzen. Wasserstände und Flächennutzung sind jährlich zu dokumentieren."
-          : "Die geförderten Anlagen sind mindestens fünf Jahre zweckentsprechend zu betreiben. Wasserverbräuche sind digital zu erfassen und auf Anforderung vorzulegen.",
+          : "Die geförderten Anlagen sind mindestens fünf Jahre zweckentsprechend zu betreiben. Wasserverbräuche sind digital zu erfassen und auf Anforderung vorzulegen.")
+          + " Einzelbeihilfen über 100 000 Euro werden nach den europarechtlichen "
+          + "Veröffentlichungspflichten in der Transparenzdatenbank veröffentlicht.",
       }),
       "7": confirmedFields({
         authority: "Investitionsbank des Landes Brandenburg (ILB)",

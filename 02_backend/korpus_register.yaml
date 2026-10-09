@@ -413,11 +413,13 @@ dokumente:
     zitierweise: nummer
     pruefen: true
   - datei: "Rili m Sz Min.566698.pdf"
-    kurzname: "RL (Titel unbekannt)"
-    aliase: []
+    kurzname: "EU-MLEUV-Forst-RL"
+    aliase: ["RL Forstwirtschaftliche Vorhaben"]
     art: richtlinie
     zitierweise: nummer
-    # ?? Dateiname trägt keinen Titel — welche Richtlinie ist das?
+    # Der Dateiname trägt keinen Titel; er steht auf Seite 1 des Dokuments: „Richtlinie …
+    # zur Gewährung von Zuwendungen für die Förderung forstwirtschaftlicher Vorhaben
+    # (EU-MLEUV-Forst-RL)", vom 1. September 2025.
     pruefen: true
   - datei: "Vermarktung landestouristischer Angebote vom 10.pdf"
     kurzname: "RL Landestourismus"

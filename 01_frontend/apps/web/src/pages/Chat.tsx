@@ -202,12 +202,28 @@ export function ChatPage() {
   const ausVerlauf = useMutation({
     mutationFn: () => api.chatAusVerlauf(id),
     onSuccess: (r) => {
-      if (r.extraction.proposals.length) {
-        setMsgs((v) => [...v, { role: "assistant", text: r.message }]);
-        setExtraction(r.extraction);
-      } else if (offeneFrage) {
-        setMsgs((v) => [...v, { role: "assistant", text: offeneFrage }]);
-      }
+      /*
+        Die Frage wird GESTELLT, auch wenn ein Vorschlag vorliegt.
+
+        Bis zum 09.10.2026 ersetzte der Vorschlag die Frage: Wer den Titel bestätigt hatte,
+        bekam sofort einen Vorschlag für Förderziel und Zuwendungszweck — abgeleitet aus dem
+        Titel, denn mehr stand nicht im Verlauf — und wurde nie gefragt, was er erreichen
+        will. Im Durchlauf desselben Tages bestätigte die Bearbeiterin diesen Vorschlag, trug
+        ihre eigentliche Zielaussage danach nach, und das Feld war schon besetzt. Ihre Angabe
+        war verloren, ohne dass es jemand sah.
+
+        Reihenfolge: erst die Frage, dann der Vorschlag. Wer eine Antwort hat, schreibt sie;
+        wer keine hat, nimmt den Vorschlag. Vorher gab es diese Wahl nicht.
+      */
+      const frage = offeneFrage;
+      setMsgs((v) => [
+        ...v,
+        ...(frage ? [{ role: "assistant" as const, text: frage }] : []),
+        ...(r.extraction.proposals.length
+          ? [{ role: "assistant" as const, text: r.message }]
+          : []),
+      ]);
+      if (r.extraction.proposals.length) setExtraction(r.extraction);
       setOffeneFrage(null);
       setProgress(r.progress);
     },

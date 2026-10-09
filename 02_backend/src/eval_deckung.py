@@ -26,38 +26,11 @@ zwei Texte, die beide vor ihm liegen.
 """
 import argparse
 import collections
-from pathlib import Path
-
-from bmds_prompt_loader import PromptLoader
-from bmds_prompt_security import sanitize_and_wrap
 
 import richtlinie
 import vorschlag
+from deckung import beurteilen
 from eval_feld import laden
-from judge_antwort import json_aus
-from llm import chat
-from config import BASE, JUDGE_MODEL, JUDGE_FALLBACKS
-
-loader = PromptLoader(Path(BASE) / "prompts", lang="de")
-
-
-def beurteilen(feld, wert, stelle):
-    """Ein Urteil über eine einzelne Stelle. Ergibt (urteil, begruendung, modell)."""
-    prompt = loader.load(
-        "deckung_pruefen",
-        feld=feld,
-        wert=str(wert),
-        # Fremdtext im Prompt, wie überall: die Stelle stammt aus einem Dokument oder aus
-        # der Eingabe der Bearbeiterin, nicht von uns.
-        stelle=sanitize_and_wrap(str(stelle), tag_name="stelle",
-                                 max_length=8000).wrapped_content,
-    )
-    text, modell = chat(
-        [{"role": "system", "content": prompt.system},
-         {"role": "user", "content": prompt.user}],
-        model=JUDGE_MODEL, temperature=0, fallbacks=JUDGE_FALLBACKS, mit_modell=True)
-    daten = json_aus(text)
-    return daten.get("urteil"), daten.get("begruendung", ""), modell
 
 
 def lauf(faelle, felder_def, nur=None):

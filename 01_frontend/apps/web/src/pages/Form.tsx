@@ -519,9 +519,11 @@ export function SectionPage() {
             const marke = p ? (
               <p className="feld-marke">
                 <strong>Vorschlag — noch nicht gespeichert.</strong>{" "}
-                {p.deckung
-                  ? `Gedeckt durch Ihre Angabe: „${p.deckung}"`
-                  : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
+                {p.berechnet
+                  ? "Aus Ihren Angaben berechnet, ohne Modell."
+                  : p.deckung
+                    ? `Gedeckt durch Ihre Angabe: „${p.deckung}"`
+                    : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
                 {p.musterbaustein &&
                   ` Satzrahmen: Musterbaustein ${musterbausteinText(p.musterbaustein)}.`}
                 {p.fundstelle && (

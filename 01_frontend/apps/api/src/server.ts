@@ -735,6 +735,7 @@ app.post("/api/drafts/:id/abschnitt/:nr/vorschlag", async (req) => {
             label: "Schlussformel, Ort und Datum",
             value: formel,
             confidence: 1,
+            berechnet: true,
             evidence:
               "Zusammengesetzt aus dem Titel (Ministerium) und dem Inkrafttreten in " +
               "Baustein 8. Kein Modellaufruf.",
@@ -923,6 +924,14 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
   const next = chatStages
     .slice(chatStages.indexOf(stage) + 1)
     .find((s) => stufeGilt(s, d));
+  // Welche Felder dieser Zug vorschlägt — in der Meldung, nicht nur im Kasten darunter.
+  //
+  // Ein Abschnitt braucht oft zwei Züge: Der erste füllt das Förderziel, der zweite nach dem
+  // Bestätigen den Zuwendungszweck. Ohne die Feldnamen steht zweimal derselbe Satz da, und
+  // im Durchlauf vom 09.10.2026 sah das aus wie eine doppelte Meldung. Es waren zwei
+  // verschiedene Vorschläge.
+  const felderText = proposals.map((p) => p.label).join(", ");
+
   return {
     message:
       // Der Wortlaut hängt daran, ob gerade etwas gesagt wurde. „Ich habe Ihre Angabe
@@ -930,10 +939,10 @@ app.post("/api/drafts/:id/chat/messages", async (req): Promise<ChatReply> => {
       // etwas geschrieben — sie hat aber nur bestätigt und wartet.
       (proposals.length
         ? neu
-          ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+          ? `Ich habe Ihre Angabe dem Abschnitt „${def.title}“ zugeordnet und schlage vor: ${felderText}. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
           : ausRegelfall
-            ? `Zu „${def.title}“ schlage ich den Regelfall der Musterrichtlinie vor. Er ist nicht durch Ihre Angaben gedeckt — bitte besonders prüfen.`
-            : `Zu „${def.title}“ steht in Ihren bisherigen Angaben schon etwas. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
+            ? `Zu „${def.title}“ schlage ich den Regelfall der Musterrichtlinie vor: ${felderText}. Er ist nicht durch Ihre Angaben gedeckt — bitte besonders prüfen.`
+            : `Aus Ihren bisherigen Angaben schlage ich zu „${def.title}“ vor: ${felderText}. Bitte prüfen Sie den Vorschlag, bevor er übernommen wird.`
         : // Ohne Vorschlag sagt der Hinweis bereits, was fehlt. Beides zusammen wäre
           // dieselbe Auskunft zweimal, einmal auf Abschnitts- und einmal auf Feldebene.
           hinweis
