@@ -12,6 +12,7 @@ import {
   musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
+import { Rueckmeldung } from "../Rueckmeldung";
 import { Alert, BelegPanel, PageHeader, Progress, type Beleg } from "../components";
 type Msg = { role: "assistant" | "user"; text: string };
 
@@ -290,6 +291,13 @@ export function ChatPage() {
               {m.role === "assistant" ? "Richtlinien-Assistent" : "Sie"}
             </strong>
             <p>{m.text}</p>
+            {m.role === "assistant" && (
+              <Rueckmeldung
+                entwurf={id}
+                was="dieser Frage oder Meldung"
+                bezug={{ ort: "frage" }}
+              />
+            )}
           </article>
         ))}
         {/*
@@ -325,6 +333,19 @@ export function ChatPage() {
                 <dd>
                   {wertText(p)}
                   <Herkunft p={p} onBeleg={setBeleg} />
+                  <Rueckmeldung
+                    entwurf={id}
+                    was={p.label}
+                    bezug={{
+                      ort: "wert", baustein: p.sectionId, feld: p.fieldId,
+                      feldLabel: p.label, wert: p.value, deckung: p.deckung,
+                      musterbaustein: p.musterbaustein,
+                      ...(p.fundstelle
+                        ? { fundstelle: { datei: p.belegdatei, seite: p.belegseite,
+                                          text: p.fundstelle, zitat: p.belegzitat } }
+                        : {}),
+                    }}
+                  />
                 </dd>
               </div>
             ))}

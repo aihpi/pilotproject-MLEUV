@@ -1,12 +1,14 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { Document, Packer, Paragraph, HeadingLevel } from "docx";
 import {
   abfrageartFuer,
   draftSchema,
+  rueckmeldungSchema,
+  RUECKMELDUNG_MAX_ZEICHEN,
   bestaetigteWerte,
   emptySections,
   feldLeer,
@@ -35,6 +37,7 @@ import {
   type FieldProposal,
   type RichtlinienAbschnitt,
   type RichtlinieDraft,
+  type Rueckmeldung,
 } from "@richtlinie/shared";
 
 const app = Fastify({ logger: true, bodyLimit: 200_000 });
@@ -56,6 +59,28 @@ try {
 } catch {
   drafts = [];
 }
+/**
+ * Rückmeldungen: eine Zeile JSON je Eintrag, nur angehängt.
+ *
+ * Neben `drafts.json` im Datenordner — im Cluster liegt der auf dauerhaftem Speicher, sonst
+ * auf der Platte der Entwicklerin. Nicht im Repo (siehe .gitignore): Entwurfstexte.
+ *
+ * Die Schreibvorgänge laufen nacheinander über diese Kette. Ohne sie könnten zwei gleichzeitig
+ * eintreffende Rückmeldungen ihre Zeilen ineinanderschieben, und die Datei wäre nicht mehr
+ * zeilenweise lesbar.
+ */
+const feedbackPath = resolve(
+  process.cwd(), process.env.FEEDBACK_FILE ?? "data/feedback.jsonl");
+let schreibkette: Promise<unknown> = Promise.resolve();
+
+function rueckmeldungSchreiben(eintrag: Rueckmeldung) {
+  schreibkette = schreibkette.then(async () => {
+    await mkdir(dirname(feedbackPath), { recursive: true });
+    await appendFile(feedbackPath, JSON.stringify(eintrag) + "\n", "utf8");
+  });
+  return schreibkette;
+}
+
 async function persist() {
   await mkdir(dirname(dataPath), { recursive: true });
   await writeFile(dataPath, JSON.stringify(drafts, null, 2));
@@ -171,6 +196,57 @@ app.delete("/api/drafts/:id", async (req, reply) => {
   drafts = drafts.filter((x) => x.id !== d.id);
   await persist();
   return reply.code(204).send();
+});
+
+/**
+ * Eine Rückmeldung entgegennehmen.
+ *
+ * Zeit, Programmstand und Entwurfsversion setzt der Server — sie sollen nicht aus dem Browser
+ * kommen. Alles Übrige beschreibt, worauf sich die Rückmeldung bezieht, und steht im Schema.
+ *
+ * Ein Schreibfehler beendet die Anfrage NICHT mit einem Fehler des Entwurfs, sondern wird
+ * zurückgemeldet: `gespeichert: false`. Die Oberfläche sagt es dann, statt die Rückmeldung
+ * still zu verschlucken — wer glaubt, sie sei angekommen, notiert sie sich nicht anders.
+ */
+app.post("/api/drafts/:id/rueckmeldung", async (req) => {
+  const d = get((req.params as { id: string }).id);
+  const gepruft = rueckmeldungSchema.safeParse({
+    ...(req.body as object),
+    zeit: new Date().toISOString(),
+    commit: process.env.GIT_COMMIT,
+    entwurf: d.id,
+    version: d.version,
+  });
+  if (!gepruft.success)
+    throw Object.assign(
+      new Error(
+        "Die Rückmeldung ist unvollständig oder zu lang. Freitexte dürfen höchstens " +
+        `${RUECKMELDUNG_MAX_ZEICHEN} Zeichen haben.`),
+      { statusCode: 400 },
+    );
+  try {
+    await rueckmeldungSchreiben(gepruft.data);
+    return { gespeichert: true };
+  } catch (e) {
+    req.log.error({ err: e }, "Rückmeldung konnte nicht geschrieben werden");
+    return { gespeichert: false, grund: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+/**
+ * Die gesammelten Rückmeldungen auslesen.
+ *
+ * Bewusst ohne Knopf in der Oberfläche: Die Datei trägt Entwurfstexte und Freitexte anderer
+ * Testender, und die App kennt keine Rollen. Wer die Adresse kennt, holt sie sich; die
+ * Anmeldung davor begrenzt den Kreis.
+ */
+app.get("/api/rueckmeldungen", async (_req, reply) => {
+  try {
+    const inhalt = await readFile(feedbackPath, "utf8");
+    return reply.type("application/x-ndjson").send(inhalt);
+  } catch {
+    return reply.type("application/x-ndjson").send("");
+  }
 });
 
 app.post("/api/drafts/:id/validate", async (req) => {

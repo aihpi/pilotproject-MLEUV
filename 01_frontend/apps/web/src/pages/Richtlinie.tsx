@@ -9,6 +9,7 @@ import {
   musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
+import { Rueckmeldung } from "../Rueckmeldung";
 import { Alert, PageHeader } from "../components";
 
 /**
@@ -23,13 +24,22 @@ import { Alert, PageHeader } from "../components";
  * sind gerechnet — und die Befunde stehen nicht am Ende, sondern über dem Abschnitt, zu dem
  * sie gehören. Ein Befund, den man erst nach dem Lesen findet, kommt zu spät.
  */
-function Abschnitt({ a }: { a: RichtlinienAbschnitt }) {
+function Abschnitt({ a, entwurf }: { a: RichtlinienAbschnitt; entwurf: string }) {
   const def = sections.find((s) => s.id === String(a.nr));
   return (
     <section className="rl-abschnitt" aria-labelledby={`abschnitt-${a.nr}`}>
       <h2 id={`abschnitt-${a.nr}`}>
         {a.nr} {def?.title ?? ""}
       </h2>
+      {/* Am erzeugten Text fallen Formulierungsprobleme am ehesten auf. */}
+      <Rueckmeldung
+        entwurf={entwurf}
+        was={`Abschnitt ${a.nr}`}
+        bezug={{
+          ort: "richtlinientext",
+          ...(def ? { baustein: def.id, feldLabel: def.title } : {}),
+        }}
+      />
 
       {a.uebersprungen ? (
         <Alert kind="info" title="Nicht erzeugt">
@@ -283,7 +293,7 @@ export function RichtlinienPage() {
             </Alert>
           )}
           {text.abschnitte.map((a) => (
-            <Abschnitt key={a.nr} a={a} />
+            <Abschnitt key={a.nr} a={a} entwurf={id} />
           ))}
         </>
       )}
