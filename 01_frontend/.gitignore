@@ -4,6 +4,8 @@ dist/
 coverage/
 .env
 apps/api/data/*.json
+# Rückmeldungen der Testenden — enthalten Entwurfstexte und Freitexte.
+apps/api/data/*.jsonl
 !apps/api/data/.gitkeep
 *.log
 .DS_Store

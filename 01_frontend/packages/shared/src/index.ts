@@ -81,6 +81,61 @@ export const revisionSchema = z.object({
 });
 export type Revision = z.infer<typeof revisionSchema>;
 
+/**
+ * Eine Rückmeldung der Bearbeiterin. Der ORT trägt die Kategorie: an der Fundstelle geht es
+ * um die Suche, am Wert um die Formulierung. Alles außer `urteil`, `text` und `besser` setzt
+ * die Oberfläche selbst.
+ */
+export const RUECKMELDUNGSORTE = [
+  "fundstelle", "wert", "etikett", "befund", "frage", "abschnitt", "richtlinientext",
+] as const;
+
+/**
+ * Die Urteile je Ort — die beobachteten Fehlerklassen, keine Schulnoten. Ein Klick darauf
+ * soll die Einordnung ersetzen, die sonst von Hand passiert. Leer heißt: nur Freitext.
+ */
+export const RUECKMELDUNGSURTEILE: Record<(typeof RUECKMELDUNGSORTE)[number], string[]> = {
+  fundstelle: ["passt", "falsches Feld", "nichtssagend", "anderes Thema", "kein Satz"],
+  wert: ["passt", "Formulierung", "inhaltlich falsch", "passt nicht zum Fall", "Vorlagentext"],
+  etikett: ["stimmt", "so steht das da nicht"],
+  befund: ["richtig", "trifft nicht zu", "unverständlich", "hier fehlt eine Regel"],
+  richtlinientext: ["passt", "Formulierung", "inhaltlich falsch", "fehlt etwas", "Vorlagentext"],
+  frage: [],
+  abschnitt: [],
+};
+
+export const RUECKMELDUNG_MAX_ZEICHEN = 2000;
+
+export const rueckmeldungSchema = z.object({
+  zeit: z.string(),
+  /** Programmstand — ohne ihn sind Rückmeldungen verschiedener Stände nicht vergleichbar. */
+  commit: z.string().optional(),
+  entwurf: z.string(),
+  version: z.number(),
+  ort: z.enum(RUECKMELDUNGSORTE),
+  baustein: z.enum(sectionIds).optional(),
+  feld: z.string().optional(),
+  feldLabel: z.string().optional(),
+  /** Suchanfrage und Randbedingungen — sie erklären, warum diese Treffer kamen. */
+  suchtext: z.string().optional(),
+  profil: z.record(z.unknown()).optional(),
+  fundstelle: z.object({
+    datei: z.string().nullable().optional(),
+    seite: z.number().nullable().optional(),
+    text: z.string().optional(),
+    zitat: z.string().nullable().optional(),
+  }).optional(),
+  wert: z.unknown().optional(),
+  deckung: z.string().optional(),
+  musterbaustein: z.string().optional(),
+  regel: z.string().optional(),
+  urteil: z.string().optional(),
+  text: z.string().max(RUECKMELDUNG_MAX_ZEICHEN).optional(),
+  /** Wie es richtig wäre. Getrennt vom Befund, weil daraus ein Messziel wird. */
+  besser: z.string().max(RUECKMELDUNG_MAX_ZEICHEN).optional(),
+});
+export type Rueckmeldung = z.infer<typeof rueckmeldungSchema>;
+
 export const sectionDataSchema = z.object({
   fields: z.record(fieldValueSchema),
   revisionen: z.array(revisionSchema).optional(),

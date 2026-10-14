@@ -98,6 +98,12 @@ const serverApi = {
       `/api/drafts/${id}/abschnitt/${nr}/vorschlag`,
       { method: "POST" },
     ),
+  /** Eine Rückmeldung ablegen. `gespeichert: false` heißt: Schreiben fehlgeschlagen. */
+  rueckmeldung: (id: string, eintrag: Record<string, unknown>) =>
+    request<{ gespeichert: boolean; grund?: string }>(
+      `/api/drafts/${id}/rueckmeldung`,
+      { method: "POST", body: JSON.stringify(eintrag) },
+    ),
   /** Die Angaben freigeben — im Prozessmodell der Schritt vor dem Ausformulieren. */
   freigeben: (id: string, person: string) =>
     request<RichtlinieDraft>(`/api/drafts/${id}/freigabe`, {

@@ -17,6 +17,7 @@ import {
   musterbausteinText,
 } from "@richtlinie/shared";
 import { api } from "../api";
+import { Rueckmeldung } from "../Rueckmeldung";
 import { Alert, BelegPanel, PageHeader, ProcessSteps, Progress, StatusBadge, type Beleg } from "../components";
 function sectionStatus(d: RichtlinieDraft, id: string) {
   const section = sections.find((s) => s.id === id)!;
@@ -403,8 +404,21 @@ export function SectionPage() {
         >
           <ul>
             {errors.map((e) => (
-              <li key={e.fieldId}>
+              <li key={`${e.fieldId}-${e.regel ?? ""}`}>
                 <a href={`#${e.fieldId}`}>{e.message}</a>
+                {/*
+                  Am Befund, nicht am Feld: Hier wird eine REGEL beurteilt — trifft sie zu,
+                  ist sie verständlich, fehlt eine. Die Kennung geht mit, damit die
+                  Rückmeldung einer bestimmten Prüfung zuzuordnen ist.
+                */}
+                <Rueckmeldung
+                  entwurf={id}
+                  was={`dem Befund zu ${e.fieldId}`}
+                  bezug={{
+                    ort: "befund", baustein: def.id, feld: e.fieldId,
+                    feldLabel: e.message, regel: e.regel,
+                  }}
+                />
               </li>
             ))}
           </ul>
@@ -509,12 +523,35 @@ export function SectionPage() {
                           verworfen wird der größere Teil.
                         */}
                         {f.zitat && <blockquote>{f.zitat}</blockquote>}
+                        <Rueckmeldung
+                          entwurf={id}
+                          was={`der Fundstelle ${f.text}`}
+                          bezug={{
+                            ort: "fundstelle",
+                            baustein: def.id,
+                            feld: field.id,
+                            feldLabel: field.label,
+                            fundstelle: {
+                              datei: f.datei, seite: f.seite, text: f.text, zitat: f.zitat,
+                            },
+                          }}
+                        />
                       </li>
                     );
                   })}
                 </ul>
               </details>
             ) : null;
+            const rueckmeldungFeld = (
+              <Rueckmeldung
+                entwurf={id}
+                was={field.label}
+                bezug={{
+                  ort: "wert", baustein: def.id, feld: field.id, feldLabel: field.label,
+                  wert: values[field.id],
+                }}
+              />
+            );
             const p = vorausgefuellt[field.id];
             const marke = p ? (
               <p className="feld-marke">
@@ -526,6 +563,15 @@ export function SectionPage() {
                     : "Aus dem Regelfall abgeleitet, nicht durch Ihre Angaben gedeckt — bitte besonders prüfen."}
                 {p.musterbaustein &&
                   ` Satzrahmen: Musterbaustein ${musterbausteinText(p.musterbaustein)}.`}
+                <Rueckmeldung
+                  entwurf={id}
+                  was={`der Herkunftsangabe bei ${field.label}`}
+                  bezug={{
+                    ort: "etikett", baustein: def.id, feld: field.id,
+                    feldLabel: field.label, wert: p.value, deckung: p.deckung,
+                    musterbaustein: p.musterbaustein,
+                  }}
+                />
                 {p.fundstelle && (
                   <>
                     {" Vorbild: "}
@@ -562,6 +608,7 @@ export function SectionPage() {
                   />
                   {marke}
                   {korpus}
+                  {rueckmeldungFeld}
                   {field.help && (
                     <p id={`${field.id}-help`} className="help">
                       {field.help}
@@ -582,6 +629,7 @@ export function SectionPage() {
                 </label>
                 {marke}
                 {korpus}
+                {rueckmeldungFeld}
                 {field.help && (
                   <p id={`${field.id}-help`} className="help">
                     {field.help}

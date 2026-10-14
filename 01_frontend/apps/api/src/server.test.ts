@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,6 +22,7 @@ import { join } from "node:path";
 const ordner = mkdtempSync(join(tmpdir(), "api-test-"));
 writeFileSync(join(ordner, "drafts.json"), "[]");
 process.env.DRAFTS_FILE = join(ordner, "drafts.json");
+process.env.FEEDBACK_FILE = join(ordner, "feedback.jsonl");
 
 let app: Awaited<typeof import("./server")>["app"];
 
@@ -334,5 +335,77 @@ describe("Export", () => {
     const r = await app.inject({ method: "GET", url: `/api/drafts/${d.id}/export/vermerk` });
     expect(r.statusCode).toBe(200);
     expect(r.rawPayload.subarray(0, 2).toString()).toBe("PK");
+  });
+});
+
+
+describe("Rückmeldungen", () => {
+  const gelesen = () => {
+    try {
+      return readFileSync(join(ordner, "feedback.jsonl"), "utf8")
+        .split("\n").filter(Boolean).map((z) => JSON.parse(z));
+    } catch {
+      return [];
+    }
+  };
+
+  it("nimmt eine Rückmeldung an der Fundstelle an und hängt sie an", async () => {
+    const d = await neuerEntwurf();
+    const vorher = gelesen().length;
+    const r = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${d.id}/rueckmeldung`,
+      payload: {
+        ort: "fundstelle", baustein: "7", feld: "authority",
+        feldLabel: "Bewilligungsbehörde", urteil: "nichtssagend",
+        fundstelle: { datei: "RL Jagdabgabe.pdf", seite: 7 },
+        text: "Der Satz steht in jeder Richtlinie.",
+      },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().gespeichert).toBe(true);
+    const zeilen = gelesen();
+    expect(zeilen.length).toBe(vorher + 1);
+    expect(zeilen.at(-1)).toMatchObject({ ort: "fundstelle", urteil: "nichtssagend" });
+  });
+
+  it("setzt Zeit, Entwurf und Version selbst", async () => {
+    const d = await neuerEntwurf();
+    await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/rueckmeldung`,
+      // Der Browser schickt einen falschen Entwurf mit — der Server nimmt seinen eigenen.
+      payload: { ort: "abschnitt", entwurf: "fremd", version: 999, text: "x" },
+    });
+    const letzte = gelesen().at(-1);
+    expect(letzte.entwurf).toBe(d.id);
+    expect(letzte.version).toBe(d.version);
+    expect(letzte.zeit).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("weist zu langen Freitext ab, statt ihn abzuschneiden", async () => {
+    const d = await neuerEntwurf();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/rueckmeldung`,
+      payload: { ort: "wert", text: "x".repeat(2001) },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().message).toContain("2000");
+  });
+
+  it("weist einen unbekannten Ort ab", async () => {
+    const d = await neuerEntwurf();
+    const r = await app.inject({
+      method: "POST", url: `/api/drafts/${d.id}/rueckmeldung`,
+      payload: { ort: "irgendwo", text: "x" },
+    });
+    expect(r.statusCode).toBe(400);
+  });
+
+  it("gibt die gesammelten Rückmeldungen zeilenweise zurück", async () => {
+    const r = await app.inject({ method: "GET", url: "/api/rueckmeldungen" });
+    expect(r.statusCode).toBe(200);
+    const zeilen = r.body.split("\n").filter(Boolean);
+    expect(zeilen.length).toBe(gelesen().length);
+    expect(() => JSON.parse(zeilen[0]!)).not.toThrow();
   });
 });

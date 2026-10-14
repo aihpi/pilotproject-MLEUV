@@ -390,6 +390,8 @@ export const staticApi = {
     hinweis: "Ohne laufenden Vorschlagsdienst gibt es keine Vorschläge.",
     fundstellen: [],
   }),
+  // Ohne Dienst gibt es keinen Ort, an dem die Rückmeldung bliebe.
+  rueckmeldung: async () => ({ gespeichert: false, grund: "Kein Dienst erreichbar." }),
   // Ohne laufenden Dienst gibt es keine Vorbilder — erfundene wären das Gegenteil dessen,
   // wofür sie da sind.
   vorbilder: async () => ({ vorbilder: [] }),
