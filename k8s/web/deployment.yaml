@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: ghcr.io/aihpi/pilotproject-mleuv/web:sha-659e7cf
+          image: ghcr.io/aihpi/pilotproject-mleuv/web:sha-9e4b89f
           ports:
             - containerPort: 80
           readinessProbe:
