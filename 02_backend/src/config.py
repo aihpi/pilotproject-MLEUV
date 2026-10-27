@@ -92,6 +92,23 @@ ABSCHNITTSBINDUNG = os.getenv("ABSCHNITTSBINDUNG", "true").lower() == "true"
 # FELDBINDUNG=false schaltet auf die gemeinsame Anfrage zurück — für den Vergleich.
 FELDBINDUNG = os.getenv("FELDBINDUNG", "true").lower() == "true"
 
+# Geht der Kontext des Entwurfs als eigene Teilanfrage mit in die Suche je Feld?
+#
+# Aus, seit dem 27.10.2026. Der Kontext (Rechtsgrundlage, Finanzierungsart, Finanzierungsform,
+# Empfängerkreis, Landesmittel oder GAK) ist für ALLE Felder eines Abschnitts derselbe und um
+# ein Vielfaches länger als der Feldname. Als Anfragetext macht er die Felder einander ähnlich
+# statt sie zu unterscheiden — und dieselben Bedingungen setzt der Profilabgleich bereits als
+# Filter durch, wo sie hart wirken statt nur den Vektor zu verschieben.
+#
+# KONTEXT_ALS_ANFRAGE=true stellt den alten Stand her — für den Vergleich in der Messung.
+KONTEXT_ALS_ANFRAGE = os.getenv("KONTEXT_ALS_ANFRAGE", "false").lower() == "true"
+
+# Wie viele Mustersätze je ZIELFELD als eigene Teilanfrage mitlaufen. Einer: die Auswahl
+# erfolgt nach Wortüberschneidung mit dem Feldnamen, der beste trägt. Die Drei in
+# `anfrage.MUSTERSAETZE_ALS_ANFRAGE` gilt der Abschnittsanfrage, die einen ganzen Baustein
+# abdecken muss — je Feld wären es bei elf Feldern dreiunddreißig Einbettungsaufrufe.
+MUSTERSAETZE_JE_FELD = int(os.getenv("MUSTERSAETZE_JE_FELD", "1"))
+
 # Gültigkeit: kuratierte Liste abgelöster Dokumente (siehe korpus_status.yaml).
 # NUR_AKTUELL=false schaltet den Filter ab — für den Vergleich in der Eval.
 STATUS_FILE = os.path.join(BASE, "korpus_status.yaml")

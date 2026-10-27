@@ -22,6 +22,27 @@ class TestSatztrennung:
         assert len(saetze) == 2
         assert "Ziff. 1.5" in saetze[0]
 
+    def test_aufgezaehlte_gliederungsnummer_trennt(self):
+        """Der Baustein-5-Block aus einer Landesrichtlinie, so wie er eingelesen wird.
+
+        Er enthält keinen einzigen Punkt bis zur ersten Aussage. Ohne Trennung an den Nummern
+        ist er EIN Satz: der Satzfilter kann die tragende Aussage zum Fördersatz dann nur
+        mitsamt den leeren Überschriften wählen oder gar nicht.
+        """
+        saetze = satzfilter.saetze_teilen(
+            "5.1 Zuwendungsart: - 5.2 Finanzierungsart: - 5.3 Form der Zuwendung: "
+            "- 5.4 Bemessungsgrundlage: Der Fördersatz beträgt bis zu 80% der "
+            "zuwendungsfähigen Gesamtausgaben.")
+        assert len(saetze) == 4
+        assert saetze[3].startswith("5.4 Bemessungsgrundlage:")
+        assert "Fördersatz" in saetze[3]
+
+    def test_verweis_im_satz_trennt_nicht(self):
+        """„nach der Nummer 2.3.2" ist ein Verweis, kein neuer Gliederungspunkt."""
+        saetze = satzfilter.saetze_teilen(
+            "Zuwendungsfähig sind nach der Nummer 2.3.2 60 Prozent der Gesamtausgaben.")
+        assert len(saetze) == 1
+
     def test_leerer_text(self):
         assert satzfilter.saetze_teilen("") == []
 

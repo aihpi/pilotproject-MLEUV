@@ -223,3 +223,6 @@ cython_debug/
 # Plaintext credentials of the hosted instance, only k8s/secrets/sealed-secret.yaml is committed
 k8s/secrets/secret.yaml
 *-cert.pem
+
+# Qdrant snapshots: hundreds of megabytes, and they carry the full text of the corpus
+*.snapshot

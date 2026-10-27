@@ -9,6 +9,55 @@ import pytest
 import vorschlag
 
 
+class TestBelegsatz:
+    """Was als Fundstelle angeboten werden darf. Die Fälle stammen aus Abschnitt 5 eines
+    Durchlaufs vom 27.10.2026, wo zwei reine Gliederungsreste als Fundstelle erschienen."""
+
+    def test_kette_von_gliederungsnummern_belegt_nichts(self):
+        assert not vorschlag.ist_belegsatz(
+            "- 5.1 Zuwendungsart: - 5.2 Finanzierungsart: - 5.3 Form der Zuwendung: "
+            "- 5.4 Bemessungsgrundlage: Der Fördersatz beträgt bis zu 80% der "
+            "zuwendungsfähigen Gesamtausgaben.")
+
+    def test_satz_mit_zwei_verweisen_bleibt(self):
+        """Zwei aufgezählte Nummern mit Inhalt sind eine Aussage, keine Gliederung."""
+        assert vorschlag.ist_belegsatz(
+            "- 5.4.2 nach der Nummer 2.3.2 60 Prozent der zuwendungsfähigen Gesamtausgaben. "
+            "- 5.4.3 nach den Nummern 2.3.1, 2.4 und 2.8 80 Prozent der Gesamtausgaben.")
+
+    def test_gewoehnlicher_satz_bleibt(self):
+        assert vorschlag.ist_belegsatz(
+            "Für Gemeinden gilt gemäß VVG Nr. 1.1 zu § 44 LHO eine Bagatellgrenze "
+            "von 5.000 EUR.")
+
+
+class TestEinheit:
+    """Felder, deren Name die Einheit nennt. Fälle aus demselben Durchlauf."""
+
+    def test_prozentstelle_belegt_keinen_eurobetrag(self):
+        assert not vorschlag.passt_zur_einheit(
+            "Höchstbetrag in Euro",
+            "- 5.4.2 nach der Nummer 2.3.2 60 Prozent der zuwendungsfähigen Gesamtausgaben.")
+
+    def test_eurobetrag_zaehlt(self):
+        assert vorschlag.passt_zur_einheit(
+            "Bagatellgrenze in Euro",
+            "Für Gemeinden gilt gemäß VVG Nr. 1.1 zu § 44 LHO eine Bagatellgrenze "
+            "von 5.000 EUR.")
+
+    def test_fördersatz_braucht_einen_anteil(self):
+        assert vorschlag.passt_zur_einheit(
+            "Fördersatz in Prozent",
+            "Der Fördersatz beträgt bis zu 80% der zuwendungsfähigen Gesamtausgaben.")
+        assert not vorschlag.passt_zur_einheit(
+            "Fördersatz in Prozent", "Die Bewilligungsbehörde entscheidet nach pflichtgemäßem "
+            "Ermessen über den Umfang der Zuwendung.")
+
+    def test_feld_ohne_einheit_bleibt_unberuehrt(self):
+        assert vorschlag.passt_zur_einheit("Zuwendungsempfänger", "Antragsberechtigt sind "
+                                           "anerkannte Tierschutzvereine und Kommunen.")
+
+
 class TestNormalisierung:
     def test_kyrillischer_zwilling_wird_erkannt(self):
         """Ein Probelauf lieferte „lhо44" mit kyrillischem о (U+043E).

@@ -118,6 +118,16 @@ def _mustersaetze(text, abschnitt_nr):
     return bewertet[:MUSTERSAETZE_ALS_ANFRAGE]
 
 
+def mustersaetze_zu(text, abschnitt_nr):
+    """Mustersätze des Abschnitts, die zu diesem Anliegen passen.
+
+    Öffentlich für die Suche je Feld in `vorschlag.belege_je_feld`: dort ist das Anliegen der
+    FELDNAME, nicht der Abschnittstext. Der Mustersatz ist in der Sprache der gesuchten
+    Rechtsstelle geschrieben, der Feldname nicht — siehe die Messung im Docstring oben.
+    """
+    return _mustersaetze(text, abschnitt_nr)
+
+
 def anfragen(text, abschnitt_nr=None):
     """Teilanfragen: Basisangaben, Kern des Anliegens, Abschnittsthemen, Mustersätze."""
     vorspann, _ = zerlegen(text)
@@ -133,6 +143,12 @@ def anfragen(text, abschnitt_nr=None):
         liste.append(thema)
     liste += _mustersaetze(text, abschnitt_nr)
     return liste or [text]
+
+
+def zusammenfuehren(trefferlisten, k=60):
+    """RRF über mehrere Trefferlisten. Öffentlich für die Suche je Feld, die ihre Teilanfragen
+    selbst stellt und deshalb auch selbst zusammenführen muss."""
+    return _rrf(trefferlisten, k)
 
 
 def _rrf(trefferlisten, k=60):

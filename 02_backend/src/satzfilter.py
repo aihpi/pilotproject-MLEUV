@@ -66,12 +66,22 @@ def _schuetzen(text):
     return _MUSTER.sub(_tauschen, text), aufbewahrt
 
 
+# Ein Aufzählungsstrich vor einer Gliederungsnummer: „… Projektförderung - 5.2 Finanzierungsart
+# Anteilfinanzierung - 5.3 …". So kommt der Baustein-Block aus dem PDF, ohne einen einzigen
+# Punkt. Ohne eigene Grenze ist er EIN Satz, und der Satzfilter kann die tragende Aussage
+# darin nicht von den leeren Überschriften trennen — er wählt den Block oder nichts.
+# Der Strich selbst ist Trennzeichen und fällt weg; die Nummer bleibt am Satz, damit das Zitat
+# zeichengleich zur Quelle bleibt.
+_PUNKT_NUMMER = r"\s+[-–—•]\s+(?=\d+(?:\.\d+)+\s)"
+
+
 def saetze_teilen(text):
-    """Text in Sätze trennen. Getrennt wird bei .!? vor einem Großbuchstaben und an Leerzeilen."""
+    """Text in Sätze trennen. Getrennt wird bei .!? vor einem Großbuchstaben, an Leerzeilen und
+    vor einer aufgezählten Gliederungsnummer."""
     if not text:
         return []
     geschuetzt, aufbewahrt = _schuetzen(text)
-    rohe = re.split(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ§])|(?:\n\s*\n)+", geschuetzt)
+    rohe = re.split(rf"(?<=[.!?])\s+(?=[A-ZÄÖÜ§])|(?:\n\s*\n)+|{_PUNKT_NUMMER}", geschuetzt)
     saetze = []
     for roh in rohe:
         satz = _MARKE.sub(lambda m: aufbewahrt[int(m.group(1))], roh).strip()

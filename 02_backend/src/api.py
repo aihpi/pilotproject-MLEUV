@@ -16,7 +16,9 @@ langsam; für den Durchstich reicht es. Wer das später beschleunigen will, fän
 Satzfilter an, der über mehrere Stapel geht.
 """
 import os
+import sys
 import tempfile
+import traceback
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -37,6 +39,20 @@ app = FastAPI(title="MLEUV Feldvorschläge", version="0.1.0")
 # zwischen 140 KB und 4 MB; 20 MB lassen Luft für Scans und begrenzen trotzdem,
 # was ein Fehlgriff an Arbeitsspeicher kostet.
 PRUEFUNG_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _stromaufwaerts(e, wo):
+    """Eine 502 mit Grund — im Log, nicht nur in der Antwort.
+
+    Eine `HTTPException` ist für FastAPI eine geregelte Antwort, kein Absturz: ohne diese
+    Zeile steht im Log nur „POST /vorschlag … 502". Den Grund trägt allein die Antwort, und
+    die Node-Seite wirft ihn weg (`Vorschlagsdienst: HTTP ${res.status}`). Am 27.10.2026 hat
+    genau das eine Stunde gekostet — auf dem Cluster war die Ursache am Ende im Log des
+    Qdrant-Pods zu finden, nicht in dem des Dienstes.
+    """
+    print(f"[502 {wo}] {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+    traceback.print_exception(type(e), e, e.__traceback__, file=sys.stderr)
+    return HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}")
 
 
 class Option(BaseModel):
@@ -254,7 +270,7 @@ def richtlinie_bauen(anfrage: RichtlinieAnfrage):
         )
         return ergebnis
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
+        raise _stromaufwaerts(e, "richtlinie") from e
 
 
 @app.post("/pruefen")
@@ -367,7 +383,7 @@ def begruendung_vorbilder(anfrage: BegruendungAnfrage):
         return begruendung.vorbilder(
             anfrage.regel, anfrage.rechtsstelle, anfrage.wert, top_k=anfrage.top_k)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
+        raise _stromaufwaerts(e, "begruendung") from e
 
 
 @app.post("/vorschlag", response_model=Antwort)
@@ -392,7 +408,7 @@ def vorschlag_erzeugen(anfrage: Anfrage):
     except Exception as e:
         # Endpunkt weg oder Zeitlimit: 502, nicht 500 — der Fehler liegt stromaufwärts,
         # und die Node-Seite soll ihn als solchen behandeln können.
-        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}") from e
+        raise _stromaufwaerts(e, "vorschlag") from e
 
     if nachweis.get("fehler"):
         raise HTTPException(status_code=502, detail=nachweis["fehler"])

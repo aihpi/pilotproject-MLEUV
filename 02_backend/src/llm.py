@@ -11,6 +11,7 @@ stehengebliebene Verbindung wirft keine. Ohne Limit wartet sie endlos, statt auf
 nächste Modell zu wechseln — am 2026-09-10 blieb ein Eval-Lauf so 14 Stunden stehen.
 """
 import sys
+import time
 
 import litellm
 
@@ -55,14 +56,35 @@ def chat(messages, model=LLM_MODEL, temperature=None, fallbacks=None, mit_modell
     raise RuntimeError(f"Kein Modell der Kette {kette} erreichbar: {letzter}")
 
 
+# Wie oft ein Einbettungsaufruf wiederholt wird, und wie lange dazwischen gewartet wird.
+#
+# Anders als `chat` hat `embed` keine Ausweichkette: es gibt nur ein Einbettungsmodell, und
+# ein anderes wäre auch nutzlos — der Index ist mit genau diesem gerechnet. Ein Fehlschlag
+# fliegt deshalb sofort bis zur Oberfläche durch und wird dort zu HTTP 502.
+#
+# Gebraucht wird das, seit die Suche JE FELD mehrere Teilanfragen stellt: ein Abschnitt mit
+# elf Feldern löst zwanzig Einbettungsaufrufe in Sekunden aus, und der Endpunkt drosselt.
+# `ingest.py` wiederholt an derselben Stelle seit jeher.
+EMBED_VERSUCHE = 3
+EMBED_WARTEN = 1.0
+
+
 def embed(texts, model=EMBEDDING_MODEL):
     if isinstance(texts, str):
         texts = [texts]
-    resp = litellm.embedding(
-        model=model,
-        input=texts,
-        api_base=LITELLM_BASE_URL,
-        api_key=LITELLM_API_KEY,
-        timeout=LLM_TIMEOUT,
-    )
-    return [item["embedding"] for item in resp.data]
+    letzter = None
+    for versuch in range(EMBED_VERSUCHE):
+        try:
+            resp = litellm.embedding(
+                model=model,
+                input=texts,
+                api_base=LITELLM_BASE_URL,
+                api_key=LITELLM_API_KEY,
+                timeout=LLM_TIMEOUT,
+            )
+            return [item["embedding"] for item in resp.data]
+        except Exception as e:
+            letzter = e
+            if versuch < EMBED_VERSUCHE - 1:
+                time.sleep(EMBED_WARTEN * (versuch + 1))
+    raise letzter

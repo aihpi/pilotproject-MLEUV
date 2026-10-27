@@ -36,6 +36,7 @@ import protokoll
 import richtlinie
 import satzfilter
 import musterbausteine
+import anfrage
 from anfrage import suche
 from retrieval import hybrid_search
 from rag_query import bloecke_bilden
@@ -44,7 +45,7 @@ import deckung
 import profilfilter
 from config import (BASE, TOP_K, KONSENS_LAEUFE, KONSENS_SCHWELLE,
                     KONSENS_TEMPERATUR_FELD, HOLDOUT_DATEIEN, ABSCHNITTSBINDUNG,
-                    FELDBINDUNG)
+                    FELDBINDUNG, KONTEXT_ALS_ANFRAGE, MUSTERSAETZE_JE_FELD)
 
 loader = PromptLoader(Path(BASE) / "prompts", lang="de")
 
@@ -385,6 +386,11 @@ def zitat_bilden(text, zeichen=ZITAT_ZEICHEN):
     return schnitt.rsplit(" ", 1)[0] + " …"
 
 
+# Eine Gliederungsnummer am Anfang oder hinter einem Aufzählungsstrich. Ein Verweis MITTEN im
+# Satz („nach der Nummer 2.3.2") trägt keinen Strich und zählt deshalb nicht mit.
+_AUFGEZAEHLTE_NUMMER = re.compile(r"(?:^|[-–—•]\s*)\d+(?:\.\d+)+\s")
+
+
 def ist_belegsatz(text):
     """Taugt dieser Textrest als Fundstelle — oder ist es ein Tabellen- oder Verzeichnisrest?
 
@@ -395,11 +401,71 @@ def ist_belegsatz(text):
 
     Das Gleichheitszeichen ist das Erkennungsmerkmal: Es trennt in der eingelesenen Tabelle
     Zelle von Zelle und kommt in Rechtstext praktisch nicht vor.
+
+    Zweites Merkmal, nach dem Durchlauf vom 27.10.2026: eine Kette aufgezählter
+    Gliederungsnummern. „5.1 Zuwendungsart: - 5.2 Finanzierungsart: - 5.3 Form der Zuwendung:"
+    ist lang genug und endet auf einen Punkt, trägt aber nur Überschriften mit leeren Werten.
+    Ab drei Nummern gilt der Rest als Gliederung; zwei kommen in einem echten Satz vor, der auf
+    andere Nummern verweist.
     """
     t = (text or "").strip()
     if len(t) < 40 or "=" in t or t.endswith(".."):
         return False
+    if len(_AUFGEZAEHLTE_NUMMER.findall(t)) >= 3:
+        return False
     return bool(re.search(r"[.!?][)\"\u201d\u00bb]?$", t)) or len(t) >= 120
+
+
+_BETRAG = re.compile(r"\d[\d.,\s]*\s*(?:EUR\b|Euro\b|\u20ac)", re.IGNORECASE)
+_ANTEIL = re.compile(r"\d[\d.,]*\s*(?:%|v\.\s*H\.|Prozent\b)", re.IGNORECASE)
+# Felder, deren Name die Einheit des gesuchten Wertes nennt.
+_EINHEITEN = ((("in euro", "betrag in"), _BETRAG), (("in prozent", "f\u00f6rdersatz"), _ANTEIL))
+
+
+def passt_zur_einheit(feld_label, text):
+    """Kann diese Stelle einen Wert f\u00fcr dieses Feld tragen \u2014 gemessen an seiner Einheit?
+
+    Thematisch passen in Baustein 5 fast alle Stellen auf fast alle Felder: sie handeln alle
+    von Geld. Die Felder unterscheiden sich aber an der FORM des gesuchten Wertes, und die
+    steht in ihrem Namen. Eine Stelle ohne Eurobetrag kann keinen \u201eH\u00f6chstbetrag in Euro"
+    belegen, auch wenn sie noch so einschl\u00e4gig klingt.
+
+    Am 27.10.2026 stand unter \u201eH\u00f6chstbetrag in Euro" eine Stelle, die F\u00f6rders\u00e4tze von 60 und
+    80 Prozent nennt und keinen einzigen Betrag. Kein Modellurteil n\u00f6tig, ein Zeichenvergleich
+    reicht.
+
+    Der Preis ist bewusst: eine Stelle, die den H\u00f6chstbetrag ohne Zahl beschreibt (\u201ewird vom
+    Ministerium festgelegt"), f\u00e4llt mit heraus. Lieber keine Fundstelle als eine, die das Feld
+    besetzt, ohne es zu tragen.
+    """
+    kurz = (feld_label or "").lower()
+    for marken, muster in _EINHEITEN:
+        if any(m in kurz for m in marken):
+            return bool(muster.search(text or ""))
+    return True
+
+
+def _teilanfragen(feld, kontext, abschnitt_nr):
+    """Die Suchtexte für EIN Zielfeld.
+
+    Bis zum 27.10.2026 war es genau einer: „<Feldname>. <Kontext>". Der Kontext ist für alle
+    Felder desselben Abschnitts DERSELBE und um ein Vielfaches länger als der Feldname. Zwei
+    Texte, die zu neunzig Prozent aus denselben Wörtern bestehen, ergeben fast denselben
+    Vektor — neun Felder stellten damit neun fast gleiche Anfragen und bekamen fast dieselbe
+    Liste. Welches Feld welche Stelle abbekam, entschied sich an Rundungsfehlern.
+
+    Zwei Sorten, von RRF zusammengeführt: der Feldname ALLEIN (ohne den Kontext, der ihn sonst
+    überstimmt) und der Mustersatz des Bausteins, der zum Feldnamen passt — er ist in der
+    Sprache der gesuchten Rechtsstelle geschrieben, der Feldname nicht.
+
+    Der Kontext ist absichtlich kein Anfragetext mehr, siehe `config.KONTEXT_ALS_ANFRAGE`.
+    """
+    label = feld.get("label") or feld.get("id")
+    teile = [label]
+    if kontext and KONTEXT_ALS_ANFRAGE:
+        teile.append(f"{label}. {kontext}".strip())
+    teile += anfrage.mustersaetze_zu(label, abschnitt_nr)[:MUSTERSAETZE_JE_FELD]
+    return teile
 
 
 def belege_je_feld(felder, kontext, abschnitt_nr, uhr=None, zaehler=None, **filter_args):
@@ -422,23 +488,37 @@ def belege_je_feld(felder, kontext, abschnitt_nr, uhr=None, zaehler=None, **filt
     die tragenden Sätze aus einem Block, und welche tragen, hängt an der Frage.
     """
     t0 = time.monotonic()
-    with ThreadPoolExecutor(max_workers=min(len(felder), 6)) as pool:
-        listen = list(pool.map(
-            lambda f: hybrid_search(f"{f.get('label') or f.get('id')}. {kontext}".strip(),
-                                    top_k=TREFFER_JE_FELD, rerank=False, **filter_args),
-            felder))
+    # Gleiche Suchtexte nur einmal suchen: mehrere Felder wählen oft denselben Mustersatz,
+    # und jede Suche ist ein Einbettungsaufruf beim AI-Hub.
+    je_feld_texte = [_teilanfragen(f, kontext, abschnitt_nr) for f in felder]
+    texte = sorted({t for teile in je_feld_texte for t in teile})
+    if texte:
+        with ThreadPoolExecutor(max_workers=min(len(texte), 6)) as pool:
+            roh = list(pool.map(
+                lambda t: hybrid_search(t, top_k=TREFFER_JE_FELD, rerank=False, **filter_args),
+                texte))
+    else:
+        roh = []
+    gesucht = dict(zip(texte, roh))
+    listen = [anfrage.zusammenfuehren([gesucht[t] for t in teile])[:TREFFER_JE_FELD]
+              for teile in je_feld_texte]
     if uhr is not None:
         uhr["belege_suche"] = round(time.monotonic() - t0, 1)
 
     t0 = time.monotonic()
-    alle, metas, gesehen, beurteilt, ohne_satz = [], [], set(), 0, 0
-    for feld, treffer in zip(felder, listen):
+    # Je Fundstelle der beste Anwärter, statt „wer zuerst kommt". Bis zum 27.10.2026 lief ein
+    # gemeinsames `gesehen` über alle Felder: hatte ein Feld eine Stelle genommen, war sie für
+    # die folgenden gesperrt — entschieden hat die Reihenfolge der Felder im Abschnitt. In
+    # Abschnitt 5 steht „Zuwendungsfähige Ausgaben" vor „Fördersatz" und bekam deshalb die
+    # Stelle mit dem Fördersatz, während das Fördersatz-Feld leer blieb.
+    kandidaten, metas, beurteilt, ohne_satz = {}, [], 0, 0
+    for fi, (feld, treffer) in enumerate(zip(felder, listen)):
         bloecke = bloecke_bilden(treffer)
         if not bloecke:
             continue
         bloecke, m = satzfilter.filtern(feld.get("label") or feld.get("id"), bloecke)
         metas += m
-        for b in bloecke:
+        for rang, b in enumerate(bloecke):
             if b["gefiltert"]:
                 beurteilt += 1
                 if not b["indizes"]:
@@ -449,15 +529,32 @@ def belege_je_feld(felder, kontext, abschnitt_nr, uhr=None, zaehler=None, **filt
             # Und ein Tabellen- oder Verzeichnisrest belegt auch nichts, so lang er ist.
             if not ist_belegsatz(b.get("kurz") or b.get("roh")):
                 continue
-            pid = (b["punkt"].payload or {}).get("parent_id")
-            if pid in gesehen:
+            # Nennt der Feldname die Einheit, muss der Wert in der Stelle vorkommen.
+            if not passt_zur_einheit(feld.get("label"), b.get("kurz") or b.get("roh")):
                 continue
-            gesehen.add(pid)
-            # Woraufhin diese Stelle gefunden wurde. Ohne die Angabe steht in der Oberfläche
-            # eine Liste, der nicht anzusehen ist, welches Feld sie belegen soll.
-            b["feld"] = feld.get("id")
-            b["feld_label"] = feld.get("label")
-            alle.append(b)
+            # Gesperrt wird der gewählte SATZ, nicht das Stück. In einem Stück stehen die
+            # Aussagen mehrerer Felder nebeneinander — Bagatellgrenze, Fördersatz und Form der
+            # Zuwendung im selben Block einer Richtlinie. Eine Sperre je Stück macht daraus ein
+            # Nullsummenspiel: am 27.10.2026 nahmen die zuwendungsfähigen Ausgaben den Block
+            # der Biberprävention, und die Bagatellgrenze verlor ihren wörtlichen Treffer.
+            # Der Satzfilter läuft ohnehin je Feld und wählt dort verschiedene Sätze aus.
+            # Überschneiden sie sich teilweise, steht ein Satz zweimal — das ist der Preis
+            # dafür, dass beide Felder ihre Aussage behalten.
+            pid = (b["punkt"].payload or {}).get("parent_id")
+            schluessel = (pid, frozenset(b.get("indizes") or ()))
+            vorher = kandidaten.get(schluessel)
+            # Gleicher Rang bei zwei Feldern: das frühere behält sie. Mehr gibt die Suche
+            # nicht her — die Ränge stammen aus verschiedenen Anfragen, ihre Punktzahlen sind
+            # untereinander nicht vergleichbar.
+            if vorher is None or rang < vorher[0]:
+                kandidaten[schluessel] = (rang, fi, b, feld)
+    alle = []
+    for rang, fi, b, feld in sorted(kandidaten.values(), key=lambda e: (e[1], e[0])):
+        # Woraufhin diese Stelle gefunden wurde. Ohne die Angabe steht in der Oberfläche
+        # eine Liste, der nicht anzusehen ist, welches Feld sie belegen soll.
+        b["feld"] = feld.get("id")
+        b["feld_label"] = feld.get("label")
+        alle.append(b)
     if uhr is not None:
         uhr["belege_satzfilter"] = round(time.monotonic() - t0, 1)
     if zaehler is not None:
