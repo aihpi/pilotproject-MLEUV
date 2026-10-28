@@ -4,6 +4,8 @@ Im Werkzeug kommt keine Frage an, sondern eine Situation: die Nutzerin ist in ei
 und hat einen Entwurfssatz getippt. Dieses Modul macht daraus mehrere Teilanfragen. Es ist
 reine Textverarbeitung — kein Netz nötig.
 """
+import pytest
+
 import anfrage
 
 
@@ -57,6 +59,43 @@ class TestAnfragen:
         """Die Schlüssel 1-8 entsprechen den Bausteinen der Richtlinie."""
         assert sorted(anfrage.ABSCHNITT_THEMEN) == [1, 2, 3, 4, 5, 6, 7, 8]
         assert all(anfrage.ABSCHNITT_THEMEN[n] for n in range(1, 9))
+
+
+class TestMustersatzJeFeld:
+    """Die zweite Teilanfrage der Suche je Feld. Die Fälle sind die echten Bezeichner des
+    Bausteins 5, an denen die Auswahl am 28.10.2026 scheiterte."""
+
+    @pytest.fixture
+    def baustein5(self, monkeypatch):
+        import musterbausteine
+        daten = {5: [
+            {"nummer": "5.1", "text": "Zuwendungsart: Projektförderung"},
+            {"nummer": "5.2", "text": "Finanzierungsart: Anteil-/Voll- /Fehlbedarfsfinanzierung"},
+            {"nummer": "5.3", "text": "Form der Zuwendung: Zuschuss/Zuweisung"},
+            {"nummer": "5.4.n", "text": "Zuwendungsfähig sind (bspw.): Investitionskosten zur "
+                                        "Umsetzung der Vorhaben"},
+            {"nummer": "5.4.n", "text": "Bagatellgrenze: Die Bagatellgrenze für die Zuwendung "
+                                        "beträgt abweichend von § 44 LHO XX Euro."},
+        ]}
+        monkeypatch.setattr(musterbausteine, "laden", lambda *a, **k: daten)
+
+    def test_feld_bekommt_seinen_bezeichner(self, baustein5):
+        assert anfrage.mustersaetze_zu("Finanzierungsart", 5)[0].startswith("Finanzierungsart:")
+        assert anfrage.mustersaetze_zu("Form der Zuwendung", 5)[0].startswith("Form der Zuwendung")
+        assert anfrage.mustersaetze_zu("Bagatellgrenze in Euro", 5)[0].startswith("Bagatellgrenze")
+
+    def test_kompositum_gilt_nicht_als_treffer(self, baustein5):
+        """„Finanzierungsform" darf nicht den Satz zur Finanzierungsart bekommen — der Fehler,
+        wegen dessen diese Auswahl überhaupt geschrieben wurde."""
+        assert anfrage.mustersaetze_zu("Finanzierungsform", 5) == []
+
+    def test_gebeugte_form_zaehlt(self, baustein5):
+        """"zuwendungsfähige" und "zuwendungsfähig" sind dasselbe Wort."""
+        assert anfrage.mustersaetze_zu("Zuwendungsfähige Ausgaben oder Kosten", 5)
+
+    def test_ohne_treffer_lieber_nichts(self, baustein5):
+        """Kein Mustersatz ist besser als der beste von lauter unpassenden."""
+        assert anfrage.mustersaetze_zu("Kumulierung mit anderen Fördermitteln", 5) == []
 
 
 class TestRRF:

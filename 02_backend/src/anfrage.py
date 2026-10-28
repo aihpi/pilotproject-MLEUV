@@ -118,14 +118,56 @@ def _mustersaetze(text, abschnitt_nr):
     return bewertet[:MUSTERSAETZE_ALS_ANFRAGE]
 
 
-def mustersaetze_zu(text, abschnitt_nr):
-    """Mustersätze des Abschnitts, die zu diesem Anliegen passen.
+def _gleiches_wort(a, b):
+    """Dasselbe Wort, auch in gebeugter Form — aber kein Kompositum mit gleichem Anfang.
 
-    Öffentlich für die Suche je Feld in `vorschlag.belege_je_feld`: dort ist das Anliegen der
-    FELDNAME, nicht der Abschnittstext. Der Mustersatz ist in der Sprache der gesuchten
-    Rechtsstelle geschrieben, der Feldname nicht — siehe die Messung im Docstring oben.
+    „zuwendungsfähig" und „zuwendungsfähige" sind dasselbe, „zuwendung" und „zuwendungsart"
+    sind es nicht. Deutsche Komposita teilen sich beliebig lange Anfänge, ein Stamm fester
+    Länge fällt darauf herein: bei acht Zeichen galten „Finanzierungsform" und
+    „Finanzierungsart" als gleich, und genau diese beiden Felder sollen getrennt werden.
+    Deshalb: gleicher Wortanfang nur bis zu drei Zeichen Unterschied.
     """
-    return _mustersaetze(text, abschnitt_nr)
+    a, b = a.lower(), b.lower()
+    if a == b:
+        return True
+    kurz, lang = sorted((a, b), key=len)
+    return len(kurz) >= 7 and len(lang) - len(kurz) <= 3 and lang.startswith(kurz)
+
+
+def mustersaetze_zu(feld_label, abschnitt_nr):
+    """Der Mustersatz, der zu DIESEM Formularfeld gehört. Leer, wenn keiner erkennbar ist.
+
+    Eigene Auswahl statt `_mustersaetze`, weil die beiden verschiedene Fragen stellen. Dort
+    ist das Anliegen ein ganzer Abschnittstext, hier ein Feldname aus zwei Wörtern. Die
+    Auswahl über Wortüberschneidung mit dem GANZEN Mustersatz ergab deshalb am 28.10.2026 für
+    sieben von neun Feldern des Bausteins 5 denselben Satz — „Zuwendungsfähig sind (bspw.):
+    Investitionskosten …" —, auch für Finanzierungsart, Fördersatz und Höchstbetrag. Eine
+    Teilanfrage, die bei fast jedem Feld dasselbe fragt, ist schlimmer als keine.
+
+    Zwei Unterschiede: verglichen wird nur mit dem BEZEICHNER des Mustersatzes, dem Teil vor
+    dem Doppelpunkt („Form der Zuwendung: Zuschuss/Zuweisung"), und ohne Treffer kommt nichts
+    zurück statt des besten von lauter schlechten. Die Mindestlänge entfällt — gerade die
+    kurzen Mustersätze sind die Bezeichner der Oberpunkte 5.1 bis 5.5.
+
+    Was dabei leer ausgeht, sind Felder, deren Formularname anders heißt als der Mustersatz
+    („Finanzierungsform" gegen „Form der Zuwendung"). Dafür braucht es eine Tabelle Feld zu
+    Gliederungsnummer; die lässt sich nicht erraten.
+    """
+    import musterbausteine
+    gesucht = re.findall(r"\w{5,}", feld_label or "")
+    if not gesucht:
+        return []
+    bewertet = []
+    for b in musterbausteine.laden().get(abschnitt_nr) or []:
+        satz = (b.get("text") or "").strip()
+        if not satz:
+            continue
+        bezeichner = re.findall(r"\w{5,}", satz.split(":", 1)[0][:60])
+        treffer = sum(1 for g in gesucht if any(_gleiches_wort(g, w) for w in bezeichner))
+        if treffer:
+            bewertet.append((treffer, satz))
+    bewertet.sort(key=lambda e: -e[0])
+    return [satz for _, satz in bewertet]
 
 
 def anfragen(text, abschnitt_nr=None):
