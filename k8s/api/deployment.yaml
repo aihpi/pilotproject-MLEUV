@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/aihpi/pilotproject-mleuv/api:sha-0752d80
+          image: ghcr.io/aihpi/pilotproject-mleuv/api:sha-bf3032e
           ports:
             - containerPort: 4317
           env:
