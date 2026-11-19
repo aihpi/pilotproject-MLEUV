@@ -226,3 +226,14 @@ k8s/secrets/secret.yaml
 
 # Qdrant snapshots: hundreds of megabytes, and they carry the full text of the corpus
 *.snapshot
+
+# Vom Cluster geholte Testdaten: Rückmeldungen, Entwürfe, Protokoll, Container-Logs
+/rueckmeldungen.ndjson
+/drafts_cluster.json
+/protokoll.jsonl
+/mleuv-*.log
+
+# Berichte und Unterlagen Dritter
+/HPI-Report_*.pdf
+/MLEUV Open Questions.html
+/spark-nachnutzung.*
