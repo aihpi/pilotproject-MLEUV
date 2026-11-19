@@ -75,7 +75,7 @@ nicht gezählt.
 | D Richtlinientext | R-019, R-020, R-021, R-026, R-068, R-069 | 6 |
 | E Chat-Steuerung | R-006, R-027, R-029, R-030, R-032, R-036, R-037, R-038, R-042, R-043 (wartet auf R-016), R-044, R-070 | 12 |
 | Betrieb | R-005 | 1 |
-| Formularwunsch, Umfang entscheidet Jill | R-014, R-016, R-017, R-024, R-025 (R-020 Teil Stichpunkte) | 5 |
+| F Formular und Darstellung | R-014, R-016, R-017, R-024, R-025 (R-020 Teil Stichpunkte) | 5 |
 | Frage der Testerin, offen | R-013, R-023 | 2 |
 | nur Abnahme | R-028 | 1 |
 | Bestätigung | R-001, R-007, R-015, R-040, R-041, R-052 – R-056, R-058 – R-063, R-065 | 17 |
@@ -120,8 +120,7 @@ Nur für R-001 – R-013 zusätzlich **Stand**: besteht noch · inzwischen behob
 behobener Befund wird geschlossen; sein Prüffall bleibt als Schutz gegen Rückfall im
 Goldstandard.
 
-Formularwünsche gehen als Entscheidungsvorlage an Jill (ob und wann). Die Fragen der
-Testerin (R-013, R-023) gehen an sie zurück.
+Die Fragen der Testerin (R-013, R-023) gehen an sie zurück.
 
 ### 0.4 Erwartung festhalten
 
@@ -137,9 +136,9 @@ Widerspricht eine Aussage der Testerin dem Prozessmodell, wird das vermerkt und 
 vorgelegt, nicht von uns entschieden.
 
 Offene Fragen bleiben nur dort, wo die Testerin selbst fragt („muss intern geklärt werden“
-R-013, „ggf. habe ich die Angabe falsch verstanden“ R-023). Über den **Umfang** von
-Formularwünschen (Stichpunkte, mehrere Festbeträge, Betrag je Einheit) entscheidet Jill, ob
-und wann sie gebaut werden; was richtig ist, sagt die Rückmeldung.
+R-013, „ggf. habe ich die Angabe falsch verstanden“ R-023). Formularwünsche (Stichpunkte,
+mehrere Festbeträge, Betrag je Einheit) werden vollständig gebaut, so wie die Rückmeldung sie
+beschreibt.
 
 ### Ergebnis Phase 0
 
@@ -162,8 +161,8 @@ und wann sie gebaut werden; was richtig ist, sagt die Rückmeldung.
   erwartung_herkunft: Testerin           # Testerin | Norm | abgeleitet
 ```
 
-Dazu eine Übersicht nach Schicht und Schwere, die Entscheidungsvorlage zu den
-Formularwünschen und etwaige Widersprüche zwischen Testerin und Prozessmodell.
+Dazu eine Übersicht nach Schicht und Schwere und etwaige Widersprüche zwischen Testerin und
+Prozessmodell.
 **Halt:** Durchsicht durch Jill, bevor etwas gebaut wird.
 
 ## Phase 1 – Umsetzen und messen
@@ -244,7 +243,18 @@ Urteile auf zwei Stufen: **trägt** (`passt`) und **trägt nicht** (`nichtssagen
 3. **Pflichtbestandteile** (R-021): Das Verfahren enthält die Angaben, die die Testerin aus
    der Musterrichtlinie nennt (Bewilligungsbehörde, Form und Frist des Antrags, Folge
    unvollständiger Unterlagen). Fest prüfbar über `enthaelt`.
-4. **Form** (Stichpunkte): erst nach Entscheidung über den Umfang.
+4. **Form** (Stichpunkte): siehe F.
+
+#### F – Formular und Darstellung (5 Rückmeldungen)
+
+| Wunsch | Prüfung | Rückmeldungen |
+|---|---|---|
+| F1 Aufzählungen als Stichpunkte | Abschnitte mit Aufzählung (Fördergegenstände, Empfänger, Beträge) werden als Liste gesetzt; Fließtext bleibt Fließtext (Gegenprobe) | R-014, R-024, R-025, R-020 Teil |
+| F2 Mehrere Festbeträge | ein Betrag je Fördergegenstand eingebbar, im Text je Gegenstand genannt, Prüfregeln (z. B. Bagatellgrenze) rechnen mit allen Beträgen; alte Entwürfe mit einem Betrag laden weiter | R-016, R-024 |
+| F3 Betrag je Einheit | „450 Euro je Hektar“ eingebbar, im Text mit Einheit, Höchstbetrag-Regeln kennen die Einheit | R-017 |
+
+Fest prüfbar (Schema-, Regel- und Oberflächentests). Danach wird R-043 (E3, Festbetrag je
+Geschlecht schon genannt) prüfbar.
 
 #### E – Chat-Steuerung (12 Rückmeldungen)
 
@@ -312,7 +322,16 @@ Prüffälle und die Kennzahlen gegen Rückschritte.
 3. **Stammdaten im Text:** Behördenliste, Ressort, Unterzeichnende
 4. **Feldwerte und Gesprächsführung:** B, E3, E5
 5. **Fundstellen:** C
-6. **Formularwünsche**, sobald Jill über den Umfang entschieden hat
+6. **Formular und Darstellung:** F1, dann F3, dann F2 (der größte Umbau zuletzt), danach E3
+   für R-043
+
+### Automatische Tests auf GitHub
+
+Vor der ersten Welle: ein CI-Workflow nach dem Muster von pro-biz, der bei jedem Push nach
+`dev`/`main` und bei jedem Pull Request pytest (ohne Modellaufrufe), vitest und die festen
+Prüffälle aus `befunde.yaml` und `bestaetigungen.yaml` ausführt. Ein roter Lauf blockiert
+den Merge. Modellabhängige Prüffälle und die Kennzahlen gegen Rückschritte laufen weiter
+lokal, weil sie das Modell-Gateway brauchen.
 
 ### Mitschreiben verbessern (Vorschlag, nur nach Zustimmung)
 
