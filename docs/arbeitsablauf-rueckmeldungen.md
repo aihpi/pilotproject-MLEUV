@@ -70,12 +70,13 @@ nicht gezählt.
 | Platz | Rückmeldungen | Anzahl |
 |---|---|---|
 | A Prüfregeln | R-008, R-009, R-010 (Teil c → D), R-011, R-012, R-018, R-022 | 7 |
-| B Feldwerte | R-031, R-033, R-034, R-035 | 4 |
+| B Feldwerte | R-031, R-033, R-034, R-035, R-039, R-045, R-049 | 7 |
 | C Fundstellen | R-046, R-047, R-048, R-050, R-051, R-057, R-064, R-066, R-067 | 9 |
-| D Richtlinientext | R-019, R-020, R-026, R-068, R-069 | 5 |
+| D Richtlinientext | R-019, R-020, R-021, R-026, R-068, R-069 | 6 |
 | E Chat-Steuerung | R-006, R-027, R-029, R-030, R-032, R-036, R-037, R-038, R-042, R-043 (wartet auf R-016), R-044, R-070 | 12 |
 | Betrieb | R-005 | 1 |
-| Fachseite | R-013, R-014, R-016, R-017, R-021, R-023, R-024, R-025, R-039, R-045, R-049 (R-020 Teil Stichpunkte) | 11 |
+| Formularwunsch, Umfang entscheidet Jill | R-014, R-016, R-017, R-024, R-025 (R-020 Teil Stichpunkte) | 5 |
+| Frage der Testerin, offen | R-013, R-023 | 2 |
 | nur Abnahme | R-028 | 1 |
 | Bestätigung | R-001, R-007, R-015, R-040, R-041, R-052 – R-056, R-058 – R-063, R-065 | 17 |
 | verworfen | R-002, R-003, R-004 | 3 |
@@ -119,23 +120,26 @@ Nur für R-001 – R-013 zusätzlich **Stand**: besteht noch · inzwischen behob
 behobener Befund wird geschlossen; sein Prüffall bleibt als Schutz gegen Rückfall im
 Goldstandard.
 
-Lücken im Formular und Fachfragen gehen als Entscheidungsvorlage an die Fachseite. Das
-Prozessmodell (BPMN) des MLEUV ist dabei maßgeblich.
+Formularwünsche gehen als Entscheidungsvorlage an Jill (ob und wann). Die Fragen der
+Testerin (R-013, R-023) gehen an sie zurück.
 
 ### 0.4 Erwartung festhalten
 
-Jeder Befund bekommt eine Erwartung „so wäre es richtig“ mit ihrer Herkunft. Reihenfolge bei
-Widerspruch:
+Jeder Befund bekommt eine Erwartung „so wäre es richtig“ mit ihrer Herkunft:
 
-1. Prozessmodell (BPMN), Musterrichtlinie, VV zu § 44 LHO
-2. „besser“-Feld der Testerin
-3. von uns abgeleitet
+1. **Aussage der Testerin** („besser“-Feld oder Freitext). Die Rückmeldungen kommen von
+   Fachpersonen und **gelten als Vorgabe**, auch wenn sie vorsichtig formuliert sind („meiner
+   Ansicht nach sollte hier kein Befund erfolgen“, R-012, ist die Erwartung).
+2. Prozessmodell (BPMN), Musterrichtlinie, VV zu § 44 LHO — wo die Testerin nichts sagt.
+3. von uns abgeleitet — nur wo beides fehlt; diese Erwartungen legt Jill fest.
 
-**Technische Erwartungen** (Programm bleibt bedienbar, Eingabe kommt an, Regel schlägt nicht
-fälschlich an) gelten sofort. **Fachliche Erwartungen** (Schichten Wertbildung, Textbildung,
-Fundstellen) gelten erst, wenn sie aus Stufe 1 stammen oder die Fachseite sie bestätigt hat.
-Unsicher formulierte Vorschläge der Testerin („meiner Ansicht nach“ R-012, „vermutlich“
-R-020, „ggf. falsch verstanden“ R-023) gehen als Frage an die Fachseite.
+Widerspricht eine Aussage der Testerin dem Prozessmodell, wird das vermerkt und Jill
+vorgelegt, nicht von uns entschieden.
+
+Offene Fragen bleiben nur dort, wo die Testerin selbst fragt („muss intern geklärt werden“
+R-013, „ggf. habe ich die Angabe falsch verstanden“ R-023). Über den **Umfang** von
+Formularwünschen (Stichpunkte, mehrere Festbeträge, Betrag je Einheit) entscheidet Jill, ob
+und wann sie gebaut werden; was richtig ist, sagt die Rückmeldung.
 
 ### Ergebnis Phase 0
 
@@ -155,12 +159,11 @@ R-020, „ggf. falsch verstanden“ R-023) gehen als Frage an die Fachseite.
   belege: {rueckmeldungen: 4, entwuerfe: 2}
   ursache: bestätigt — richtlinie.py, Regel SATZENDE
   erwartung: Kein Befund für „bis zum 31. Dezember 2028“.
-  erwartung_art: technisch               # technisch | fachlich
-  erwartung_herkunft: abgeleitet         # Norm | Testerin | abgeleitet
-  gilt: true
+  erwartung_herkunft: Testerin           # Testerin | Norm | abgeleitet
 ```
 
-Dazu eine Übersicht nach Schicht und Schwere und die Liste der Fragen an die Fachseite.
+Dazu eine Übersicht nach Schicht und Schwere, die Entscheidungsvorlage zu den
+Formularwünschen und etwaige Widersprüche zwischen Testerin und Prozessmodell.
 **Halt:** Durchsicht durch Jill, bevor etwas gebaut wird.
 
 ## Phase 1 – Umsetzen und messen
@@ -168,7 +171,7 @@ Dazu eine Übersicht nach Schicht und Schwere und die Liste der Fragen an die Fa
 ### Grundsätze
 
 1. **Fälle vor der Reparatur festschreiben.** Prüffälle, Gegenproben und Zwillingsfälle
-   werden committet, bevor am Code etwas geändert wird. Eine spätere Änderung an einem Fall
+   schreiben wir selbst und committen sie, bevor am Code etwas geändert wird. Eine spätere Änderung an einem Fall
    ist erlaubt, wenn der Fall selbst fehlerhaft war, aber nur mit Begründung im Commit und mit
    erneutem Lauf gegen den alten Stand.
 2. **Erst messen.** Jeder Prüffall läuft gegen den unveränderten Stand. Ein Fall belegt den
@@ -195,13 +198,17 @@ Dazu eine Übersicht nach Schicht und Schwere und die Liste der Fragen an die Fa
 - **Kriterium:** kein Fehlalarm auf dem Originaltext **und** Treffer auf der Gegenprobe.
 - Bestätigung R-007: Die Regel muss dort weiter anschlagen.
 
-#### B – Feldwerte (4 Rückmeldungen)
+#### B – Feldwerte (7 Rückmeldungen)
 
 - Modellabhängig. Werkzeug: `eval_feld.py` mit neuen Fällen in `feldfaelle.yaml`. Eingabe und
   bestätigte Werte kommen aus dem passenden Protokolleintrag.
 - **Kriterien** (vorhandene Eigenschaften): `wert`, `enthaelt`, `nicht`, `unklar`,
   `gedeckt`. Beispiel R-034: `requirements` *nicht* „Tierschutzverein mit Sitz“,
   `recipientDetails` *enthaelt* „Tierschutzverein“.
+- Inhaltliche Vorgaben der Testerin werden zu Eigenschaften: R-045 → `ancillary` *nicht*
+  ANBest-G bei rein privaten Empfängern; R-049 → `purposeBindingYears` `unklar` oder leer,
+  wenn nichts angeschafft wird; R-039 → `requirements` übernimmt die Regelung des genannten
+  Vorbilds.
 - R-031 zusätzlich mit `eval_deckung.py`: Ein Wert ohne Beleg darf nicht als gedeckt
   erscheinen.
 
@@ -217,16 +224,16 @@ Urteile auf zwei Stufen: **trägt** (`passt`) und **trägt nicht** (`nichtssagen
 - **Kriterien:**
   - *Positive bleiben:* Stellen mit `passt` stehen weiter unter den gezeigten fünf.
   - *Negative verschwinden:* Stellen mit `trägt nicht` stehen nicht mehr unter den fünf für
-    das gemeldete Feld. Das von der Testerin genannte Zielfeld (R-057, R-064, R-066) wird
-    erst geprüft, wenn die Fachseite es bestätigt.
+    das gemeldete Feld. Wo die Testerin ein Zielfeld nennt (R-057, R-064, R-066), muss die
+    Stelle dort erscheinen.
   - *Neue Stellen:* beurteilt vom Modellurteil `fundstelle_tauglich` (`traegt` → trägt;
     `teilweise`, `traegt_nicht` → trägt nicht).
-- **Kalibrierung des Modellurteils** an den 21 Urteilen (ohne die Fachfragen R-045, R-049),
+- **Kalibrierung des Modellurteils** an den 21 Urteilen (ohne R-045 und R-049, die den Feldinhalt betreffen, nicht die Stelle),
   berichtet als Vierfeldertafel. **Schwelle vorab:** mindestens 17 von 21 übereinstimmend
   **und** mindestens 6 der 9 „trägt nicht“ erkannt (ein Urteil, das immer „trägt“ sagt,
   käme auf 12 von 21). Sonst werden neue Stellen von Hand beurteilt.
 
-#### D – Richtlinientext (5 Rückmeldungen, dazu R-010c)
+#### D – Richtlinientext (6 Rückmeldungen, dazu R-010c)
 
 1. **Fakten aus Stammdaten** (fest): Jede Behörde und jede aufgelöste Abkürzung im Text stimmt
    mit einer neu angelegten **Behördenliste** überein (R-068). Ressort im Titel und
@@ -234,7 +241,10 @@ Urteile auf zwei Stufen: **trägt** (`passt`) und **trägt nicht** (`nichtssagen
 2. **Sprache** (R-020, R-069, R-010c): **zurückgestellt.** Ein kalibriertes Sprachurteil
    kostet mehr, als drei Rückmeldungen rechtfertigen. Die Sätze gehen als Prüffälle in die
    Abnahme.
-3. **Form** (Stichpunkte): erst nach Entscheidung der Fachseite.
+3. **Pflichtbestandteile** (R-021): Das Verfahren enthält die Angaben, die die Testerin aus
+   der Musterrichtlinie nennt (Bewilligungsbehörde, Form und Frist des Antrags, Folge
+   unvollständiger Unterlagen). Fest prüfbar über `enthaelt`.
+4. **Form** (Stichpunkte): erst nach Entscheidung über den Umfang.
 
 #### E – Chat-Steuerung (12 Rückmeldungen)
 
@@ -302,7 +312,7 @@ Prüffälle und die Kennzahlen gegen Rückschritte.
 3. **Stammdaten im Text:** Behördenliste, Ressort, Unterzeichnende
 4. **Feldwerte und Gesprächsführung:** B, E3, E5
 5. **Fundstellen:** C
-6. **Entscheidungen der Fachseite**, sobald sie vorliegen
+6. **Formularwünsche**, sobald Jill über den Umfang entschieden hat
 
 ### Mitschreiben verbessern (Vorschlag, nur nach Zustimmung)
 
@@ -333,6 +343,7 @@ besteht **und** die Abnahme keinen Rückfall zeigt.
 ## Vor dem Start zu klären
 
 1. ~~Entwürfe und Protokoll vom Cluster~~: liegen vor (19.11.2026).
-2. Wer auf Seiten des MLEUV über Lücken im Formular, Fachfragen und fachliche Erwartungen
-   entscheidet.
-3. Ob eine zweite Person die Zwillingsfälle schreibt.
+2. ~~Wer fachlich entscheidet~~: Die Rückmeldungen der Fachpersonen gelten als Vorgabe; über
+   den Umfang entscheidet Jill. Offen bleiben nur die Fragen, die die Testerin selbst stellt
+   (R-013, R-023).
+3. ~~Wer die Zwillingsfälle schreibt~~: wir selbst, vor der Reparatur.
