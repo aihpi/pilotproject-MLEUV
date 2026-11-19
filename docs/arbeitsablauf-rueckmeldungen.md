@@ -362,7 +362,7 @@ besteht **und** die Abnahme keinen Rückfall zeigt.
 ## Vor dem Start zu klären
 
 1. ~~Entwürfe und Protokoll vom Cluster~~: liegen vor (19.11.2026).
-2. ~~Wer fachlich entscheidet~~: Die Rückmeldungen der Fachpersonen gelten als Vorgabe; über
-   den Umfang entscheidet Jill. Offen bleiben nur die Fragen, die die Testerin selbst stellt
+2. ~~Wer fachlich entscheidet~~: Die Rückmeldungen der Fachpersonen gelten als Vorgabe, auch
+   Formularwünsche werden vollständig gebaut. Offen bleiben nur die Fragen, die die Testerin selbst stellt
    (R-013, R-023).
 3. ~~Wer die Zwillingsfälle schreibt~~: wir selbst, vor der Reparatur.
