@@ -1,0 +1,561 @@
+# Befunde aus den Rückmeldungen vom 14.10. bis 12.11.2026 (Issue #4, Phase 0).
+#
+# Vorgehen und Begriffe: docs/arbeitsablauf-rueckmeldungen.md. Rückmeldungen stehen nur mit
+# ihrer Nummer hier (R-nnn = Zeile in rueckmeldungen.ndjson, lokal), nie im Wortlaut.
+#
+# Felder:
+#   rueckmeldungen  Hauptplatz; jede Rückmeldung hat genau einen (geteilt: R-010a/b/c)
+#   nebenbezug      stützt den Befund, zählt aber anderswo
+#   programmstand   Commit, gegen den die Rückmeldung entstand
+#   stand           nur für 9e4b89f: besteht noch | behoben
+#   protokoll       zugehöriger Eintrag in protokoll.jsonl (UTC), falls vorhanden
+#   art             Fehler | Lücke im Formular | Fachfrage | kein Handlungsbedarf
+#   schicht         Betrieb | Chat-Steuerung | Feldzuordnung | Wertbildung |
+#                   Suche/Fundstellen | Prüfregeln | Textbildung | Stammdaten
+#   pruefbarkeit    fest | modellabhängig | Mensch
+#   schwere         1 blockiert | 2 falscher Inhalt | 3 irreführender Hinweis | 4 Darstellung
+#   ursache         bestätigt (am Code nachgestellt) | vermutet
+#   erwartung_herkunft  Testerin | Norm | abgeleitet (legt Jill fest)
+
+# --- A Prüfregeln -------------------------------------------------------------------------
+
+- id: BF-01
+  titel: Punkt nach Ordnungszahl oder Abkürzung beendet den Satz
+  platz: A
+  rueckmeldungen: [R-008, R-012, R-018, R-022]
+  programmstand: {R-008: 9e4b89f, R-012: 9e4b89f, R-018: bf3032e, R-022: bf3032e}
+  stand: besteht noch
+  protokoll: [2026-10-19T10:55, 2026-11-12T12:59]
+  art: Fehler
+  schicht: Prüfregeln
+  pruefbarkeit: fest
+  schwere: 3
+  belege: {rueckmeldungen: 4, entwuerfe: 2}
+  ursache: >-
+    bestätigt — richtlinie.py, SATZENDE. Das Lookbehind (?<![0-9]) steht an der Trennstelle
+    hinter dem Punkt und sieht den Punkt, nie die Ziffer davor. Abkürzungen (Art., Abs.)
+    kennt die Regel nicht. pruefe_fragmente meldet das Reststück („Dezember 2029.“,
+    „1 Abs.“) als Zwischenüberschrift.
+  erwartung: >-
+    Kein Fragmentbefund für ein Datum wie „31. Dezember 2029“ und für Normverweise wie
+    „Art. 1 Abs. 1 Verordnung (EU) …“.
+  erwartung_herkunft: Testerin
+  gegenprobe: Eine echte Zwischenüberschrift mit Punkt (zwei Wörter) wird weiter gemeldet.
+
+- id: BF-02
+  titel: Zitat im Befund zeigt Steuerzeichen statt Leerzeichen
+  platz: A
+  rueckmeldungen: [R-010a]
+  nebenbezug: [R-012]
+  programmstand: 9e4b89f
+  stand: besteht noch
+  protokoll: 2026-10-19T10:55
+  art: Fehler
+  schicht: Prüfregeln
+  pruefbarkeit: fest
+  schwere: 4
+  belege: {rueckmeldungen: 2, entwuerfe: 1}
+  ursache: >-
+    bestätigt — richtlinie.py, pruefe_text und pruefe_fragmente geben das Zitat mit !r aus;
+    das schmale geschützte Leerzeichen erscheint als   („2 500 Euro“).
+  erwartung: Das Zitat erscheint so, wie es im Text steht („2 500 Euro“, „Dezember 2029“).
+  erwartung_herkunft: Testerin
+
+- id: BF-03
+  titel: Kurzer vollständiger Satz gilt als Zwischenüberschrift
+  platz: A
+  rueckmeldungen: [R-009]
+  programmstand: 9e4b89f
+  stand: besteht noch
+  protokoll: 2026-10-19T10:55
+  art: Fehler
+  schicht: Prüfregeln
+  pruefbarkeit: fest
+  schwere: 3
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — richtlinie.py, pruefe_fragmente verlangt SATZ_MINDESTWOERTER = 5; ein Satz
+    mit Verb und vier Wörtern fällt durch.
+  erwartung: Kein Fragmentbefund für einen kurzen, grammatisch vollständigen Satz.
+  erwartung_herkunft: Testerin
+  gegenprobe: Eine zweiwörtrige Überschrift mit Punkt wird weiter gemeldet.
+  hinweis: Dass der Satz inhaltlich schwach ist, gehört zu BF-24 (Abnahme).
+
+- id: BF-04
+  titel: Zahl in Worten gilt als fehlend
+  platz: A
+  rueckmeldungen: [R-011]
+  programmstand: 9e4b89f
+  stand: besteht noch
+  protokoll: 2026-10-19T10:55
+  art: Fehler
+  schicht: Prüfregeln
+  pruefbarkeit: fest
+  schwere: 3
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — richtlinie.py, pruefe_fehlende_werte sucht bei Zahlenfeldern nur Ziffern;
+    „nach fünf Jahren“ deckt den Wert 5 nicht.
+  erwartung: Kein Befund „steht nicht im Text“, wenn die Zahl ausgeschrieben im Text steht.
+  erwartung_herkunft: Testerin
+  gegenprobe: Fehlt die Frist im Text ganz, wird sie weiter gemeldet.
+
+- id: BF-05
+  titel: Befund „Satz ohne Rückhalt“ bei Sätzen, die bestätigte Angaben wiedergeben
+  platz: A
+  rueckmeldungen: [R-010b]
+  programmstand: 9e4b89f
+  stand: besteht noch
+  protokoll: 2026-10-19T10:55
+  art: Fehler
+  schicht: Prüfregeln
+  pruefbarkeit: fest
+  schwere: 3
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    vermutet — pruefe_text zählt alle Wörter ab fünf Buchstaben, auch Füllwörter
+    („erfolgt“, „bleiben“, „einer“), und keine Zahlen. Ein Satz, der Finanzierungsart und
+    Bagatellgrenze korrekt wiedergibt, kommt so auf 20 bzw. 40 Prozent.
+  erwartung: >-
+    Keine Warnung für umformulierte Sätze und keine Prozentzahl. Gemeldet werden nur Fakten
+    (Zahlen, Beträge, Fristen, Behörden), die nicht in den Angaben stehen, in Worten:
+    „2 500 Euro“ steht nicht in Ihren Angaben.
+  erwartung_herkunft: abgeleitet (Jill, 20.11.2026)
+  gegenprobe: Ein Satz mit einem Betrag, der in keiner Angabe steht, wird weiter gemeldet.
+
+# --- B Feldwerte --------------------------------------------------------------------------
+
+- id: BF-12
+  titel: Angaben zum Empfängerkreis landen in Voraussetzungen und Auswahlkriterien
+  platz: B
+  rueckmeldungen: [R-034, R-035]
+  programmstand: bf3032e
+  protokoll: [2026-11-12T13:51:58, 2026-11-12T13:54:37]
+  art: Fehler
+  schicht: Feldzuordnung
+  pruefbarkeit: modellabhängig
+  schwere: 2
+  belege: {rueckmeldungen: 2, entwuerfe: 1}
+  ursache: vermutet — das Modell ordnet die Beschreibung der Empfänger allen offenen Feldern zu.
+  erwartung: >-
+    „Gemeinnützige Tierschutzvereine im Land Brandenburg“ steht im Empfängerkreis, nicht in
+    requirements und nicht in selectionCriteria.
+  erwartung_herkunft: Testerin
+
+- id: BF-13
+  titel: Nachweis aus dem Verwendungsnachweis als Antragsvoraussetzung übernommen
+  platz: B
+  rueckmeldungen: [R-033]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T13:46:20
+  art: Fehler
+  schicht: Wertbildung
+  pruefbarkeit: modellabhängig
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: vermutet — das Modell überträgt eine Vorbildregelung auf den falschen Zeitpunkt.
+  erwartung: >-
+    requirements verlangt die Chipkennzeichnung nicht mit dem Antrag; sie gehört zum
+    Verwendungsnachweis. Die Übernahme aus dem Vorbild bleibt (von der Testerin gelobt).
+  erwartung_herkunft: Testerin
+
+- id: BF-14
+  titel: Genanntes Vorbild wird nicht genutzt
+  platz: B
+  rueckmeldungen: [R-039]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:00:55
+  art: Fehler
+  schicht: Wertbildung
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: vermutet — der Vorschlag stützt sich auf eine andere Richtlinie als das Vorbild.
+  erwartung: requirements übernimmt die Regelung der Katzenkastrationsrichtlinie.
+  erwartung_herkunft: Testerin
+  hinweis: Das Vorbild liegt im Index (Zirkularität); der Zwillingsfall braucht ein Vorbild außerhalb.
+
+- id: BF-15
+  titel: Wert ohne Beleg erscheint wie ein belegter Vorschlag
+  platz: B
+  rueckmeldungen: [R-031]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T13:42:12
+  art: Fehler
+  schicht: Wertbildung
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — Protokoll: recipients = private, gedeckt false, Konfidenz 0,4. Die Oberfläche
+    zeigt den Wert trotzdem als Vorschlag ohne erkennbare Herkunft.
+  erwartung: >-
+    Ein ungedeckter Wert wird weiter vorgeschlagen, aber mit dem Schluss, auf dem er beruht
+    (z. B. „geschlossen aus: Tierschutzvereine sind privat“).
+  erwartung_herkunft: abgeleitet (Jill, 20.11.2026)
+  hinweis: Ungedeckt heißt nicht falsch — eligibleBasis = fixed war ebenfalls ungedeckt und wurde bestätigt (R-041).
+
+- id: BF-16
+  titel: Bedingungen des Falls werden bei Nebenbestimmungen und Zweckbindung übergangen
+  platz: B
+  rueckmeldungen: [R-045, R-049]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:20:45
+  art: Fehler
+  schicht: Wertbildung
+  pruefbarkeit: modellabhängig
+  schwere: 2
+  belege: {rueckmeldungen: 2, entwuerfe: 1}
+  ursache: >-
+    vermutet — gezeigt werden Stellen für ANBest-P/G und für Zweckbindung bei Investitionen,
+    obwohl nur private Empfänger und keine Anschaffungen vorliegen. Die Werte selbst standen
+    im Protokoll auf [Unklar]; der Befund kann am Ausgangsstand schon bestehen.
+  erwartung: >-
+    ancillary schlägt bei rein privaten Empfängern keine ANBest-G vor; purposeBindingYears
+    bleibt leer oder [Unklar], wenn nichts angeschafft wird.
+  erwartung_herkunft: Testerin
+  norm: Prozessmodell, Regel nebenbestimmungen_empfaengerkreis (regeln.yaml) — stützt R-045.
+
+# --- C Fundstellen ------------------------------------------------------------------------
+
+- id: BF-17
+  titel: Fundstelle steht beim falschen Feld des Verfahrens
+  platz: C
+  rueckmeldungen: [R-057, R-064, R-066]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:28:48
+  art: Fehler
+  schicht: Suche/Fundstellen
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 3, entwuerfe: 1}
+  ursache: >-
+    vermutet — Antrags-, Bewilligungs- und Auszahlungsverfahren teilen Wortschatz
+    („Bewilligungsbehörde“, „Antrag“); die Suche je Feld trennt sie nicht.
+  erwartung: >-
+    R-057 erscheint bei applicationProcedure statt authority, R-064 nicht bei
+    applicationProcedure (gehört zum Bewilligungsverfahren), R-066 bei applicationProcedure
+    statt payment.
+  erwartung_herkunft: Testerin
+
+- id: BF-18
+  titel: EU-Richtlinien statt Landesrichtlinien als Vorlage
+  platz: C
+  rueckmeldungen: [R-046, R-047]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:20:45
+  art: Fehler
+  schicht: Suche/Fundstellen
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 2, entwuerfe: 1}
+  ursache: >-
+    vermutet — die Suche gewichtet nicht nach Förderart; für eine reine Landesförderung
+    kommen EU-kofinanzierte Richtlinien mit EU-Prüfrechten nach oben.
+  erwartung: Für auditRights einer Landesförderung stehen Stellen aus Landesrichtlinien vorn.
+  erwartung_herkunft: Testerin
+
+- id: BF-19
+  titel: Fundstelle trägt das Feld nicht
+  platz: C
+  rueckmeldungen: [R-048, R-050, R-051, R-067]
+  programmstand: bf3032e
+  protokoll: [2026-11-12T14:20:45, 2026-11-12T14:28:48]
+  art: Fehler
+  schicht: Suche/Fundstellen
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 4, entwuerfe: 1}
+  ursache: >-
+    vermutet — Themenferne der Suche: gesucht wird nach dem Feld, nicht nach dem Fall. R-050/R-051 nennen Zweckbindung für Investitionen in einem
+    Fall ohne Investition, R-048 und R-067 andere Themen.
+  erwartung: Die vier Stellen stehen nicht mehr unter den fünf gezeigten für ihr Feld.
+  erwartung_herkunft: Testerin
+
+# --- D Richtlinientext --------------------------------------------------------------------
+
+- id: BF-20
+  titel: Ministerium fehlt im Titel, wenn der Titel im Formular eingetragen wird
+  platz: D
+  rueckmeldungen: [R-026]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T12:59:20
+  art: Fehler
+  schicht: Textbildung
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — server.ts setzt d.title nur, wenn der Titel über den Chat bestätigt wird
+    (Zeile 1055). Im Formular eingetragen bleibt „Neue Förderrichtlinie“; Word-Datei und
+    Überschrift nutzen d.title.
+  erwartung: Der Titel im Dokument ist der bestätigte Wert des Feldes title, samt Ministerium.
+  erwartung_herkunft: Testerin
+
+- id: BF-21
+  titel: Name der Ministerin fehlt in der Schlussformel
+  platz: D
+  rueckmeldungen: [R-019]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T12:59:20
+  art: Lücke im Formular
+  schicht: Stammdaten
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — die Schlussformel kennt nur Ort, Datum und Ministerium; einen Namen gibt es
+    weder im Formular noch in Stammdaten.
+  erwartung: Die Schlussformel nennt die Ministerin mit Namen, aus Stammdaten oder Formular.
+  erwartung_herkunft: Testerin
+
+- id: BF-22
+  titel: Behördenkürzel falsch aufgelöst
+  platz: D
+  rueckmeldungen: [R-068]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:37:39
+  art: Fehler
+  schicht: Stammdaten
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: >-
+    bestätigt — authority enthält nur „LELF“; das Modell löst beim Schreiben frei auf, ein
+    Behördenregister gibt es nicht.
+  erwartung: >-
+    LELF wird als Landesamt für Ländliche Entwicklung, Landwirtschaft und Flurneuordnung
+    ausgeschrieben; jede Behörde im Text stimmt mit der Behördenliste überein.
+  erwartung_herkunft: Testerin
+
+- id: BF-23
+  titel: Abschnitt Verfahren zu knapp
+  platz: D
+  rueckmeldungen: [R-021]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T12:59:20
+  art: Fehler
+  schicht: Textbildung
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: vermutet — der Prompt lässt Musterbausteine ohne Angabe weg, auch Pflichtangaben des Verfahrens.
+  erwartung: >-
+    Das Verfahren nennt Bewilligungsbehörde, Form und Frist des Antrags und die Folge
+    unvollständiger oder verspäteter Unterlagen, nach dem Muster der Musterrichtlinie (GAK/ELER).
+  erwartung_herkunft: Testerin
+
+- id: BF-24
+  titel: Sätze sprachlich falsch oder ohne Sinn
+  platz: D
+  rueckmeldungen: [R-010c, R-020, R-069]
+  nebenbezug: [R-009]
+  programmstand: {R-010c: 9e4b89f, R-020: bf3032e, R-069: bf3032e}
+  stand: besteht noch (R-010c, nicht nachgeprüft — Modelltext)
+  art: Fehler
+  schicht: Textbildung
+  pruefbarkeit: Mensch
+  schwere: 2
+  belege: {rueckmeldungen: 4, entwuerfe: 3}
+  ursache: vermutet — freie Formulierung durch das Modell.
+  erwartung: >-
+    R-010c: Bemessungsgrundlage und Bagatellgrenze wie von der Testerin vorgeschlagen.
+    R-020: Gleichstellungssatz nach der Musterrichtlinie. R-069: Satz zur beihilferechtlichen
+    Einordnung grammatisch richtig.
+  erwartung_herkunft: Testerin
+  hinweis: Zurückgestellt; geht als Prüffall in die Abnahme (Arbeitsablauf, D2).
+
+# --- E Chat-Steuerung ---------------------------------------------------------------------
+
+- id: BF-06
+  titel: Eingabefeld gesperrt nach leerem Vorschlag
+  platz: E
+  rueckmeldungen: [R-044, R-070]
+  nebenbezug: [R-029]
+  programmstand: bf3032e
+  protokoll: 2026-11-12T14:12:53
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: fest
+  schwere: 1
+  belege: {rueckmeldungen: 3, entwuerfe: 2}
+  ursache: >-
+    bestätigt — Chat.tsx: eine Extraktion ohne Vorschläge zeigt keinen Vorschlagskasten,
+    sperrt die Eingabe aber trotzdem.
+  erwartung: Nach einem leeren Vorschlag ist die Eingabe frei oder ein Weiter-Knopf da.
+  erwartung_herkunft: Testerin
+  kriterium: E1
+
+- id: BF-07
+  titel: Antwort auf eine Rückfrage wird zum Feldwert
+  platz: E
+  rueckmeldungen: [R-036, R-037, R-038]
+  programmstand: bf3032e
+  protokoll: [2026-11-12T13:56:21, 2026-11-12T13:56:32]
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 3, entwuerfe: 1}
+  ursache: >-
+    bestätigt — „Korrigieren“ verwirft nur in der Oberfläche; die nächste Eingabe läuft als
+    neue Angabe in den Verlauf und wird selbst vorgeschlagen.
+  erwartung: >-
+    „kann so bleiben“ übernimmt den vorigen Vorschlag; „streichen“ leert das Feld. Keine der
+    Antworten erscheint als Wert.
+  erwartung_herkunft: Testerin
+  kriterium: E2
+
+- id: BF-08
+  titel: Hinweis „übernommen“ wiederholt sich
+  platz: E
+  rueckmeldungen: [R-030, R-042]
+  programmstand: bf3032e
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: fest
+  schwere: 3
+  belege: {rueckmeldungen: 2, entwuerfe: 1}
+  ursache: >-
+    bestätigt — packages/shared, naechsteFrage/gedeckteStufen: eine Stufe, die nicht über den
+    Chat bestätigt wurde, steht nie in gefragteStufen.
+  erwartung: Der Hinweis erscheint je Stufe höchstens einmal.
+  erwartung_herkunft: Testerin
+  kriterium: E4
+
+- id: BF-09
+  titel: „Vorschlag holen“ ohne Chat schickt eine leere Eingabe
+  platz: E
+  rueckmeldungen: [R-006]
+  programmstand: 9e4b89f
+  stand: besteht noch
+  protokoll: [2026-10-19T10:29, 2026-11-12T13:24:23]
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: fest
+  schwere: 1
+  belege: {rueckmeldungen: 1, entwuerfe: 2}
+  ursache: >-
+    bestätigt — server.ts 830–840: die Eingabe besteht aus Chatverlauf und bestätigten Feldern
+    ANDERER Abschnitte. Ohne Chat ist sie für Abschnitt 0 leer, auch mit eingetragenem Titel.
+    Im Hundefall um 13:24 erneut aufgetreten.
+  erwartung: Der im Formular eingetragene Wert geht in die Eingabe; es kommt ein Vorschlag.
+  erwartung_herkunft: Testerin
+  kriterium: E6
+
+- id: BF-10
+  titel: Bereits Gesagtes wird nicht genutzt
+  platz: E
+  rueckmeldungen: [R-027, R-032, R-043]
+  programmstand: bf3032e
+  protokoll: [2026-11-12T13:46:14, 2026-11-12T14:09:56]
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: modellabhängig
+  schwere: 3
+  belege: {rueckmeldungen: 3, entwuerfe: 1}
+  ursache: >-
+    vermutet — Felder späterer Stufen werden erst gefüllt, wenn die Stufe dran ist, und dann
+    erneut erfragt. R-043: fixedAmount fünfmal [Unklar], weil zwei Beträge nicht in ein Feld
+    passen (wartet auf BF-26).
+  erwartung: >-
+    Eine Angabe aus einer früheren Eingabe füllt das spätere Feld ohne Nachfrage (Titel,
+    Gebietskulisse, Festbeträge je Geschlecht).
+  erwartung_herkunft: Testerin
+  kriterium: E3
+
+- id: BF-11
+  titel: Geänderte Angabe wird nicht genutzt
+  platz: E
+  rueckmeldungen: [R-029]
+  programmstand: bf3032e
+  protokoll: [2026-11-12T13:37:46, 2026-11-12T13:37:54]
+  art: Fehler
+  schicht: Chat-Steuerung
+  pruefbarkeit: modellabhängig
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: vermutet — beide Fassungen stehen im Chatverlauf, das Modell greift die frühere.
+  erwartung: Nach einer Änderung arbeitet der Vorschlag mit der letzten Angabe.
+  erwartung_herkunft: Testerin
+  kriterium: E5
+
+# --- F Formular und Darstellung -----------------------------------------------------------
+
+- id: BF-25
+  titel: Aufzählungen als Stichpunkte
+  platz: F
+  rueckmeldungen: [R-014, R-025]
+  nebenbezug: [R-020, R-024]
+  programmstand: bf3032e
+  art: Lücke im Formular
+  schicht: Textbildung
+  pruefbarkeit: fest
+  schwere: 4
+  belege: {rueckmeldungen: 4, entwuerfe: 1}
+  ursache: bestätigt — der Text wird nur als Fließtext erzeugt.
+  erwartung: >-
+    Abschnitte mit Aufzählung (Fördergegenstände, Empfänger, Beträge, sonstige Bestimmungen)
+    stehen als Liste; Fließtext bleibt Fließtext. Wahl zwischen beiden möglich.
+  erwartung_herkunft: Testerin
+  kriterium: F1
+
+- id: BF-26
+  titel: Mehrere Festbeträge
+  platz: F
+  rueckmeldungen: [R-016, R-024]
+  nebenbezug: [R-043]
+  programmstand: bf3032e
+  art: Lücke im Formular
+  schicht: Feldzuordnung
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 3, entwuerfe: 2}
+  ursache: bestätigt — fixedAmount ist ein einzelner Betrag.
+  erwartung: >-
+    Ein Betrag je Fördergegenstand, im Text je Gegenstand genannt; Prüfregeln rechnen mit
+    allen Beträgen; alte Entwürfe mit einem Betrag laden weiter.
+  erwartung_herkunft: Testerin
+  kriterium: F2
+
+- id: BF-27
+  titel: Betrag je Einheit
+  platz: F
+  rueckmeldungen: [R-017]
+  programmstand: bf3032e
+  art: Lücke im Formular
+  schicht: Feldzuordnung
+  pruefbarkeit: fest
+  schwere: 2
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: bestätigt — maximum ist ein Eurobetrag ohne Einheit.
+  erwartung: „450 Euro je Hektar“ ist eingebbar und steht so im Text.
+  erwartung_herkunft: Testerin
+  kriterium: F3
+
+# --- Betrieb ------------------------------------------------------------------------------
+
+- id: BF-28
+  titel: Vorschlagsdienst antwortet mit 502
+  platz: Betrieb
+  rueckmeldungen: [R-005]
+  programmstand: 9e4b89f
+  stand: unbekannt — kein Log aus der Zeit
+  art: Fehler
+  schicht: Betrieb
+  pruefbarkeit: fest
+  schwere: 1
+  belege: {rueckmeldungen: 1, entwuerfe: 1}
+  ursache: vermutet — nicht mehr nachvollziehbar; Fehlersuche läuft über den Qdrant-Log.
+  erwartung: >-
+    Rauchtest nach jedem Deploy besteht; bei einem Fehler des Dienstes zeigt die Oberfläche
+    eine Meldung und bleibt bedienbar.
+  erwartung_herkunft: abgeleitet (Jill, 20.11.2026)
+
+# --- Ohne Befund --------------------------------------------------------------------------
+#
+# Frage der Testerin, offen:  R-013 (ob Abschnitt 9 entfallen kann; Hinweistext unklar),
+#                             R-023 (Notifizierung schon in Abschnitt 1 genannt?)
+# nur Abnahme:                R-028 (Rückfrage unklar formuliert)
+# verworfen (Tipptests):      R-002, R-003, R-004
+# Bestätigungen:              bestaetigungen.yaml

@@ -1,0 +1,67 @@
+# Bestätigungen aus den Rückmeldungen vom 14.10. bis 12.11.2026 (Issue #4, Phase 0).
+#
+# Rückmeldungen ohne Problem: positive Fälle des Goldstandards. Jede muss nach jeder Änderung
+# bestätigt bleiben (Arbeitsablauf, Phase 1, Grundsatz 5). Fundstellen werden über die
+# Rückmeldung (R-nnn) aus rueckmeldungen.ndjson geladen, nicht hier wiederholt.
+#
+# Felder:
+#   ort        wert | befund | richtlinientext | fundstelle
+#   kriterium  was bestätigt bleiben muss
+
+- id: BS-01
+  rueckmeldung: R-001
+  programmstand: 9e4b89f
+  ort: wert
+  feld: title
+  pruefbarkeit: modellabhängig
+  kriterium: Der Titelvorschlag nennt Kastration, Kennzeichnung und Registrierung freilebender Katzen.
+
+- id: BS-02
+  rueckmeldung: R-007
+  programmstand: 9e4b89f
+  ort: befund
+  feld: requirements
+  pruefbarkeit: fest
+  kriterium: Ist requirements leer, meldet die Prüfung weiter, dass es ausgefüllt werden muss.
+
+- id: BS-03
+  rueckmeldung: R-015
+  programmstand: bf3032e
+  ort: richtlinientext
+  abschnitt: 3
+  pruefbarkeit: Mensch
+  kriterium: Abschnitt 3 (Zuwendungsempfänger) bleibt inhaltlich so; Abnahme.
+
+- id: BS-04
+  rueckmeldung: R-040
+  programmstand: bf3032e
+  ort: wert
+  feld: eligibleCosts
+  pruefbarkeit: modellabhängig
+  kriterium: >-
+    eligibleCosts nennt Einfangen, Kastration sowie Kennzeichnung und Registrierung; die
+    Fundstelle aus R-040 bleibt unter den fünf gezeigten.
+
+- id: BS-05
+  rueckmeldung: R-041
+  programmstand: bf3032e
+  ort: wert
+  feld: eligibleBasis
+  pruefbarkeit: modellabhängig
+  kriterium: eligibleBasis = fixed; die Fundstelle aus R-041 bleibt unter den fünf gezeigten.
+
+# Fundstellen mit Urteil „passt“ — Kriterium je Eintrag: Die Stelle aus der Rückmeldung bleibt
+# unter den fünf gezeigten für ihr Feld.
+
+- {id: BS-06, rueckmeldung: R-052, programmstand: bf3032e, ort: fundstelle, feld: inventory, pruefbarkeit: modellabhängig}
+- {id: BS-07, rueckmeldung: R-053, programmstand: bf3032e, ort: fundstelle, feld: inventory, pruefbarkeit: modellabhängig}
+- {id: BS-08, rueckmeldung: R-054, programmstand: bf3032e, ort: fundstelle, feld: inventory, pruefbarkeit: modellabhängig}
+- {id: BS-09, rueckmeldung: R-055, programmstand: bf3032e, ort: fundstelle, feld: authority, pruefbarkeit: modellabhängig}
+- {id: BS-10, rueckmeldung: R-056, programmstand: bf3032e, ort: fundstelle, feld: authority, pruefbarkeit: modellabhängig}
+- {id: BS-11, rueckmeldung: R-058, programmstand: bf3032e, ort: fundstelle, feld: selection, pruefbarkeit: modellabhängig}
+- {id: BS-12, rueckmeldung: R-059, programmstand: bf3032e, ort: fundstelle, feld: selection, pruefbarkeit: modellabhängig}
+- {id: BS-13, rueckmeldung: R-060, programmstand: bf3032e, ort: fundstelle, feld: selection, pruefbarkeit: modellabhängig}
+- {id: BS-14, rueckmeldung: R-061, programmstand: bf3032e, ort: fundstelle, feld: earlyStart, pruefbarkeit: modellabhängig}
+- {id: BS-15, rueckmeldung: R-062, programmstand: bf3032e, ort: fundstelle, feld: earlyStart, pruefbarkeit: modellabhängig}
+- {id: BS-16, rueckmeldung: R-063, programmstand: bf3032e, ort: fundstelle, feld: earlyStart, pruefbarkeit: modellabhängig}
+- {id: BS-17, rueckmeldung: R-065, programmstand: bf3032e, ort: fundstelle, feld: payment, pruefbarkeit: modellabhängig}

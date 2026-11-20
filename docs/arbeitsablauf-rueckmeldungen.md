@@ -327,9 +327,9 @@ Prüffälle und die Kennzahlen gegen Rückschritte.
 
 ### Automatische Tests auf GitHub
 
-Vor der ersten Welle: ein CI-Workflow nach dem Muster von pro-biz, der bei jedem Push nach
-`dev`/`main` und bei jedem Pull Request pytest (ohne Modellaufrufe), vitest und die festen
-Prüffälle aus `befunde.yaml` und `bestaetigungen.yaml` ausführt. Ein roter Lauf blockiert
+Der Workflow `Tests` (`.github/workflows/tests.yml`, #3) läuft bei jedem Push nach
+`dev`/`main` und bei jedem Pull Request: pytest (ohne Modellaufrufe), vitest und damit auch
+die festen Prüffälle aus `befunde.yaml` und `bestaetigungen.yaml`. Ein roter Lauf blockiert
 den Merge. Modellabhängige Prüffälle und die Kennzahlen gegen Rückschritte laufen weiter
 lokal, weil sie das Modell-Gateway brauchen.
 
