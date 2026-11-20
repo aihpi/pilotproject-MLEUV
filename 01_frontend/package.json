@@ -10,7 +10,7 @@
     "build:offline": "npm run build -w @richtlinie/shared && node scripts/build-static.mjs",
     "build:dataset-editor": "npm run build -w @richtlinie/shared && node scripts/build-generic-dataset-editor.mjs",
     "pretest": "npm run build -w @richtlinie/shared",
-    "test": "npm run test -w @richtlinie/shared && npm run test -w @richtlinie/web",
+    "test": "npm run test -w @richtlinie/shared && npm run test -w @richtlinie/api && npm run test -w @richtlinie/web",
     "typecheck": "npm run typecheck -w @richtlinie/shared && npm run typecheck -w @richtlinie/api && npm run typecheck -w @richtlinie/web"
   },
   "devDependencies": {"concurrently": "^9.1.2", "typescript": "^5.7.3"}

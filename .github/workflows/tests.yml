@@ -1,0 +1,56 @@
+name: Tests
+
+# Läuft ohne Modell, Netz zum Cluster und Qdrant. Ein roter Lauf blockiert den Merge nur, wenn
+# der Job in den Branch-Regeln von dev und main als Pflicht eingetragen ist.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 02_backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Python-Version aus 02_backend/.python-version, wie im Dockerfile.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: 02_backend/uv.lock
+
+      - name: Abhängigkeiten
+        run: uv sync --locked
+
+      - name: pytest
+        run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 01_frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 20 wie in Dockerfile.api und Dockerfile.web.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: 01_frontend/package-lock.json
+
+      - name: Abhängigkeiten
+        run: npm ci
+
+      # Zuerst die Tests: ihr pretest baut packages/shared, und api und web prüfen ihre Typen
+      # gegen dessen Ausgabe.
+      - name: vitest
+        run: npm test
+
+      - name: Typprüfung
+        run: npm run typecheck
