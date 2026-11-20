@@ -317,19 +317,21 @@ der ersten Änderung ist der Ausgangswert.
 Jede Welle ein Branch von `dev`, ein Merge zurück nach `dev`. Nach jeder Welle laufen alle
 Prüffälle und die Kennzahlen gegen Rückschritte.
 
-1. **Fest prüfbar:** E1, E2, E4, E6 und Prüfregeln A
-2. **Betrieb:** Rauchtest
-3. **Stammdaten im Text:** Behördenliste, Ressort, Unterzeichnende
-4. **Feldwerte und Gesprächsführung:** B, E3, E5
-5. **Fundstellen:** C
+1. **Fest prüfbar:** E1, E2, E4, E6 und Prüfregeln A — #6
+2. **Betrieb:** Rauchtest — #7
+3. **Stammdaten im Text:** Behördenliste, Ressort, Unterzeichnende, Pflichtangaben Verfahren — #8
+4. **Feldwerte und Gesprächsführung:** B, E3, E5 — #9
+5. **Fundstellen:** C — #10
 6. **Formular und Darstellung:** F1, dann F3, dann F2 (der größte Umbau zuletzt), danach E3
-   für R-043
+   für R-043 — #11
+
+Die Sprachfälle (BF-24) und R-028 gehen in die Abnahme unter #2.
 
 ### Automatische Tests auf GitHub
 
-Vor der ersten Welle: ein CI-Workflow nach dem Muster von pro-biz, der bei jedem Push nach
-`dev`/`main` und bei jedem Pull Request pytest (ohne Modellaufrufe), vitest und die festen
-Prüffälle aus `befunde.yaml` und `bestaetigungen.yaml` ausführt. Ein roter Lauf blockiert
+Der Workflow `Tests` (`.github/workflows/tests.yml`, #3) läuft bei jedem Push nach
+`dev`/`main` und bei jedem Pull Request: pytest (ohne Modellaufrufe), vitest und damit auch
+die festen Prüffälle aus `befunde.yaml` und `bestaetigungen.yaml`. Ein roter Lauf blockiert
 den Merge. Modellabhängige Prüffälle und die Kennzahlen gegen Rückschritte laufen weiter
 lokal, weil sie das Modell-Gateway brauchen.
 
