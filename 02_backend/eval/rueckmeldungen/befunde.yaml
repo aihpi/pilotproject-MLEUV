@@ -22,6 +22,7 @@
 - id: BF-01
   titel: Punkt nach Ordnungszahl oder Abkürzung beendet den Satz
   platz: A
+  issue: "#6"
   rueckmeldungen: [R-008, R-012, R-018, R-022]
   programmstand: {R-008: 9e4b89f, R-012: 9e4b89f, R-018: bf3032e, R-022: bf3032e}
   stand: besteht noch
@@ -45,6 +46,7 @@
 - id: BF-02
   titel: Zitat im Befund zeigt Steuerzeichen statt Leerzeichen
   platz: A
+  issue: "#6"
   rueckmeldungen: [R-010a]
   nebenbezug: [R-012]
   programmstand: 9e4b89f
@@ -64,6 +66,7 @@
 - id: BF-03
   titel: Kurzer vollständiger Satz gilt als Zwischenüberschrift
   platz: A
+  issue: "#6"
   rueckmeldungen: [R-009]
   programmstand: 9e4b89f
   stand: besteht noch
@@ -84,6 +87,7 @@
 - id: BF-04
   titel: Zahl in Worten gilt als fehlend
   platz: A
+  issue: "#6"
   rueckmeldungen: [R-011]
   programmstand: 9e4b89f
   stand: besteht noch
@@ -103,6 +107,7 @@
 - id: BF-05
   titel: Befund „Satz ohne Rückhalt“ bei Sätzen, die bestätigte Angaben wiedergeben
   platz: A
+  issue: "#6"
   rueckmeldungen: [R-010b]
   programmstand: 9e4b89f
   stand: besteht noch
@@ -128,6 +133,7 @@
 - id: BF-12
   titel: Angaben zum Empfängerkreis landen in Voraussetzungen und Auswahlkriterien
   platz: B
+  issue: "#9"
   rueckmeldungen: [R-034, R-035]
   programmstand: bf3032e
   protokoll: [2026-11-12T13:51:58, 2026-11-12T13:54:37]
@@ -145,6 +151,7 @@
 - id: BF-13
   titel: Nachweis aus dem Verwendungsnachweis als Antragsvoraussetzung übernommen
   platz: B
+  issue: "#9"
   rueckmeldungen: [R-033]
   programmstand: bf3032e
   protokoll: 2026-11-12T13:46:20
@@ -162,6 +169,7 @@
 - id: BF-14
   titel: Genanntes Vorbild wird nicht genutzt
   platz: B
+  issue: "#9"
   rueckmeldungen: [R-039]
   programmstand: bf3032e
   protokoll: 2026-11-12T14:00:55
@@ -178,6 +186,7 @@
 - id: BF-15
   titel: Wert ohne Beleg erscheint wie ein belegter Vorschlag
   platz: B
+  issue: "#9"
   rueckmeldungen: [R-031]
   programmstand: bf3032e
   protokoll: 2026-11-12T13:42:12
@@ -198,6 +207,7 @@
 - id: BF-16
   titel: Bedingungen des Falls werden bei Nebenbestimmungen und Zweckbindung übergangen
   platz: B
+  issue: "#9"
   rueckmeldungen: [R-045, R-049]
   programmstand: bf3032e
   protokoll: 2026-11-12T14:20:45
@@ -221,6 +231,7 @@
 - id: BF-17
   titel: Fundstelle steht beim falschen Feld des Verfahrens
   platz: C
+  issue: "#10"
   rueckmeldungen: [R-057, R-064, R-066]
   programmstand: bf3032e
   protokoll: 2026-11-12T14:28:48
@@ -241,6 +252,7 @@
 - id: BF-18
   titel: EU-Richtlinien statt Landesrichtlinien als Vorlage
   platz: C
+  issue: "#10"
   rueckmeldungen: [R-046, R-047]
   programmstand: bf3032e
   protokoll: 2026-11-12T14:20:45
@@ -258,6 +270,7 @@
 - id: BF-19
   titel: Fundstelle trägt das Feld nicht
   platz: C
+  issue: "#10"
   rueckmeldungen: [R-048, R-050, R-051, R-067]
   programmstand: bf3032e
   protokoll: [2026-11-12T14:20:45, 2026-11-12T14:28:48]
@@ -277,6 +290,7 @@
 - id: BF-20
   titel: Ministerium fehlt im Titel, wenn der Titel im Formular eingetragen wird
   platz: D
+  issue: "#8"
   rueckmeldungen: [R-026]
   programmstand: bf3032e
   protokoll: 2026-11-12T12:59:20
@@ -295,6 +309,7 @@
 - id: BF-21
   titel: Name der Ministerin fehlt in der Schlussformel
   platz: D
+  issue: "#8"
   rueckmeldungen: [R-019]
   programmstand: bf3032e
   protokoll: 2026-11-12T12:59:20
@@ -312,6 +327,7 @@
 - id: BF-22
   titel: Behördenkürzel falsch aufgelöst
   platz: D
+  issue: "#8"
   rueckmeldungen: [R-068]
   programmstand: bf3032e
   protokoll: 2026-11-12T14:37:39
@@ -331,6 +347,7 @@
 - id: BF-23
   titel: Abschnitt Verfahren zu knapp
   platz: D
+  issue: "#8"
   rueckmeldungen: [R-021]
   programmstand: bf3032e
   protokoll: 2026-11-12T12:59:20
@@ -348,6 +365,7 @@
 - id: BF-24
   titel: Sätze sprachlich falsch oder ohne Sinn
   platz: D
+  issue: "#2"
   rueckmeldungen: [R-010c, R-020, R-069]
   nebenbezug: [R-009]
   programmstand: {R-010c: 9e4b89f, R-020: bf3032e, R-069: bf3032e}
@@ -370,6 +388,7 @@
 - id: BF-06
   titel: Eingabefeld gesperrt nach leerem Vorschlag
   platz: E
+  issue: "#6"
   rueckmeldungen: [R-044, R-070]
   nebenbezug: [R-029]
   programmstand: bf3032e
@@ -389,6 +408,7 @@
 - id: BF-07
   titel: Antwort auf eine Rückfrage wird zum Feldwert
   platz: E
+  issue: "#6"
   rueckmeldungen: [R-036, R-037, R-038]
   programmstand: bf3032e
   protokoll: [2026-11-12T13:56:21, 2026-11-12T13:56:32]
@@ -409,6 +429,7 @@
 - id: BF-08
   titel: Hinweis „übernommen“ wiederholt sich
   platz: E
+  issue: "#6"
   rueckmeldungen: [R-030, R-042]
   programmstand: bf3032e
   art: Fehler
@@ -426,6 +447,7 @@
 - id: BF-09
   titel: „Vorschlag holen“ ohne Chat schickt eine leere Eingabe
   platz: E
+  issue: "#6"
   rueckmeldungen: [R-006]
   programmstand: 9e4b89f
   stand: besteht noch
@@ -446,6 +468,7 @@
 - id: BF-10
   titel: Bereits Gesagtes wird nicht genutzt
   platz: E
+  issue: "#9"
   rueckmeldungen: [R-027, R-032, R-043]
   programmstand: bf3032e
   protokoll: [2026-11-12T13:46:14, 2026-11-12T14:09:56]
@@ -467,6 +490,7 @@
 - id: BF-11
   titel: Geänderte Angabe wird nicht genutzt
   platz: E
+  issue: "#9"
   rueckmeldungen: [R-029]
   programmstand: bf3032e
   protokoll: [2026-11-12T13:37:46, 2026-11-12T13:37:54]
@@ -485,6 +509,7 @@
 - id: BF-25
   titel: Aufzählungen als Stichpunkte
   platz: F
+  issue: "#11"
   rueckmeldungen: [R-014, R-025]
   nebenbezug: [R-020, R-024]
   programmstand: bf3032e
@@ -503,6 +528,7 @@
 - id: BF-26
   titel: Mehrere Festbeträge
   platz: F
+  issue: "#11"
   rueckmeldungen: [R-016, R-024]
   nebenbezug: [R-043]
   programmstand: bf3032e
@@ -521,6 +547,7 @@
 - id: BF-27
   titel: Betrag je Einheit
   platz: F
+  issue: "#11"
   rueckmeldungen: [R-017]
   programmstand: bf3032e
   art: Lücke im Formular
@@ -538,6 +565,7 @@
 - id: BF-28
   titel: Vorschlagsdienst antwortet mit 502
   platz: Betrieb
+  issue: "#7"
   rueckmeldungen: [R-005]
   programmstand: 9e4b89f
   stand: unbekannt — kein Log aus der Zeit
